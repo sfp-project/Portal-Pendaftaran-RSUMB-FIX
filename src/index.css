@@ -1,0 +1,343 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+}
+
+@layer utilities {
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #64748b #f1f5f9;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #64748b;
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+
+  /* Mandatory Visible Sidebar Scrollbar (6px width, #cbd5e1 thumb) */
+  .sidebar-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #edf3fc;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-track {
+    background: #edf3fc;
+    border-radius: 9999px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8;
+  }
+
+  #main-sidebar {
+    height: 100vh !important;
+    max-height: 100vh !important;
+  }
+
+  .sidebar-nav-container {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media screen {
+  .print-card-container,
+  .print-letter-container,
+  .print-inpatient-container,
+  .print-patient-notes-container,
+  .print-handover-card-container,
+  .print-daily-huddle-container {
+    display: none !important;
+  }
+}
+
+.print-doctor-schedule-container {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 794px;
+  background-color: #ffffff;
+  z-index: -9999;
+  pointer-events: none;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 8mm;
+  }
+
+  aside,
+  header,
+  nav,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  /* When single doctor schedule is being printed, hide main content & tables */
+  body.printing-single-doctor-schedule .schedule-main-card,
+  body.printing-single-doctor-schedule #announcement-banner-container,
+  body.printing-single-doctor-schedule .top-stats-container,
+  body.printing-single-doctor-schedule .filter-bar-wrapper,
+  body:has(.print-doctor-schedule-container) .schedule-main-card {
+    display: none !important;
+  }
+
+  .print-card-container,
+  .print-letter-container,
+  .print-inpatient-container,
+  .print-patient-notes-container,
+  .print-handover-card-container,
+  .print-daily-huddle-container {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+  }
+
+  .print-doctor-schedule-container {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    z-index: auto !important;
+    pointer-events: auto !important;
+  }
+
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Reset sidebar margin on print */
+  .md\:ml-64 {
+    margin-left: 0 !important;
+  }
+
+  /* Clean table print borders */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 9pt !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  th, td {
+    border: 0.5pt solid #cbd5e1 !important;
+    padding: 4pt 6pt !important;
+  }
+
+  thead th {
+    background-color: #047857 !important;
+    color: #ffffff !important;
+    font-weight: bold !important;
+  }
+
+  /* =========================================================================
+     THERMAL RECEIPT PRINTING OPTIMIZATION (#print-area & #thermal-print-area)
+     Optimized for 58mm / 80mm thermal receipt printers (Epson, Panda, Xprinter, POS)
+     ========================================================================= */
+  body:has(#print-area),
+  body:has(#thermal-print-area) {
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body:has(#print-area) aside,
+  body:has(#print-area) header,
+  body:has(#print-area) nav,
+  body:has(#print-area) .no-print,
+  body:has(#print-area) .thermal-modal-controls,
+  body:has(#thermal-print-area) aside,
+  body:has(#thermal-print-area) header,
+  body:has(#thermal-print-area) nav,
+  body:has(#thermal-print-area) .no-print {
+    display: none !important;
+  }
+
+  /* Keep thermal backdrop unconstrained on print */
+  body:has(#print-area) .thermal-modal-backdrop,
+  body:has(#thermal-print-area) .thermal-modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  body:has(#print-area) * {
+    visibility: hidden;
+  }
+
+  body:has(#print-area) #print-area,
+  body:has(#print-area) #print-area * {
+    visibility: visible !important;
+  }
+
+  body:has(#print-area) #print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 auto !important;
+    display: block !important;
+    padding: 2mm 2.5mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  body:has(#print-area) #print-area * {
+    color: #000000 !important;
+    font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body:has(#print-area) #print-area[data-paper="58mm"] {
+    width: 54mm !important;
+    max-width: 54mm !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+  }
+
+  body:has(#print-area) #print-area[data-paper="80mm"] {
+    width: 76mm !important;
+    max-width: 76mm !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+  }
+
+  body:has(#thermal-print-area) * {
+    visibility: hidden;
+  }
+
+  body:has(#thermal-print-area) #thermal-print-area,
+  body:has(#thermal-print-area) #thermal-print-area * {
+    visibility: visible !important;
+  }
+
+  body:has(#thermal-print-area) #thermal-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 76mm !important;
+    max-width: 76mm !important;
+    margin: 0 auto !important;
+    display: block !important;
+    padding: 2mm 2.5mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  body:has(#thermal-print-area) #thermal-print-area * {
+    color: #000000 !important;
+    font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* PDF Report Printing Optimization (#print-report-area) */
+  body:has(#print-report-area) {
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body:has(#print-report-area) aside,
+  body:has(#print-report-area) header,
+  body:has(#print-report-area) nav,
+  body:has(#print-report-area) .no-print {
+    display: none !important;
+  }
+
+  body:has(#print-report-area) * {
+    visibility: hidden;
+  }
+
+  body:has(#print-report-area) #print-report-area,
+  body:has(#print-report-area) #print-report-area * {
+    visibility: visible !important;
+  }
+
+  body:has(#print-report-area) #print-report-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 12px 18px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+}
+
+

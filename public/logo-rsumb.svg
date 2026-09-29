@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <defs>
+    <!-- Outer Ring Gradient: Green to Lime-Yellow -->
+    <linearGradient id="outerRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#188a38"/>
+      <stop offset="35%" stop-color="#22a846"/>
+      <stop offset="70%" stop-color="#8ec31e"/>
+      <stop offset="100%" stop-color="#d7df00"/>
+    </linearGradient>
+    <!-- Gold Gradient for Sun and Calligraphy -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff159"/>
+      <stop offset="50%" stop-color="#fed100"/>
+      <stop offset="100%" stop-color="#e5b700"/>
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.4"/>
+    </filter>
+    <!-- Arc for RSU MUHAMMADIYAH text -->
+    <path id="textArcTop" d="M 140 300 A 160 160 0 1 1 460 300" fill="none" />
+    <path id="textArcBottom" d="M 160 300 A 155 155 0 0 0 440 300" fill="none" />
+  </defs>
+
+  <g transform="translate(0, 0)">
+    <!-- Transparent outer background, white border ring -->
+    <circle cx="300" cy="300" r="294" fill="#ffffff" stroke="#e5e7eb" stroke-width="1"/>
+
+    <!-- Outer Gradient Ring -->
+    <circle cx="300" cy="300" r="286" fill="none" stroke="url(#outerRingGrad)" stroke-width="28"/>
+    <circle cx="300" cy="300" r="272" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+    <circle cx="300" cy="300" r="300" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+
+    <!-- Deep Royal Blue Inner Circle -->
+    <circle cx="300" cy="300" r="271" fill="#1c3f8e"/>
+
+    <!-- Fine background radiating rays (48 rays) -->
+    <line x1="390.00" y1="300.00" x2="545.00" y2="300.00" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="389.23" y1="311.75" x2="542.90" y2="331.98" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="386.93" y1="323.29" x2="536.65" y2="363.41" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="383.15" y1="334.44" x2="526.35" y2="393.76" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="377.94" y1="345.00" x2="512.18" y2="422.50" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="371.40" y1="354.79" x2="494.37" y2="449.15" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="363.64" y1="363.64" x2="473.24" y2="473.24" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="354.79" y1="371.40" x2="449.15" y2="494.37" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="345.00" y1="377.94" x2="422.50" y2="512.18" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="334.44" y1="383.15" x2="393.76" y2="526.35" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="323.29" y1="386.93" x2="363.41" y2="536.65" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="311.75" y1="389.23" x2="331.98" y2="542.90" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="300.00" y1="390.00" x2="300.00" y2="545.00" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="288.25" y1="389.23" x2="268.02" y2="542.90" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="276.71" y1="386.93" x2="236.59" y2="536.65" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="265.56" y1="383.15" x2="206.24" y2="526.35" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="255.00" y1="377.94" x2="177.50" y2="512.18" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="245.21" y1="371.40" x2="150.85" y2="494.37" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="236.36" y1="363.64" x2="126.76" y2="473.24" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="228.60" y1="354.79" x2="105.63" y2="449.15" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="222.06" y1="345.00" x2="87.82" y2="422.50" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="216.85" y1="334.44" x2="73.65" y2="393.76" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="213.07" y1="323.29" x2="63.35" y2="363.41" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="210.77" y1="311.75" x2="57.10" y2="331.98" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="210.00" y1="300.00" x2="55.00" y2="300.00" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="210.77" y1="288.25" x2="57.10" y2="268.02" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="213.07" y1="276.71" x2="63.35" y2="236.59" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="216.85" y1="265.56" x2="73.65" y2="206.24" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="222.06" y1="255.00" x2="87.82" y2="177.50" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="228.60" y1="245.21" x2="105.63" y2="150.85" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="236.36" y1="236.36" x2="126.76" y2="126.76" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="245.21" y1="228.60" x2="150.85" y2="105.63" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="255.00" y1="222.06" x2="177.50" y2="87.82" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="265.56" y1="216.85" x2="206.24" y2="73.65" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="276.71" y1="213.07" x2="236.59" y2="63.35" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="288.25" y1="210.77" x2="268.02" y2="57.10" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="300.00" y1="210.00" x2="300.00" y2="55.00" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="311.75" y1="210.77" x2="331.98" y2="57.10" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="323.29" y1="213.07" x2="363.41" y2="63.35" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="334.44" y1="216.85" x2="393.76" y2="73.65" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="345.00" y1="222.06" x2="422.50" y2="87.82" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="354.79" y1="228.60" x2="449.15" y2="105.63" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="363.64" y1="236.36" x2="473.24" y2="126.76" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="371.40" y1="245.21" x2="494.37" y2="150.85" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="377.94" y1="255.00" x2="512.18" y2="177.50" stroke="#fed100" stroke-width="3.5" opacity="0.9"/>
+    <line x1="383.15" y1="265.56" x2="526.35" y2="206.24" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <line x1="386.93" y1="276.71" x2="536.65" y2="236.59" stroke="#fed100" stroke-width="2.0" opacity="0.9"/>
+    <line x1="389.23" y1="288.25" x2="542.90" y2="268.02" stroke="#fed100" stroke-width="1.2" opacity="0.9"/>
+    <!-- 12 Major Sun Rays (Muhammadiyah Emblem) -->
+    <polygon points="300.00,48.00 275.08,177.51 324.92,177.51" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="300.00" y2="48.00" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="426.00,81.76 339.66,181.46 382.83,206.38" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="426.00" y2="81.76" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="518.24,174.00 393.62,217.17 418.54,260.34" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="518.24" y2="174.00" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="552.00,300.00 422.49,275.08 422.49,324.92" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="552.00" y2="300.00" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="518.24,426.00 418.54,339.66 393.62,382.83" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="518.24" y2="426.00" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="426.00,518.24 382.83,393.62 339.66,418.54" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="426.00" y2="518.24" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="300.00,552.00 324.92,422.49 275.08,422.49" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="300.00" y2="552.00" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="174.00,518.24 260.34,418.54 217.17,393.62" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="174.00" y2="518.24" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="81.76,426.00 206.38,382.83 181.46,339.66" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="81.76" y2="426.00" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="48.00,300.00 177.51,324.92 177.51,275.08" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="48.00" y2="300.00" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="81.76,174.00 181.46,260.34 206.38,217.17" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="81.76" y2="174.00" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+    <polygon points="174.00,81.76 217.17,206.38 260.34,181.46" fill="url(#goldGrad)" stroke="#1c3f8e" stroke-width="1.5" filter="url(#dropShadow)"/>
+    <line x1="300" y1="300" x2="174.00" y2="81.76" stroke="#e5b700" stroke-width="1.8" opacity="0.7"/>
+
+    <!-- Circular Central Gold Ring -->
+    <circle cx="300" cy="300" r="125" fill="none" stroke="url(#goldGrad)" stroke-width="6"/>
+    <circle cx="300" cy="300" r="128" fill="none" stroke="#1c3f8e" stroke-width="1.5"/>
+    <circle cx="300" cy="300" r="122" fill="none" stroke="#1c3f8e" stroke-width="1.5"/>
+
+    <!-- Curved Text "RSU MUHAMMADIYAH" on upper circle -->
+    <path id="textPathRSUM" d="M 145 285 A 155 155 0 0 1 455 285" fill="none" />
+    <text font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="27" fill="#fed100" stroke="#1c3f8e" stroke-width="2" letter-spacing="3" text-anchor="middle">
+      <textPath href="#textPathRSUM" startOffset="50%">
+        RSU MUHAMMADIYAH
+      </textPath>
+    </text>
+
+    <!-- Bottom Green Ribbon / Badge for "BABAT" -->
+    <path d="M 185 390 Q 300 445 415 390 L 402 435 Q 300 485 198 435 Z" fill="#087d38" stroke="#fed100" stroke-width="3.5" filter="url(#dropShadow)"/>
+    <!-- Folded ends of banner -->
+    <polygon points="185,390 198,435 175,420" fill="#065b28" stroke="#fed100" stroke-width="1.5"/>
+    <polygon points="415,390 402,435 425,420" fill="#065b28" stroke="#fed100" stroke-width="1.5"/>
+
+    <!-- Text "BABAT" on bottom banner -->
+    <path id="textPathBabat" d="M 210 408 Q 300 455 390 408" fill="none"/>
+    <text font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="26" fill="#ffffff" stroke="#065b28" stroke-width="1.5" letter-spacing="6" text-anchor="middle">
+      <textPath href="#textPathBabat" startOffset="50%">
+        BABAT
+      </textPath>
+    </text>
+
+    <!-- Center Emblem: Vibrant Red Crescent Moon (Opening to Left/Center) -->
+    <!-- Red crescent wraps around the left side of the inner green circle -->
+    <path d="M 268 208 A 94 94 0 1 0 326 388 A 82 82 0 1 1 268 208 Z" fill="#d91b24" stroke="#b31219" stroke-width="1.5" filter="url(#dropShadow)"/>
+
+    <!-- Inner Emerald Green Circle -->
+    <circle cx="300" cy="300" r="78" fill="#087d38" stroke="url(#goldGrad)" stroke-width="4"/>
+    <circle cx="300" cy="300" r="74" fill="none" stroke="#fed100" stroke-width="1" stroke-dasharray="3,3"/>
+
+    <!-- Muhammadiyah Arabic Calligraphy in Center -->
+    <g transform="translate(300, 300) scale(0.72)">
+      <!-- Outer Calligraphy Ring: Syahadatain in circular arrangement -->
+      <circle cx="0" cy="0" r="90" fill="none" stroke="#fed100" stroke-width="1.2" opacity="0.8"/>
+      <!-- Central stylized Arabic Calligraphy of Muhammadiyah -->
+      <!-- Mim, Ha, Mim, Dal, Ya, Ha Marbutah -->
+      <path d="M -45 -12 Q -38 -28 -24 -24 Q -12 -20 -15 -6 Q -18 8 -32 6 Q -42 4 -45 -12 Z" fill="#fed100"/>
+      <path d="M -22 -6 Q -15 -35 8 -32 Q 28 -28 22 -6 Q 16 12 -5 10 Q -20 8 -22 -6 Z" fill="#fed100"/>
+      <path d="M -8 -30 Q 15 -65 26 -40 Q 32 -18 45 -22 Q 52 -25 48 -10 Q 42 12 18 28 Q -8 38 -35 25 Q -48 18 -42 2 Q -38 -10 -22 -6" fill="none" stroke="#fed100" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M -15 12 Q 10 32 35 15 Q 45 8 48 -5 Q 52 -18 38 -15 Q 24 -12 20 5" fill="none" stroke="#fed100" stroke-width="5" stroke-linecap="round"/>
+      <!-- Shaddah & Harakat accents -->
+      <path d="M 0 -45 Q 8 -55 16 -45 Q 24 -55 32 -45" fill="none" stroke="#fed100" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="-28" cy="-38" r="4" fill="#fed100"/>
+      <circle cx="24" cy="-52" r="3.5" fill="#fed100"/>
+      <path d="M -38 32 Q -25 42 -10 35" fill="none" stroke="#fed100" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M 15 36 Q 30 38 42 28" fill="none" stroke="#fed100" stroke-width="3.5" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>

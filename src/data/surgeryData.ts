@@ -1,0 +1,312 @@
+export interface MasterSurgeon {
+  nama: string;
+  poli: string;
+  spesialisasi: string;
+}
+
+export const MASTER_SURGEONS: MasterSurgeon[] = [
+  { nama: 'dr. Rieski Widhanar, Sp. B', poli: 'Bedah', spesialisasi: 'Spesialis Bedah' },
+  { nama: 'dr. Nikita Gladys L., M. Ked.Klin, Sp. B', poli: 'Bedah', spesialisasi: 'Spesialis Bedah' },
+  { nama: 'dr. Dony R. Bimantara, Sp. OG, AIFO-K', poli: 'Obgyn', spesialisasi: 'Spesialis Kebidanan & Kandungan' },
+  { nama: 'dr. Dayinta Liris K., Sp. OG', poli: 'Obgyn', spesialisasi: 'Spesialis Kebidanan & Kandungan' },
+  { nama: 'dr. Erliana, Sp. OG', poli: 'Obgyn', spesialisasi: 'Spesialis Kebidanan & Kandungan' },
+  { nama: 'dr. Amelia Safitri R., Sp. M', poli: 'Mata', spesialisasi: 'Spesialis Mata' },
+  { nama: 'dr. Razzaqy, M.Ked.Klin, Sp. M', poli: 'Mata', spesialisasi: 'Spesialis Mata' },
+  { nama: 'dr. Hary Wahyu A, Sp. OT', poli: 'Ortopedi', spesialisasi: 'Spesialis Orthopaedi & Traumatologi' },
+  { nama: 'dr. Arif Surgana, Sp. THT-BKL', poli: 'THT', spesialisasi: 'Spesialis THT-BKL' },
+  { nama: 'dr. Randa Halfian, Sp. U', poli: 'Urologi', spesialisasi: 'Spesialis Urologi' }
+];
+
+export interface ElectiveSurgerySchedule {
+  id: string;
+  no: number;
+  tglPoli: string;
+  noRm: string;
+  namaPasien: string;
+  poli: string;
+  dokterOperator: string;
+  dokterAnestesi: string;
+  spri: 'Sudah' | 'Belum';
+  jenisBayar: 'BPJS Kesehatan' | 'Umum / Pribadi' | 'Asuransi Swasta' | 'Jasa Raharja' | 'BPJS' | 'Umum' | 'Asuransi';
+  rencanaOp: string; // Format: DD/MM/YYYY HH:mm
+  tindakanBedah: string;
+  noHp: string;
+  pendaftaran: 'Online' | 'On-site' | 'Rawat Inap';
+  hubungiPx: 'Belum Dihubungi' | 'Sudah Dihubungi' | 'Belum Dikonfirmasi' | 'Tidak Merespon';
+  pelayanan: 'Hadir' | 'Terjadwal' | 'Reschedule' | 'Batal';
+  instruksiPreOp: string;
+  kelas: 'Kelas 1' | 'Kelas 2' | 'Kelas 3' | 'VIP';
+  rencanaKamarOk: 'OK 1 (Major)' | 'OK 2 (Major)' | 'OK 3 (Mata/Minor)' | 'OK 4 (Obgyn)' | 'OK Minor';
+  kamarRawatInap?: string;
+  keteranganBatalReschedule?: string;
+}
+
+export const initialSurgerySchedules: ElectiveSurgerySchedule[] = [
+  {
+    id: 'op-001',
+    no: 1,
+    tglPoli: '02/09/2026',
+    noRm: 'RM-510294',
+    namaPasien: 'Ny. Siti Aminah',
+    poli: 'Bedah',
+    dokterOperator: 'dr. Rieski Widhanar, Sp. B',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'BPJS Kesehatan',
+    rencanaOp: '04/09/2026 08:30',
+    tindakanBedah: 'Laparoscopic Cholecystectomy',
+    noHp: '0812-3498-1120',
+    pendaftaran: 'Rawat Inap',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Hadir',
+    instruksiPreOp: 'Puasa mulai 02.00 WIB, Skin test Ceftriaxone 2g, Cukur abdomen',
+    kelas: 'Kelas 2',
+    rencanaKamarOk: 'OK 1 (Major)',
+    kamarRawatInap: 'Ruang Flamboyan / Kamar 2A'
+  },
+  {
+    id: 'op-002',
+    no: 2,
+    tglPoli: '03/09/2026',
+    noRm: 'RM-492104',
+    namaPasien: 'Tn. Joko Wahyudi',
+    poli: 'Bedah',
+    dokterOperator: 'dr. Nikita Gladys L., M. Ked.Klin, Sp. B',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'BPJS Kesehatan',
+    rencanaOp: '04/09/2026 10:30',
+    tindakanBedah: 'Herniorafi Inguinalis Dextra + Mesh',
+    noHp: '0813-9821-4402',
+    pendaftaran: 'Online',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Hadir',
+    instruksiPreOp: 'Puasa mulai 04.00 WIB, Infus RL 20 tpm, Sedia darah PRC 1 kolf',
+    kelas: 'Kelas 3',
+    rencanaKamarOk: 'OK 1 (Major)',
+    kamarRawatInap: 'Ruang Teratai / Kamar 3B'
+  },
+  {
+    id: 'op-003',
+    no: 3,
+    tglPoli: '01/09/2026',
+    noRm: 'RM-394812',
+    namaPasien: 'Ny. Sri Rahayu',
+    poli: 'Obgyn',
+    dokterOperator: 'dr. Dony R. Bimantara, Sp. OG, AIFO-K',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'BPJS Kesehatan',
+    rencanaOp: '04/09/2026 09:00',
+    tindakanBedah: 'Sectio Caesarea (SC) Elektif Eracs',
+    noHp: '0821-7741-2910',
+    pendaftaran: 'Rawat Inap',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Hadir',
+    instruksiPreOp: 'Protokol ERACS, Minum manis 2 jam pre-op, Pasang DC steril',
+    kelas: 'Kelas 1',
+    rencanaKamarOk: 'OK 4 (Obgyn)',
+    kamarRawatInap: 'Ruang Dahlia / Kamar 102'
+  },
+  {
+    id: 'op-004',
+    no: 4,
+    tglPoli: '03/09/2026',
+    noRm: 'RM-482019',
+    namaPasien: 'Tn. Sugeng Prasetyo',
+    poli: 'Mata',
+    dokterOperator: 'dr. Amelia Safitri R., Sp. M',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Belum',
+    jenisBayar: 'Umum / Pribadi',
+    rencanaOp: '04/09/2026 13:00',
+    tindakanBedah: 'Fakoemulsifikasi + IOL Oculi Dextra',
+    noHp: '0852-6631-0982',
+    pendaftaran: 'On-site',
+    hubungiPx: 'Belum Dikonfirmasi',
+    pelayanan: 'Batal',
+    instruksiPreOp: 'Tetes Pantocain 0.5% & Midriatil pre-op',
+    kelas: 'Kelas 3',
+    rencanaKamarOk: 'OK 3 (Mata/Minor)',
+    kamarRawatInap: 'Ruang Melati / Kamar 304',
+    keteranganBatalReschedule: 'Tekanan darah tidak terkontrol (TD 190/110 mmHg), batal demi keselamatan pasien.'
+  },
+  {
+    id: 'op-005',
+    no: 5,
+    tglPoli: '02/09/2026',
+    noRm: 'RM-523190',
+    namaPasien: 'Tn. M. Ridwan',
+    poli: 'Ortopedi',
+    dokterOperator: 'dr. Hary Wahyu A, Sp. OT',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'Jasa Raharja',
+    rencanaOp: '05/09/2026 08:00',
+    tindakanBedah: 'ORIF Fraktur Femur Dextra + Bone Graft',
+    noHp: '0812-9901-4432',
+    pendaftaran: 'Rawat Inap',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Terjadwal',
+    instruksiPreOp: 'Puasa mulai 00.00 WIB, Sedia darah PRC 2 kolf, C-Arm standby',
+    kelas: 'VIP',
+    rencanaKamarOk: 'OK 2 (Major)',
+    kamarRawatInap: 'Ruang Mawar / Kamar VIP 1'
+  },
+  {
+    id: 'op-006',
+    no: 6,
+    tglPoli: '03/09/2026',
+    noRm: 'RM-461029',
+    namaPasien: 'Ny. Dewi Kartika',
+    poli: 'Bedah',
+    dokterOperator: 'dr. Rieski Widhanar, Sp. B',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'Asuransi Swasta',
+    rencanaOp: '05/09/2026 11:00',
+    tindakanBedah: 'Mastektomi Simpleks Sinistra',
+    noHp: '0813-4421-9988',
+    pendaftaran: 'Online',
+    hubungiPx: 'Belum Dihubungi',
+    pelayanan: 'Terjadwal',
+    instruksiPreOp: 'Puasa mulai 05.00 WIB, Foto Thorax & EKG ulang terlampir',
+    kelas: 'Kelas 2',
+    rencanaKamarOk: 'OK 1 (Major)',
+    kamarRawatInap: 'Ruang Cempaka / Kamar 203'
+  },
+  {
+    id: 'op-007',
+    no: 7,
+    tglPoli: '01/09/2026',
+    noRm: 'RM-399182',
+    namaPasien: 'An. Farhan Maulana',
+    poli: 'Urologi',
+    dokterOperator: 'dr. Randa Halfian, Sp. U',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Belum',
+    jenisBayar: 'BPJS Kesehatan',
+    rencanaOp: '05/09/2026 14:00',
+    tindakanBedah: 'Ureterorenoscopy (URS) + Litotripsi Batu Ureter',
+    noHp: '0857-1234-9981',
+    pendaftaran: 'Online',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Reschedule',
+    instruksiPreOp: 'Puasa jam 08.00 WIB, Sedia DJ Stent No 4.7 Fr',
+    kelas: 'Kelas 1',
+    rencanaKamarOk: 'OK 2 (Major)',
+    kamarRawatInap: 'Ruang Teratai / Kamar 105',
+    keteranganBatalReschedule: 'Reschedule ke 08/09/2026 atas permintaan keluarga (pasien demam subfebris).'
+  },
+  {
+    id: 'op-008',
+    no: 8,
+    tglPoli: '04/09/2026',
+    noRm: 'RM-519820',
+    namaPasien: 'Tn. Ahmad Fauzi',
+    poli: 'THT',
+    dokterOperator: 'dr. Arif Surgana, Sp. THT-BKL',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'BPJS Kesehatan',
+    rencanaOp: '06/09/2026 09:00',
+    tindakanBedah: 'Tonsilektomi Bilateral',
+    noHp: '0812-7890-4321',
+    pendaftaran: 'On-site',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Terjadwal',
+    instruksiPreOp: 'Puasa mulai 03.00 WIB, Cek masa perdarahan & pembekuan (BT/CT)',
+    kelas: 'Kelas 3',
+    rencanaKamarOk: 'OK Minor',
+    kamarRawatInap: 'Ruang Melati / Kamar 301'
+  },
+  {
+    id: 'op-009',
+    no: 9,
+    tglPoli: '04/09/2026',
+    noRm: 'RM-530182',
+    namaPasien: 'Ny. Hj. Fatimah',
+    poli: 'Mata',
+    dokterOperator: 'dr. Razzaqy, M.Ked.Klin, Sp. M',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'BPJS Kesehatan',
+    rencanaOp: '06/09/2026 10:30',
+    tindakanBedah: 'Trabekulektomi Oculi Sinistra',
+    noHp: '0822-4410-9012',
+    pendaftaran: 'Online',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Terjadwal',
+    instruksiPreOp: 'Tetes Timolol & C-Flox 3 hari pre-op',
+    kelas: 'Kelas 1',
+    rencanaKamarOk: 'OK 3 (Mata/Minor)',
+    kamarRawatInap: 'Ruang Flamboyan / Kamar 104'
+  },
+  {
+    id: 'op-010',
+    no: 10,
+    tglPoli: '02/09/2026',
+    noRm: 'RM-471209',
+    namaPasien: 'Tn. Hendro Siswanto',
+    poli: 'Obgyn',
+    dokterOperator: 'dr. Dayinta Liris K., Sp. OG',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Belum',
+    jenisBayar: 'Umum / Pribadi',
+    rencanaOp: '04/09/2026 13:30',
+    tindakanBedah: 'Kistektomi Ovarii Dextra',
+    noHp: '0819-2234-8871',
+    pendaftaran: 'On-site',
+    hubungiPx: 'Tidak Merespon',
+    pelayanan: 'Batal',
+    instruksiPreOp: 'Puasa mulai 08.00 WIB',
+    kelas: 'Kelas 3',
+    rencanaKamarOk: 'OK Minor',
+    kamarRawatInap: 'Ruang Melati / Kamar 308',
+    keteranganBatalReschedule: 'Pasien tidak hadir dan tidak merespon konfirmasi telepon 3x.'
+  },
+  {
+    id: 'op-aug-01',
+    no: 11,
+    tglPoli: '20/08/2026',
+    noRm: 'RM-449102',
+    namaPasien: 'Ny. Warsiti',
+    poli: 'Bedah',
+    dokterOperator: 'dr. Rieski Widhanar, Sp. B',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'BPJS Kesehatan',
+    rencanaOp: '22/08/2026 09:00',
+    tindakanBedah: 'Apendiktomi Laparoskopi',
+    noHp: '0812-4455-6677',
+    pendaftaran: 'Rawat Inap',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Hadir',
+    instruksiPreOp: 'Puasa mulai 03.00 WIB, skin test ampicillin sulbactam',
+    kelas: 'Kelas 2',
+    rencanaKamarOk: 'OK 1 (Major)',
+    kamarRawatInap: 'Ruang Shafa / Kamar 204'
+  },
+  {
+    id: 'op-aug-02',
+    no: 12,
+    tglPoli: '26/08/2026',
+    noRm: 'RM-460118',
+    namaPasien: 'Tn. H. Bambang',
+    poli: 'Ortopedi',
+    dokterOperator: 'dr. Hary Wahyu A, Sp. OT',
+    dokterAnestesi: 'dr. Hendra Gunawan, Sp.An',
+    spri: 'Sudah',
+    jenisBayar: 'Jasa Raharja',
+    rencanaOp: '28/08/2026 10:00',
+    tindakanBedah: 'ORIF Fraktur Clavicula',
+    noHp: '0857-1122-3344',
+    pendaftaran: 'Rawat Inap',
+    hubungiPx: 'Sudah Dihubungi',
+    pelayanan: 'Hadir',
+    instruksiPreOp: 'Puasa 6 jam pre-op, pasang arm sling',
+    kelas: 'Kelas 1',
+    rencanaKamarOk: 'OK 2 (Major)',
+    kamarRawatInap: 'Ruang Darussalam / Kamar 105'
+  }
+];

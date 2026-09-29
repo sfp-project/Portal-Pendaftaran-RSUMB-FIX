@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Portal-Pendaftaran-New",
+  "description": "Portal Administrasi MedCentral dan Sistem Informasi Jadwal Praktik DPJP serta Quota BPJS Rumah Sakit",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
