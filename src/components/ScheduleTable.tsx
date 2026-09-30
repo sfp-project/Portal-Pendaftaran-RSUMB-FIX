@@ -55,6 +55,8 @@ interface ScheduleTableProps {
   selectedPoli?: string;
   selectedLeaveDate?: string;
   onLeaveDateChange?: (date: string) => void;
+  onAddNewDoctor?: () => void;
+  onAddOrEditSchedule?: () => void;
   onAddNewSchedule: () => void;
   onEditSchedule: (sch: DoctorSchedule) => void;
   onDeleteSchedule: (id: string) => void;
@@ -84,6 +86,8 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
   selectedPoli = '',
   selectedLeaveDate,
   onLeaveDateChange,
+  onAddNewDoctor,
+  onAddOrEditSchedule,
   onAddNewSchedule,
   onEditSchedule,
   onDeleteSchedule,
@@ -222,7 +226,9 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
     return sortedSchedules.filter((sch) => {
       const roomNorm = normalize(sch.ruangan || 'R. Praktik');
       const poliNorm = normalize(sch.poli || '');
-      return roomNorm.includes(query) || poliNorm.includes(query);
+      const dpjpNorm = normalize(sch.dpjp || '');
+      const specNorm = normalize(sch.spesialisasi || '');
+      return roomNorm.includes(query) || poliNorm.includes(query) || dpjpNorm.includes(query) || specNorm.includes(query);
     });
   }, [sortedSchedules, roomOrPoliSearch]);
 
@@ -375,26 +381,24 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         'NAMA DOKTER / DPJP',
         'HARI',
         'JAM PRAKTIK',
-        'JAM HFIS BPJS',
-        'KUOTA TERISI',
-        'KUOTA TOTAL',
-        'STATUS KUOTA',
-        'RERATA PASIEN',
-        'RUANGAN'
+        'JAM HFIS',
+        'KUOTA BPJS'
       ];
-      const data = sortedSchedules.map((s, idx) => [
-        idx + 1,
-        s.poli.replace(/^Poli\s+/i, ''),
-        s.dpjp,
-        s.hari,
-        formatDoctorScheduleTime(s),
-        formatHfisTime(s.jamHfis),
-        s.kuotaTerisi,
-        s.kuotaTotal,
-        s.status,
-        s.rerataPasien ? `${s.rerataPasien} Pasien` : '-',
-        s.ruangan || '-'
-      ]);
+      const data = sortedSchedules.map((s, idx) => {
+        const jamHfis = formatHfisTime(s.jamHfis);
+        const jamCetak = getJamCetak(s.jamHfis, s);
+        const jamHfisCombined = jamCetak ? `${jamHfis} (${jamCetak})` : jamHfis;
+
+        return [
+          idx + 1,
+          s.poli.replace(/^Poli\s+/i, ''),
+          s.dpjp,
+          s.hari,
+          formatDoctorScheduleTime(s),
+          jamHfisCombined,
+          `${s.kuotaTerisi}/${s.kuotaTotal} (${s.status})`
+        ];
+      });
 
       await exportToExcel({
         filename,
@@ -408,10 +412,6 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
           'center',
           'left',
           'left',
-          'center',
-          'center',
-          'center',
-          'center',
           'center',
           'center',
           'center',
@@ -492,21 +492,23 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         'HARI',
         'JAM PRAKTIK',
         'JAM HFIS',
-        'KUOTA BPJS',
-        'RERATA',
-        'RUANGAN'
+        'KUOTA BPJS'
       ];
-      const data = sortedSchedules.map((s, idx) => [
-        String(idx + 1),
-        s.poli.replace(/^Poli\s+/i, ''),
-        s.dpjp,
-        s.hari,
-        formatDoctorScheduleTime(s),
-        formatHfisTime(s.jamHfis),
-        `${s.kuotaTerisi}/${s.kuotaTotal} (${s.status})`,
-        s.rerataPasien ? `${s.rerataPasien} Px` : '-',
-        s.ruangan || '-'
-      ]);
+      const data = sortedSchedules.map((s, idx) => {
+        const jamHfis = formatHfisTime(s.jamHfis);
+        const jamCetak = getJamCetak(s.jamHfis, s);
+        const jamHfisCombined = jamCetak ? `${jamHfis}\n${jamCetak}` : jamHfis;
+
+        return [
+          String(idx + 1),
+          s.poli.replace(/^Poli\s+/i, ''),
+          s.dpjp,
+          s.hari,
+          formatDoctorScheduleTime(s),
+          jamHfisCombined,
+          `${s.kuotaTerisi}/${s.kuotaTotal} (${s.status})`
+        ];
+      });
 
       await exportToPdf({
         filename,
@@ -517,15 +519,13 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         data,
         orientation: 'landscape',
         columnStyles: {
-          0: { cellWidth: 10, halign: 'center' },
-          1: { cellWidth: 34 },
-          2: { cellWidth: 60 },
-          3: { cellWidth: 20, halign: 'center' },
-          4: { cellWidth: 36, halign: 'center' },
-          5: { cellWidth: 30, halign: 'center' },
-          6: { cellWidth: 30, halign: 'center' },
-          7: { cellWidth: 22, halign: 'center' },
-          8: { cellWidth: 26, halign: 'center' }
+          0: { cellWidth: 12, halign: 'center' }, // NO
+          1: { cellWidth: 42, halign: 'left' },   // POLIKLINIK
+          2: { cellWidth: 78, halign: 'left' },   // DOKTER / DPJP
+          3: { cellWidth: 26, halign: 'center' }, // HARI
+          4: { cellWidth: 44, halign: 'center' }, // JAM PRAKTIK
+          5: { cellWidth: 40, halign: 'center' }, // JAM HFIS
+          6: { cellWidth: 35, halign: 'center' }  // KUOTA BPJS
         },
         signatureTitle: 'Petugas Verifikasi SIMRS & Rawat Jalan'
       });
@@ -715,13 +715,27 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                 )}
               </div>
             ) : (
-              <button
-                onClick={onAddNewSchedule}
-                className="px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tambah Jadwal</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* BUTTON A: + Tambah Dokter Baru (Primary Green Button) */}
+                <button
+                  onClick={onAddNewDoctor || onAddNewSchedule}
+                  className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs hover:shadow-sm active:scale-95 transition-all cursor-pointer"
+                  title="Pendaftaran dokter baru ke dalam sistem RSUMB"
+                >
+                  <UserPlus className="w-4 h-4 stroke-[2.5]" />
+                  <span>+ Tambah Dokter Baru</span>
+                </button>
+
+                {/* BUTTON B: + Tambah / Edit Jadwal (Secondary / Outline Button) */}
+                <button
+                  onClick={onAddOrEditSchedule || onAddNewSchedule}
+                  className="px-3 py-2 bg-white hover:bg-teal-50 text-teal-800 border-2 border-teal-700 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs active:scale-95 transition-all cursor-pointer"
+                  title="Tambah hari praktik atau perbarui jam dokter yang sudah terdaftar"
+                >
+                  <Calendar className="w-4 h-4 text-teal-700 stroke-[2.5]" />
+                  <span>+ Tambah / Edit Jadwal</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -1205,20 +1219,20 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                     title={isAllSelected ? 'Batal pilih semua' : 'Pilih semua jadwal yang tampil'}
                   />
                 </th>
-                <th className="px-4 py-3 text-center w-12">NO</th>
-                <th className="px-4 py-3">POLIKLINIK</th>
-                <th className="px-6 py-3">NAMA DOKTER/DPJP</th>
-                <th className="px-4 py-3 text-center">HARI PRAKTIK</th>
+                <th className="px-3 py-3 text-center w-12">NO</th>
+                <th className="px-4 py-3 w-36">POLIKLINIK</th>
+                <th className="px-5 py-3 min-w-[200px]">DOKTER / DPJP</th>
+                <th className="px-3 py-3 text-center w-24">HARI</th>
 
-                {/* JADWAL PRAKTIK (Clickable Sort Header) */}
+                {/* JAM PRAKTIK (Clickable Sort Header) */}
                 <th
                   onClick={() => handleSort('jadwal')}
-                  className="px-4 py-3 cursor-pointer hover:bg-slate-200/90 transition-colors select-none group"
+                  className="px-4 py-3 cursor-pointer hover:bg-slate-200/90 transition-colors select-none group w-36"
                   title="Klik untuk mengurutkan berdasarkan Jam Mulai Praktik (Pagi ke Malam / Sebaliknya)"
                 >
                   <div className="flex items-center gap-1.5">
                     <span className={sortField === 'jadwal' ? 'text-teal-900 font-bold' : ''}>
-                      JADWAL PRAKTIK
+                      JAM PRAKTIK
                     </span>
                     <span
                       className={`inline-flex items-center justify-center p-0.5 rounded transition ${
@@ -1243,7 +1257,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                 {/* JAM HFIS (Clickable Sort Header) */}
                 <th
                   onClick={() => handleSort('jamHfis')}
-                  className="px-4 py-3 cursor-pointer hover:bg-slate-200/90 transition-colors select-none group"
+                  className="px-4 py-3 cursor-pointer hover:bg-slate-200/90 transition-colors select-none group w-36"
                   title="Klik untuk mengurutkan berdasarkan Jam HFIS BPJS (Pagi ke Malam / Sebaliknya)"
                 >
                   <div className="flex items-center gap-1.5">
@@ -1270,15 +1284,14 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                   </div>
                 </th>
 
-                <th className="px-4 py-3 text-center">KUOTA BPJS</th>
-                <th className="px-4 py-3 text-center">RERATA PASIEN</th>
-                <th className="px-4 py-3 text-right print:hidden no-print">AKSI</th>
+                <th className="px-4 py-3 text-center w-28">KUOTA BPJS</th>
+                <th className="px-4 py-3 text-right w-24 print:hidden no-print">AKSI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-sm">
               {displaySchedules.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-500">
+                  <td colSpan={9} className="py-16 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
                       <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
                         <AlertCircle className="w-6 h-6" />
@@ -1406,7 +1419,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                               </button>
                             )}
                             <span
-                              className={`text-[11px] transition ${
+                              className={`text-[11px] print:hidden no-print transition ${
                                 isRoomMatched
                                   ? 'font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 px-1.5 py-0.5 rounded'
                                   : 'text-slate-400'
@@ -1433,16 +1446,16 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                         </div>
                       </td>
 
-                      {/* Jam HFIS (Rose/Pink Muda Lembut, Sans-Serif Medium, Border Sangat Tipis) & Keterangan Waktu Cetak */}
+                      {/* Jam HFIS (Rose/Pink Muda Lembut, Sans-Serif Medium) & Keterangan Waktu Cetak */}
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <div className="flex flex-col items-start gap-1">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 font-sans text-xs font-medium tracking-normal border border-rose-100/60">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 font-sans text-xs font-medium tracking-normal border border-rose-100/60 shadow-2xs">
                             <Clock className="w-3.5 h-3.5 text-rose-500/80 shrink-0" />
                             <span>{formatHfisTime(sch.jamHfis)}</span>
                           </div>
-                          {getJamCetak(sch.jamHfis) && (
-                            <span className="text-xs text-slate-500 font-normal pl-0.5 tracking-tight">
-                              {getJamCetak(sch.jamHfis)}
+                          {getJamCetak(sch.jamHfis, sch) && (
+                            <span className="text-xs text-slate-500 font-medium pl-0.5 tracking-tight">
+                              {getJamCetak(sch.jamHfis, sch)}
                             </span>
                           )}
                         </div>
@@ -1453,11 +1466,6 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                         <span className="inline-flex items-center justify-center font-semibold text-slate-700 text-xs whitespace-nowrap">
                           {formatDoctorQuota(sch)}
                         </span>
-                      </td>
-
-                      {/* Rerata Pasien BPJS */}
-                      <td className="px-4 py-3.5 text-center font-medium text-slate-600 text-xs">
-                        {sch.rerataPasien ? `${sch.rerataPasien} Pasien` : '-'}
                       </td>
 
                       {/* Aksi */}

@@ -55,6 +55,7 @@ import {
   DoctorLeaderboardItem,
   MohatLeaderboardItem
 } from './analytics/AnalyticsCharts';
+import { BpjsQuotaDailyTrendChart } from './analytics/BpjsQuotaDailyTrendChart';
 import { AnalyticsModuleDetails } from './analytics/AnalyticsModuleDetails';
 
 export interface AnalyticsReportsViewProps {
@@ -2082,6 +2083,14 @@ export const AnalyticsReportsView: React.FC<AnalyticsReportsViewProps> = ({
       {/* =====================================================================
           3. INTERACTIVE VISUALIZATIONS & CHARTS & LEADERBOARD
       ===================================================================== */}
+      {(activeSectionTab === 'ALL' || activeSectionTab === 'KUOTA_BPJS') && (
+        <BpjsQuotaDailyTrendChart
+          schedules={schedules}
+          doctorLeaves={doctorLeaves}
+          queueList={queueList}
+        />
+      )}
+
       <AnalyticsCharts
         trendData={trendData}
         insuranceDistribution={insuranceDistribution}

@@ -28,7 +28,8 @@ import {
   loadActiveStaff,
   saveActiveStaff,
   loadHeaderNotifications,
-  saveHeaderNotifications
+  saveHeaderNotifications,
+  getShiftTimeRange
 } from '../data/headerData';
 import { NotificationDropdown } from './header/NotificationDropdown';
 import { UserProfileDropdown } from './header/UserProfileDropdown';
@@ -87,6 +88,10 @@ export const Header: React.FC<HeaderProps> = ({
   const [activeStaff, setActiveStaff] = useState<StaffUser>(() => {
     return loadActiveStaff();
   });
+
+  const shiftTime = useMemo(() => {
+    return getShiftTimeRange(activeStaff.shift);
+  }, [activeStaff.shift]);
 
   // Modals & Toast State
   const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
@@ -605,11 +610,8 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right side: Google Drive Sync Status, Tombol Asisten AI, Notifikasi, dan Menu Profil Pengguna */}
+      {/* Right side: Tombol Asisten AI, Google Drive Sync Badge, Notifikasi, dan Menu Profil Pengguna */}
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-        {/* Google Drive Dual-Sync Cloud Status */}
-        <GoogleDriveSyncBadge onOpenSettings={onOpenSettings} showToast={showToast} />
-
         {/* Tombol Asisten AI */}
         {onToggleGemini && (
           <button
@@ -622,6 +624,9 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline font-medium">Asisten AI</span>
           </button>
         )}
+
+        {/* Google Drive Real-time Sync Status Badge / Button */}
+        <GoogleDriveSyncBadge onOpenSettings={onOpenSettings} showToast={showToast} />
 
         {/* Notifikasi Popover dengan Lonceng & Dropdown Interaktif */}
         <div className="relative">
@@ -653,46 +658,50 @@ export const Header: React.FC<HeaderProps> = ({
           />
         </div>
 
-        {/* Menu Profil Pengguna & Flyout Interaktif */}
+        {/* User Profile Button / Avatar in Top Right Navbar */}
         <div className="relative">
           <button
             onClick={() => {
               setShowProfileMenu(!showProfileMenu);
               setShowNotifications(false);
             }}
-            className="flex items-center gap-2 p-1 sm:px-2.5 sm:py-1 rounded-full hover:bg-[#e5eeff] transition-all cursor-pointer border border-transparent hover:border-slate-200"
+            className="flex items-center gap-2.5 p-1 sm:px-3 sm:py-1.5 rounded-2xl hover:bg-emerald-50/90 active:bg-emerald-100/80 transition-all cursor-pointer border border-slate-200/90 hover:border-emerald-300 shadow-2xs group bg-white/70 backdrop-blur-xs"
             aria-label="Menu Profil Petugas"
-            title={`Petugas: ${activeStaff.name} (${activeStaff.shift})`}
+            title={`Petugas Aktif: ${activeStaff.name} (${activeStaff.role}) - ${activeStaff.shift}`}
           >
-            <div className="relative">
+            <div className="relative shrink-0">
               {activeStaff.avatarUrl ? (
                 <img
                   src={activeStaff.avatarUrl}
                   alt={activeStaff.name}
                   referrerPolicy="no-referrer"
-                  className="w-8 h-8 rounded-full border border-emerald-700/30 object-cover shadow-2xs ring-2 ring-emerald-500/20"
+                  className="w-9 h-9 rounded-full border-2 border-emerald-600/40 object-cover shadow-2xs ring-2 ring-emerald-500/20 group-hover:scale-105 transition-transform"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-[#005d42] text-white text-xs font-bold flex items-center justify-center border border-emerald-800 shadow-2xs">
+                <div className="w-9 h-9 rounded-full bg-[#005d42] text-white text-xs font-extrabold flex items-center justify-center border border-emerald-800 shadow-2xs group-hover:scale-105 transition-transform">
                   {activeStaff.name.slice(0, 2).toUpperCase()}
                 </div>
               )}
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-white" />
             </div>
 
-            <div className="hidden xl:flex flex-col text-left">
+            <div className="hidden sm:flex flex-col text-left">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-800 leading-none">
+                <span className="text-xs font-extrabold text-slate-900 group-hover:text-[#005d42] transition-colors leading-none">
                   {activeStaff.name}
                 </span>
-                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.2 rounded border border-emerald-200/80">
+                <span className="text-[10px] font-bold text-[#005d42] bg-emerald-100/90 px-1.5 py-0.5 rounded-md border border-emerald-200/80">
                   {activeStaff.shift}
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 mt-0.5">{activeStaff.role}</span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[10px] font-medium text-slate-500">{activeStaff.role}</span>
+                <span className="text-slate-300 hidden md:inline">•</span>
+                <span className="text-[10px] text-emerald-700 font-mono hidden md:inline">{shiftTime}</span>
+              </div>
             </div>
 
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+            <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-[#005d42] transition-colors shrink-0" />
           </button>
 
           <UserProfileDropdown
@@ -704,6 +713,7 @@ export const Header: React.FC<HeaderProps> = ({
             onOpenSwitchAccountModal={() => setIsSwitchAccountModalOpen(true)}
             onOpenSettings={onOpenSettings}
             onLogout={handleLogout}
+            showToast={showToast}
           />
         </div>
       </div>

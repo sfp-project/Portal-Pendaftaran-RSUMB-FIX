@@ -21,6 +21,8 @@ import { SettingsModuleView } from './components/settings/SettingsModuleView';
 import { AnalyticsReportsView } from './components/AnalyticsReportsView';
 import { EmergencyAlertBanner } from './components/EmergencyAlertBanner';
 import {
+  AddDoctorModal,
+  AddOrEditScheduleModal,
   AddScheduleModal,
   LeaveModal,
   BookPatientModal,
@@ -43,7 +45,7 @@ import { KhitanParticipant, loadKhitanParticipants, saveKhitanParticipants, calc
 import { MedicalLetterItem } from './types/letterTypes';
 import { loadMedicalLetters, saveMedicalLetters } from './data/letterData';
 import { initAuth } from './services/googleAuthService';
-import { pullDataFromDrive } from './services/dualSyncStorage';
+import { pullDataFromDrive, triggerSilentDriveSync } from './services/dualSyncStorage';
 import {
   loadJasaRaharjaData,
   saveJasaRaharjaData,
@@ -86,7 +88,24 @@ export default function App() {
       const saved = localStorage.getItem('medcentral_schedules_v5');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Pastikan seluruh 4 hari jadwal praktik dr. Aulya Farra Rahmadany, Sp. A selalu termuat
+          const aulyaInitial = initialSchedules.filter(
+            (s) => s.dpjp && s.dpjp.toLowerCase().includes('aulya')
+          );
+          const existingAulyaDays = new Set(
+            parsed
+              .filter((s: any) => s.dpjp && s.dpjp.toLowerCase().includes('aulya'))
+              .map((s: any) => s.hari)
+          );
+          const missingAulya = aulyaInitial.filter((s) => !existingAulyaDays.has(s.hari));
+          if (missingAulya.length > 0) {
+            const merged = [...parsed, ...missingAulya];
+            localStorage.setItem('medcentral_schedules_v5', JSON.stringify(merged));
+            return merged;
+          }
+          return parsed;
+        }
       }
     } catch (e) {
       console.error('Error loading medcentral_schedules_v5:', e);
@@ -207,6 +226,8 @@ export default function App() {
   const [selectedLeaveDate, setSelectedLeaveDate] = useState('');
 
   // Modals state
+  const [isAddDoctorModalOpen, setIsAddDoctorModalOpen] = useState(false);
+  const [isAddEditScheduleModalOpen, setIsAddEditScheduleModalOpen] = useState(false);
   const [isAddScheduleModalOpen, setIsAddScheduleModalOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<DoctorSchedule | null>(null);
   const [isAddLeaveModalOpen, setIsAddLeaveModalOpen] = useState(false);
@@ -230,10 +251,26 @@ export default function App() {
     setIsLeavePosterModalOpen(true);
   };
 
-  // Save to localStorage safely
+  // Ref to skip triggering Drive push on first mount
+  const isInitialMountRef = useRef(true);
+
+  useEffect(() => {
+    // Mark initial mount complete after slight delay
+    const timer = setTimeout(() => {
+      isInitialMountRef.current = false;
+      // Pastikan snapshot terbaru termasuk jadwal dokter baru tersinkronkan ke Google Drive
+      triggerSilentDriveSync(2000);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Save to localStorage safely & trigger silent auto-save to Google Drive
   useEffect(() => {
     try {
       localStorage.setItem('medcentral_schedules_v5', JSON.stringify(schedules));
+      if (!isInitialMountRef.current) {
+        triggerSilentDriveSync(2500);
+      }
     } catch (e) {
       console.warn('Gagal menyimpan schedules ke localStorage:', e);
     }
@@ -242,6 +279,9 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem('medcentral_leaves_v5', JSON.stringify(doctorLeaves));
+      if (!isInitialMountRef.current) {
+        triggerSilentDriveSync(2500);
+      }
     } catch (e) {
       console.warn('Gagal menyimpan doctorLeaves ke localStorage:', e);
     }
@@ -250,6 +290,9 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem('medcentral_queue_v3', JSON.stringify(queueList));
+      if (!isInitialMountRef.current) {
+        triggerSilentDriveSync(2500);
+      }
     } catch (e) {
       console.warn('Gagal menyimpan queueList ke localStorage:', e);
     }
@@ -258,10 +301,12 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem('rsumb_surgery_schedules_v4', JSON.stringify(surgeryList));
-      // Bersihkan key lama untuk menghemat quota penyimpanan browser
       localStorage.removeItem('rsumb_surgery_schedules_v3');
       localStorage.removeItem('rsumb_surgery_schedules_v2');
       localStorage.removeItem('rsumb_surgery_schedules_v1');
+      if (!isInitialMountRef.current) {
+        triggerSilentDriveSync(2500);
+      }
     } catch (e) {
       console.warn('Gagal menyimpan surgeryList ke localStorage:', e);
     }
@@ -269,6 +314,9 @@ export default function App() {
 
   useEffect(() => {
     saveKhitanParticipants(khitanParticipants);
+    if (!isInitialMountRef.current) {
+      triggerSilentDriveSync(2500);
+    }
   }, [khitanParticipants]);
 
   // Google Drive Authentication & Automatic Startup Dual-Sync
@@ -278,7 +326,7 @@ export default function App() {
         if (token) {
           try {
             // Automatically restore latest rsumb_database.json from Google Drive on startup
-            const res = await pullDataFromDrive();
+            const res = await pullDataFromDrive(true);
             if (res.restoredKeys > 0) {
               console.log(`[Google Drive] Dual-sync otomatis: ${res.restoredKeys} data dipulihkan dari cloud.`);
             }
@@ -288,14 +336,45 @@ export default function App() {
         }
       },
       () => {
-        // Not authenticated
+        // Not authenticated - runs smoothly in offline mode
       }
     );
 
+    // Full state rehydration when cloud data is pulled
     const handleSyncReload = () => {
-      setKhitanParticipants(loadKhitanParticipants());
-      setMedicalLetters(loadMedicalLetters());
-      setJasaRaharjaList(loadJasaRaharjaData());
+      try {
+        setKhitanParticipants(loadKhitanParticipants());
+        setMedicalLetters(loadMedicalLetters());
+        setJasaRaharjaList(loadJasaRaharjaData());
+
+        const savedSchedules = localStorage.getItem('medcentral_schedules_v5');
+        if (savedSchedules) {
+          const parsed = JSON.parse(savedSchedules);
+          if (Array.isArray(parsed) && parsed.length > 0) setSchedules(parsed);
+        }
+
+        const savedLeaves = localStorage.getItem('medcentral_leaves_v5');
+        if (savedLeaves) {
+          const parsed = JSON.parse(savedLeaves);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setDoctorLeaves(consolidateAndSortDoctorLeaves(parsed));
+          }
+        }
+
+        const savedSurgeries = localStorage.getItem('rsumb_surgery_schedules_v4');
+        if (savedSurgeries) {
+          const parsed = JSON.parse(savedSurgeries);
+          if (Array.isArray(parsed) && parsed.length > 0) setSurgeryList(parsed);
+        }
+
+        const savedQueue = localStorage.getItem('medcentral_queue_v3');
+        if (savedQueue) {
+          const parsed = JSON.parse(savedQueue);
+          if (Array.isArray(parsed) && parsed.length > 0) setQueueList(parsed);
+        }
+      } catch (err) {
+        console.warn('Notice rehydrating state after cloud sync:', err);
+      }
     };
     window.addEventListener('rsumb_database_synced', handleSyncReload);
 
@@ -489,14 +568,25 @@ export default function App() {
       const dpjpNorm = normalize(row.dpjp);
       const poliNorm = normalize(row.poli);
       const hariNorm = normalize(row.hari);
+      const spesialisasiNorm = normalize(row.spesialisasi || '');
 
       const matchesSearch =
         search === '' ||
         dpjpNorm.includes(search) ||
         poliNorm.includes(search) ||
-        (row.ruangan && normalize(row.ruangan).includes(search));
+        poliNorm.replace(/^poli\s*/i, '').includes(search) ||
+        spesialisasiNorm.includes(search) ||
+        (row.ruangan && normalize(row.ruangan).includes(search)) ||
+        (row.hari && normalize(row.hari).includes(search));
 
-      const matchesPoli = poli === '' || row.poli === poli;
+      const matchesPoli =
+        poli === '' ||
+        row.poli === poli ||
+        normalize(row.poli) === normalize(poli) ||
+        normalize(row.poli).includes(normalize(poli)) ||
+        normalize(poli).includes(normalize(row.poli)) ||
+        normalize(row.poli).replace(/^poli\s*/i, '') === normalize(poli).replace(/^poli\s*/i, '');
+
       const matchesHari = hari === '' || hariNorm.includes(hari) || hari.includes(hariNorm);
 
       // Status filter
@@ -572,7 +662,17 @@ export default function App() {
   }, [schedules, searchTerm, selectedPoli, selectedHari, doctorLeaves]);
 
   // Handlers
-  const handleSaveSchedule = (scheduleData: Partial<DoctorSchedule>) => {
+  const handleSaveSchedule = (scheduleData: Partial<DoctorSchedule> | DoctorSchedule[]) => {
+    if (Array.isArray(scheduleData)) {
+      if (scheduleData.length === 0) return;
+      setSchedules((prev) => [...scheduleData, ...prev]);
+      const docName = scheduleData[0]?.dpjp || 'Dokter Baru';
+      const docPoli = scheduleData[0]?.poli || 'Poliklinik';
+      showToast(`${scheduleData.length} jadwal praktik ${docName} (${docPoli}) berhasil ditambahkan & disinkronkan ke rsumb_database.json.`);
+      setEditingSchedule(null);
+      return;
+    }
+
     if (editingSchedule) {
       setSchedules((prev) =>
         prev.map((s) => (s.id === editingSchedule.id ? ({ ...s, ...scheduleData } as DoctorSchedule) : s))
@@ -587,6 +687,7 @@ export default function App() {
         hari: scheduleData.hari || 'Senin',
         jadwal: scheduleData.jadwal || '08:00 - 12:00',
         jamHfis: scheduleData.jamHfis || '07.30 - 13.00',
+        jamCetak: scheduleData.jamCetak,
         kuotaTerisi: scheduleData.kuotaTerisi || 0,
         kuotaTotal: scheduleData.kuotaTotal || 50,
         rerataPasien: scheduleData.rerataPasien || 30,
@@ -594,7 +695,7 @@ export default function App() {
         status: (scheduleData.kuotaTerisi || 0) >= (scheduleData.kuotaTotal || 50) ? 'Penuh' : 'Tersedia'
       };
       setSchedules((prev) => [newSchedule, ...prev]);
-      showToast(`Jadwal baru ${scheduleData.dpjp} (${scheduleData.poli}) berhasil ditambahkan & disinkronkan ke HFIS BPJS.`);
+      showToast(`Jadwal baru ${scheduleData.dpjp} (${scheduleData.poli}) berhasil ditambahkan & disinkronkan ke rsumb_database.json.`);
     }
     setEditingSchedule(null);
   };

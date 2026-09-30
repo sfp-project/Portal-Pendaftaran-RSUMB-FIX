@@ -838,19 +838,40 @@ export function formatHfisTime(
 
 /**
  * Menghitung waktu cetak (1 jam sebelum jam mulai HFIS) untuk ditampilkan di bawah badge JAM HFIS.
+ * Mendukung ekstraksi dinamis dari data jadwal dokter jika tersedia, atau kalkulasi default 1 jam sebelum jam mulai.
  * Contoh:
  * - "07.00 - 11.00" -> "cetak 06.00"
  * - "08.30 - 12.00" -> "cetak 07.30"
  * - "13.00 - 16.00" -> "cetak 12.00"
  */
-export function getJamCetak(jamHfisStr: string | null | undefined): string | null {
-  if (!jamHfisStr || jamHfisStr.trim() === '' || jamHfisStr.trim() === '-') {
+export function getJamCetak(
+  jamHfisStr: string | null | undefined,
+  scheduleOrFallback?: any
+): string | null {
+  // 1. Ekstraksi langsung jika data jadwal dokter memiliki field jamCetak khusus
+  const explicit =
+    scheduleOrFallback?.jamCetak ||
+    scheduleOrFallback?.jam_cetak ||
+    scheduleOrFallback?.waktuCetak;
+  if (explicit && typeof explicit === 'string' && explicit.trim()) {
+    const cleanExplicit = explicit.trim().replace(/^cetak\s*/i, '');
+    return `cetak ${cleanExplicit}`;
+  }
+
+  // 2. Tentukan string acuan waktu (jamHfis atau fallback ke jadwal praktik dokter)
+  const targetStr =
+    (jamHfisStr && jamHfisStr.trim() !== '-' ? jamHfisStr : null) ||
+    scheduleOrFallback?.jamHfis ||
+    scheduleOrFallback?.jadwal ||
+    scheduleOrFallback?.jam_praktik;
+
+  if (!targetStr || typeof targetStr !== 'string' || targetStr.trim() === '' || targetStr.trim() === '-') {
     return null;
   }
 
   try {
-    // Misal jamHfisStr = "07.00 - 11.00" atau "07:00 - 11:00"
-    const jamMulai = jamHfisStr.split('-')[0].trim().replace('.', ':');
+    // Misal targetStr = "07.00 - 11.00" atau "07:00 - 11:00"
+    const jamMulai = targetStr.split('-')[0].trim().replace('.', ':');
     const match = jamMulai.match(/(\d{1,2})[:.](\d{2})/);
     let hours: number;
     let minutes: number;
@@ -872,7 +893,7 @@ export function getJamCetak(jamHfisStr: string | null | undefined): string | nul
       return null;
     }
 
-    // Kurangi 1 jam
+    // Default waktu cetak: 1 jam sebelum jam mulai praktik/HFIS
     let prevHours = hours - 1;
     if (prevHours < 0) prevHours = 23; // antisipasi jika lewat tengah malam
 

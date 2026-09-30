@@ -3,15 +3,19 @@ export interface DoctorSchedule {
   no: number;
   poli: string; // e.g. "Saraf", "Dalam", "Anak", "Bedah", "Obgyn", etc.
   dpjp: string; // e.g. "dr. I'anatul Ulya, Sp.N"
+  spesialisasi?: string; // e.g. "Dokter Spesialis Anak"
   hari: string; // e.g. 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', "Jum'at", 'Sabtu', 'Ahad'
   jadwal: string; // e.g. "07.30 - 12.00", "14.00 - 16.00/Selesai"
   jamHfis?: string; // e.g. "07.00-14.00"
+  jamCetak?: string; // e.g. "07.00" or "cetak 07.00"
   jam_praktik?: string;
   jamMulai?: string;
   jamSelesai?: string;
   jam_mulai?: string;
   jam_selesai?: string;
   jam_hfis?: string;
+  jam_cetak?: string;
+  waktuCetak?: string;
   kuotaTerisi: number; // e.g. 60
   kuotaTotal: number; // e.g. 70
   kuota_maksimal?: number;

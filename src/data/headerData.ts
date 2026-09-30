@@ -118,9 +118,9 @@ export function loadActiveStaff(): StaffUser {
     console.error('Failed to load active staff from storage:', e);
   }
 
-  // Default initial active staff: Hisyam with current auto shift
-  const defaultStaff = { ...INITIAL_STAFF_LIST[0] };
-  defaultStaff.shift = getAutoShiftByTime();
+  // Default initial active staff: Syafik (Admin Pendaftaran, Shift Malam)
+  const defaultStaff = { ...(INITIAL_STAFF_LIST.find((s) => s.name === 'Syafik') || INITIAL_STAFF_LIST[0]) };
+  defaultStaff.shift = 'Shift Malam';
   return defaultStaff;
 }
 

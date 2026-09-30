@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   Sparkles,
   Plus,
@@ -218,6 +219,7 @@ export const GeminiSidebar: React.FC<GeminiSidebarProps> = ({
     return (
       <div className={`markdown-body text-[11px] leading-relaxed space-y-1 ${isUser ? 'text-white' : 'text-slate-800'}`}>
         <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
           components={{
             h1: ({ children }) => (
               <div
@@ -284,6 +286,31 @@ export const GeminiSidebar: React.FC<GeminiSidebarProps> = ({
               </strong>
             ),
             em: ({ children }) => <em className="italic">{children}</em>,
+            blockquote: ({ children }) => (
+              <blockquote
+                className={`pl-2.5 my-1.5 border-l-2 text-[11px] italic rounded-r py-0.5 ${
+                  isUser ? 'border-emerald-300 text-emerald-100 bg-white/10' : 'border-emerald-600 text-slate-700 bg-emerald-50/70'
+                }`}
+              >
+                {children}
+              </blockquote>
+            ),
+            table: ({ children }) => (
+              <div className="my-2 overflow-x-auto rounded-lg border border-slate-200 shadow-2xs">
+                <table className="min-w-full divide-y divide-slate-200 text-[10px] text-left">
+                  {children}
+                </table>
+              </div>
+            ),
+            thead: ({ children }) => (
+              <thead className="bg-slate-100/90 text-slate-700 font-bold">{children}</thead>
+            ),
+            tbody: ({ children }) => (
+              <tbody className="divide-y divide-slate-100 bg-white text-slate-800">{children}</tbody>
+            ),
+            tr: ({ children }) => <tr>{children}</tr>,
+            th: ({ children }) => <th className="px-2 py-1.5 font-bold whitespace-nowrap">{children}</th>,
+            td: ({ children }) => <td className="px-2 py-1">{children}</td>,
             code: ({ children }) => (
               <code
                 className={`px-1 py-0.5 rounded text-[10px] font-mono ${

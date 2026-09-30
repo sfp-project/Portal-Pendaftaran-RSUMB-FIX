@@ -49,6 +49,7 @@ import {
   DualSyncState
 } from '../../services/dualSyncStorage';
 import { GoogleSignInButton } from '../google/GoogleSignInButton';
+import { GoogleDriveAuthModal } from '../google/GoogleDriveAuthModal';
 import { ActivityLogAuditTrailView } from './ActivityLogAuditTrailView';
 import { logSystemActivity } from '../../data/auditLogData';
 import {
@@ -116,6 +117,7 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
   const [dualSync, setDualSync] = useState<DualSyncState>(() => getDualSyncState());
   const [isDriveOperating, setIsDriveOperating] = useState(false);
   const [showDriveRestoreConfirm, setShowDriveRestoreConfirm] = useState(false);
+  const [showDriveAuthModal, setShowDriveAuthModal] = useState(false);
   const [backupSubTab, setBackupSubTab] = useState<'audit_trail' | 'drive_backup'>('audit_trail');
 
   // Thermal test print modal/dialog state
@@ -129,6 +131,11 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
     };
     window.addEventListener('rsumb_settings_updated', handleSync);
 
+    const handlePromptConnect = () => {
+      setShowDriveAuthModal(true);
+    };
+    window.addEventListener('rsumb_drive_not_connected_prompt', handlePromptConnect);
+
     const unsubAuth = addAuthListener((user) => {
       setGoogleUser(user);
     });
@@ -137,8 +144,16 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
       setDualSync(state);
     });
 
+    // Poll Google Drive connection state every 60 seconds
+    const pollInterval = setInterval(() => {
+      setGoogleUser(getCachedUser());
+      setDualSync(getDualSyncState());
+    }, 60000);
+
     return () => {
       window.removeEventListener('rsumb_settings_updated', handleSync);
+      window.removeEventListener('rsumb_drive_not_connected_prompt', handlePromptConnect);
+      clearInterval(pollInterval);
       unsubAuth();
       unsubSync();
     };
@@ -496,10 +511,21 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
   };
 
   const handleManualPushDrive = async () => {
+    if (!isGoogleDriveConnected()) {
+      setShowDriveAuthModal(true);
+      showToast?.('Data aman di browser (LocalStorage). Silakan hubungkan Google Drive untuk pencadangan cloud.', 'info');
+      return;
+    }
+
     setIsDriveOperating(true);
     try {
       const res = await pushLocalDataToDrive(false);
-      showToast?.('Database berhasil disinkronkan ke Google Drive (/RSUMB_Portal_Data/rsumb_database.json).', 'success');
+      if (res.success) {
+        showToast?.('Database berhasil disinkronkan ke Google Drive (/RSUMB_Portal_Data/rsumb_database.json).', 'success');
+      } else if (res.offlineFallback) {
+        setShowDriveAuthModal(true);
+        showToast?.('Data tersimpan aman di LocalStorage (Mode Offline).', 'info');
+      }
     } catch (err: any) {
       showToast?.(`Gagal sinkron: ${err?.message}`, 'error');
     } finally {
@@ -508,14 +534,23 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
   };
 
   const handleConfirmRestoreFromDrive = async () => {
+    if (!isGoogleDriveConnected()) {
+      setShowDriveRestoreConfirm(false);
+      setShowDriveAuthModal(true);
+      showToast?.('Silakan hubungkan akun Google terlebih dahulu untuk memulihkan data.', 'info');
+      return;
+    }
+
     setIsDriveOperating(true);
     try {
       const res = await pullDataFromDrive();
       setShowDriveRestoreConfirm(false);
-      showToast?.(`Sukses! ${res.restoredKeys} data dipulihkan dari Google Drive. Memuat ulang...`, 'success');
-      setTimeout(() => {
-        window.location.reload();
-      }, 700);
+      if (res.success) {
+        showToast?.(`Sukses! ${res.restoredKeys} data dipulihkan dari Google Drive. Memuat ulang...`, 'success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 700);
+      }
     } catch (err: any) {
       showToast?.(`Gagal memulihkan: ${err?.message}`, 'error');
     } finally {
@@ -524,6 +559,12 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
   };
 
   const handleSnapshotBackupToDrive = async () => {
+    if (!isGoogleDriveConnected()) {
+      setShowDriveAuthModal(true);
+      showToast?.('Silakan hubungkan akun Google terlebih dahulu untuk mencadangkan database.', 'info');
+      return;
+    }
+
     setIsDriveOperating(true);
     try {
       const res = await createDriveBackupSnapshot();
@@ -1287,9 +1328,14 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
                 >
                   <Cloud className="w-4 h-4" />
                   <span>Pencadangan & Cloud Drive</span>
-                  {googleUser && (
+                  {dualSync.status === 'syncing' || isDriveOperating ? (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-sky-400/30 text-sky-200 text-[9px] font-bold animate-pulse">
+                      <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                      <span>Syncing...</span>
+                    </span>
+                  ) : isGoogleDriveConnected() ? (
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  )}
+                  ) : null}
                 </button>
               </div>
 
@@ -1306,143 +1352,212 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
             ) : (
               <div className="space-y-6">
                 {/* GOOGLE DRIVE DUAL-SYNC CLOUD STORAGE ENGINE */}
-                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-900/90 via-[#005d42] to-emerald-950 text-white shadow-md space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center border border-white/20 text-emerald-300 shrink-0">
-                    <Cloud className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm sm:text-base flex items-center gap-2">
-                      <span>Integrasi Google Drive Cloud & Dual-Sync Engine</span>
-                      {googleUser ? (
-                        <span className="bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-300" />
-                          <span>Terhubung</span>
-                        </span>
+                <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-emerald-950 via-[#004732] to-[#003828] text-white shadow-md space-y-5 border border-emerald-800/40">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-xs flex items-center justify-center border border-white/20 text-emerald-300 shrink-0">
+                        <Cloud className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-extrabold text-base sm:text-lg text-white">
+                            Integrasi Google Drive Cloud & Dual-Sync Engine
+                          </h4>
+                          {dualSync.status === 'syncing' || isDriveOperating ? (
+                            <span className="bg-sky-400/25 text-sky-200 border border-sky-400/40 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 animate-pulse shadow-2xs">
+                              <RefreshCw className="w-3 h-3 text-sky-300 animate-spin" />
+                              <span>Syncing... (Memperbarui Cloud)</span>
+                            </span>
+                          ) : isGoogleDriveConnected() ? (
+                            <span className="bg-emerald-400/25 text-emerald-200 border border-emerald-400/40 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                              <span>Terhubung (Cloud Aktif)</span>
+                            </span>
+                          ) : (
+                            <span className="bg-amber-400/25 text-amber-200 border border-amber-400/40 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-amber-400" />
+                              <span>Belum Terhubung (Mode Offline)</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-emerald-100/85 mt-1 max-w-2xl leading-relaxed">
+                          Penyimpanan cloud otomatis untuk mengamankan seluruh database portal (kupon fee mohat, operan shift, katalog kamar, dokumen master, dan pengaturan sistem).
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                      {!isGoogleDriveConnected() ? (
+                        <GoogleSignInButton
+                          onClick={handleGoogleLogin}
+                          isLoading={isDriveOperating}
+                          text="Hubungkan Google Drive"
+                          className="py-2 px-3.5 text-xs sm:text-sm font-bold shadow-md bg-emerald-50 hover:bg-white text-[#004732] border border-emerald-300/90 rounded-xl transition"
+                        />
                       ) : (
-                        <span className="bg-amber-500/20 text-amber-200 border border-amber-400/30 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                          Belum Terhubung
-                        </span>
+                        <button
+                          type="button"
+                          onClick={handleGoogleLogout}
+                          className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs text-emerald-200 hover:text-white border border-white/15 transition cursor-pointer"
+                        >
+                          Putuskan Akun
+                        </button>
                       )}
-                    </h4>
-                    <p className="text-xs text-emerald-100/80 mt-0.5">
-                      Penyimpanan database cloud permanen untuk mencegah kehilangan data kupon, catatan handover, staf, dan poster saat pembaruan aplikasi.
-                    </p>
+                    </div>
                   </div>
+
+                  {isGoogleDriveConnected() && googleUser ? (
+                    <div className="space-y-3.5 pt-3 border-t border-white/15">
+                      {/* Account & Target Folders info */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                        <div className="p-3.5 bg-white/10 rounded-2xl border border-white/15 backdrop-blur-xs">
+                          <span className="text-[10px] uppercase font-bold text-emerald-300 block">Akun Google Terhubung</span>
+                          <p className="font-extrabold text-white truncate mt-1 text-sm">{googleUser.displayName || 'Akun SIMRS RSUMB'}</p>
+                          <p className="text-[11px] text-emerald-200/80 truncate mt-0.5">{googleUser.email}</p>
+                        </div>
+
+                        <div className="p-3.5 bg-white/10 rounded-2xl border border-white/15 backdrop-blur-xs">
+                          <span className="text-[10px] uppercase font-bold text-emerald-300 block">Folder Database Utama</span>
+                          <p className="font-mono font-bold text-white mt-1 text-sm">/RSUMB_Portal_Data/</p>
+                          <p className="text-[11px] text-emerald-200/80 mt-0.5">File: rsumb_database.json</p>
+                        </div>
+
+                        <div className="p-3.5 bg-white/10 rounded-2xl border border-white/15 backdrop-blur-xs">
+                          <span className="text-[10px] uppercase font-bold text-emerald-300 block">Folder Dokumen & Cadangan</span>
+                          <p className="font-mono text-white mt-1 text-sm">/RSUMB_Portal_Files/</p>
+                          <p className="text-[11px] text-emerald-200/80 font-mono mt-0.5">/RSUMB_Portal_Backups/</p>
+                        </div>
+                      </div>
+
+                      {/* Sync Status Banner */}
+                      <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs transition-all ${
+                        dualSync.status === 'syncing' || isDriveOperating
+                          ? 'bg-sky-950/70 border-sky-400/50 shadow-md ring-1 ring-sky-400/30 animate-pulse'
+                          : 'bg-white/10 border-white/15'
+                      }`}>
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                            dualSync.status === 'syncing' || isDriveOperating
+                              ? 'bg-sky-500/20 text-sky-300 border border-sky-400/30'
+                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                          }`}>
+                            <RefreshCw className={`w-4 h-4 ${dualSync.status === 'syncing' || isDriveOperating ? 'text-sky-300 animate-spin' : 'text-emerald-300'}`} />
+                          </div>
+                          <div>
+                            <span className="text-emerald-100/90 block text-[11px]">Status Sinkronisasi Background:</span>
+                            <span className="font-extrabold text-white text-xs flex items-center gap-1.5">
+                              {dualSync.status === 'syncing' || isDriveOperating ? (
+                                <span className="text-sky-200 flex items-center gap-1.5">
+                                  <span className="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                                  <span>Syncing... Memperbarui rsumb_database.json di Google Drive</span>
+                                </span>
+                              ) : dualSync.status === 'synced' ? (
+                                <span className="text-emerald-200 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                                  <span>Tersinkronisasi Otomatis</span>
+                                </span>
+                              ) : (
+                                <span>Siap Disinkronkan</span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          {dualSync.status === 'syncing' || isDriveOperating ? (
+                            <span className="px-2.5 py-1 rounded-full bg-sky-400/20 text-sky-200 border border-sky-400/40 text-[10px] font-mono font-bold flex items-center gap-1 animate-pulse">
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                              Auto-Syncing...
+                            </span>
+                          ) : dualSync.lastSyncTime ? (
+                            <span className="text-[11px] text-emerald-200 font-mono bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+                              Sinkron Terakhir: {new Date(dualSync.lastSyncTime).toLocaleString('id-ID')}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {/* Cloud Action Buttons */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleManualPushDrive}
+                          disabled={isDriveOperating}
+                          className="py-2.5 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-60"
+                          title="Kirim dan simpan data lokal saat ini ke Google Drive (rsumb_database.json)"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${isDriveOperating ? 'animate-spin' : ''}`} />
+                          <span>Sync Manual ke Drive</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowDriveRestoreConfirm(true)}
+                          disabled={isDriveOperating}
+                          className="py-2.5 px-3.5 bg-white/15 hover:bg-white/25 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 border border-white/20 transition cursor-pointer disabled:opacity-60"
+                          title="Tarik data terbaru dari Google Drive dan pulihkan ke browser ini"
+                        >
+                          <Database className="w-4 h-4 text-emerald-300" />
+                          <span>Pulihkan dari Drive</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSnapshotBackupToDrive}
+                          disabled={isDriveOperating}
+                          className="py-2.5 px-3.5 bg-white/15 hover:bg-white/25 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 border border-white/20 transition cursor-pointer disabled:opacity-60"
+                          title="Buat berkas cadangan snapshot tanggal hari ini di folder /RSUMB_Portal_Backups/"
+                        >
+                          <FolderSync className="w-4 h-4 text-amber-300" />
+                          <span>Simpan Snapshot</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowDriveAuthModal(true)}
+                          className="py-2.5 px-3.5 bg-white/10 hover:bg-white/20 text-emerald-100 font-bold rounded-xl text-xs flex items-center justify-center gap-2 border border-white/15 transition cursor-pointer"
+                          title="Lihat status dan dialog autentikasi"
+                        >
+                          <Sparkles className="w-4 h-4 text-emerald-300" />
+                          <span>Detail Koneksi</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* DISCONNECTED PROMINENT HERO CARD */
+                    <div className="pt-3 border-t border-white/15 space-y-3">
+                      <div className="p-4 bg-white/10 rounded-2xl border border-white/15 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                            <span className="font-extrabold text-white text-sm">
+                              Mode Offline Aktif (LocalStorage Siap)
+                            </span>
+                          </div>
+                          <p className="text-xs text-emerald-100/90 leading-relaxed max-w-xl">
+                            Seluruh perubahan data kupon, catatan pasien, dan pengaturan tetap tersimpan aman di browser Anda saat ini. Hubungkan akun Google untuk mengaktifkan pencadangan otomatis ke file <code className="bg-emerald-950/60 px-1 py-0.5 rounded font-mono text-emerald-200">rsumb_database.json</code> di Google Drive.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                          <GoogleSignInButton
+                            onClick={handleGoogleLogin}
+                            isLoading={isDriveOperating}
+                            text="Login Akun Google"
+                            className="py-2.5 px-4 font-bold text-xs shadow-sm bg-emerald-50 hover:bg-white text-[#004732] border border-emerald-300 rounded-xl"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowDriveAuthModal(true)}
+                            className="py-2.5 px-4 bg-white/15 hover:bg-white/25 text-white font-bold rounded-xl text-xs border border-white/20 transition cursor-pointer text-center"
+                          >
+                            Buka Dialog Koneksi
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                {!googleUser ? (
-                  <GoogleSignInButton
-                    onClick={handleGoogleLogin}
-                    isLoading={isDriveOperating}
-                    text="Hubungkan Google Drive"
-                    className="shrink-0"
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleGoogleLogout}
-                    className="text-xs text-emerald-200 hover:text-white underline decoration-emerald-400/60 self-start sm:self-auto cursor-pointer"
-                  >
-                    Putuskan Akun
-                  </button>
-                )}
-              </div>
-
-              {googleUser ? (
-                <div className="space-y-3 pt-2 border-t border-white/10">
-                  {/* Account & Target Folders info */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
-                    <div className="p-3 bg-white/10 rounded-xl border border-white/10 backdrop-blur-xs">
-                      <span className="text-[10px] uppercase font-bold text-emerald-300 block">Akun Google Drive</span>
-                      <p className="font-semibold text-white truncate mt-0.5">{googleUser.displayName || 'Akun SIMRS'}</p>
-                      <p className="text-[11px] text-emerald-200/80 truncate">{googleUser.email}</p>
-                    </div>
-
-                    <div className="p-3 bg-white/10 rounded-xl border border-white/10 backdrop-blur-xs">
-                      <span className="text-[10px] uppercase font-bold text-emerald-300 block">Folder Database Utama</span>
-                      <p className="font-mono font-bold text-white mt-0.5">/RSUMB_Portal_Data/</p>
-                      <p className="text-[11px] text-emerald-200/80">File: rsumb_database.json</p>
-                    </div>
-
-                    <div className="p-3 bg-white/10 rounded-xl border border-white/10 backdrop-blur-xs">
-                      <span className="text-[10px] uppercase font-bold text-emerald-300 block">Folder Berkas & Cadangan</span>
-                      <p className="font-mono text-white mt-0.5">/RSUMB_Portal_Files/</p>
-                      <p className="text-[11px] text-emerald-200/80 font-mono">/RSUMB_Portal_Backups/</p>
-                    </div>
-                  </div>
-
-                  {/* Sync Status Banner */}
-                  <div className="p-3 bg-white/10 rounded-xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <RefreshCw className={`w-4 h-4 text-emerald-300 ${isDriveOperating || dualSync.status === 'syncing' ? 'animate-spin' : ''}`} />
-                      <span>
-                        Status Dual-Sync:{' '}
-                        <b className="text-white">
-                          {isDriveOperating || dualSync.status === 'syncing'
-                            ? 'Sedang Memproses Sinkronisasi...'
-                            : dualSync.status === 'synced'
-                            ? 'Tersinkronisasi Otomatis'
-                            : 'Siap Disinkronkan'}
-                        </b>
-                      </span>
-                    </div>
-
-                    {dualSync.lastSyncTime && (
-                      <span className="text-[11px] text-emerald-200 font-mono">
-                        Sinkron Terakhir: {new Date(dualSync.lastSyncTime).toLocaleString('id-ID')}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Cloud Action Buttons */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleManualPushDrive}
-                      disabled={isDriveOperating}
-                      className="py-2.5 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-60"
-                      title="Kirim dan simpan data lokal saat ini ke Google Drive (rsumb_database.json)"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isDriveOperating ? 'animate-spin' : ''}`} />
-                      <span>Sync Manual ke Google Drive</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowDriveRestoreConfirm(true)}
-                      disabled={isDriveOperating}
-                      className="py-2.5 px-3.5 bg-white/15 hover:bg-white/25 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 border border-white/20 transition cursor-pointer disabled:opacity-60"
-                      title="Tarik data terbaru dari Google Drive dan pulihkan ke browser ini"
-                    >
-                      <Database className="w-4 h-4 text-emerald-300" />
-                      <span>Pulihkan dari Google Drive</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSnapshotBackupToDrive}
-                      disabled={isDriveOperating}
-                      className="py-2.5 px-3.5 bg-white/15 hover:bg-white/25 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 border border-white/20 transition cursor-pointer disabled:opacity-60"
-                      title="Buat berkas cadangan snapshot tanggal hari ini di folder /RSUMB_Portal_Backups/"
-                    >
-                      <FolderSync className="w-4 h-4 text-amber-300" />
-                      <span>Simpan Snapshot ke Drive</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3.5 bg-white/10 rounded-xl border border-white/10 text-xs text-emerald-100 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Info className="w-4 h-4 text-emerald-300 shrink-0" />
-                    <span>
-                      Hubungkan akun Google RSUMB satu kali untuk mengaktifkan sinkronisasi otomatis ke folder <b>/RSUMB_Portal_Data/</b> dan penyimpanan berkas poster di <b>/RSUMB_Portal_Files/</b>.
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* Download Backup Section */}
             <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-50/70 via-slate-50 to-white border border-emerald-200/90 shadow-xs space-y-4">
@@ -1723,6 +1838,13 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODAL 4: Dialog Autentikasi & Koneksi Google Drive */}
+      <GoogleDriveAuthModal
+        isOpen={showDriveAuthModal}
+        onClose={() => setShowDriveAuthModal(false)}
+        showToast={showToast}
+      />
     </div>
   );
 };
