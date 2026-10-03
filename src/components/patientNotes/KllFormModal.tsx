@@ -31,6 +31,9 @@ export const KllFormModal: React.FC<KllFormModalProps> = ({
   const [isInsidenActive, setIsInsidenActive] = useState(
     initialData ? initialData.isInsidenActive : true
   );
+  const [isResolved, setIsResolved] = useState(
+    initialData ? Boolean(initialData.isResolved) : false
+  );
   const [catatan, setCatatan] = useState(initialData?.catatan || '');
   const [lpFileName, setLpFileName] = useState<string | undefined>(initialData?.lpFileName);
   const [lpFileUrl, setLpFileUrl] = useState<string | undefined>(initialData?.lpFileUrl);
@@ -84,6 +87,7 @@ export const KllFormModal: React.FC<KllFormModalProps> = ({
       lpFileUrl,
       lpFileType,
       isInsidenActive,
+      isResolved,
       catatan: catatan.trim(),
       createdAt: initialData?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -282,6 +286,27 @@ export const KllFormModal: React.FC<KllFormModalProps> = ({
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Status Follow-up Resolved Checkbox */}
+          <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-emerald-950 block">
+                Status Follow-Up: {isResolved ? '✅ Selesai / Aman' : '⏳ Belum Selesai (Pending)'}
+              </span>
+              <span className="text-[11px] text-emerald-800">
+                Tandai selesai apabila pengurusan LP, V-Claim / penjaminan pasien telah aman & tuntas.
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isResolved}
+                onChange={(e) => setIsResolved(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
           </div>
 
           {/* Centang Insiden Checkbox */}

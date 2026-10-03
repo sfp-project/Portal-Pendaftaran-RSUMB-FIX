@@ -34,6 +34,7 @@ export interface PosterPromoItem {
   tags: string[]; // e.g. ["khitan", "mcu", "poli jantung", "diskon"]
   tanggalMulai?: string; // YYYY-MM-DD
   tanggalKadaluarsa?: string; // YYYY-MM-DD
+  isPermanent?: boolean; // True for permanent informational posters
   namaBerkas: string;
   formatBerkas: 'png' | 'jpg' | 'jpeg' | 'webp' | 'pdf' | string;
   ukuranBerkas: string;

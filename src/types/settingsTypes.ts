@@ -43,5 +43,6 @@ export interface PortalSystemSettings {
   waBroadcast: WaBroadcastSettings;
   autoRefreshHfis: boolean;
   queueAudio: boolean;
+  hospitalLogo?: string;
   lastUpdated: string;
 }

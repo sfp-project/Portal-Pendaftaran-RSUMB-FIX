@@ -25,7 +25,10 @@ import {
   Layers,
   Search,
   Building2,
-  DoorOpen
+  DoorOpen,
+  Stethoscope,
+  UserCheck,
+  Filter
 } from 'lucide-react';
 import { DoctorSchedule, DoctorLeaveAnnouncement } from '../types';
 import {
@@ -46,6 +49,7 @@ import { PrintSignatureBlock } from './PrintSignatureBlock';
 import { exportToExcel, exportToPdf, getIndonesianCurrentDate } from '../utils/exportHelpers';
 import { DoctorSchedulePreviewModal } from './DoctorSchedulePreviewModal';
 import { BulkEditScheduleModal } from './BulkEditScheduleModal';
+import { requestAdminAction, getIsAdminUnlocked } from '../services/adminAuthService';
 
 interface ScheduleTableProps {
   schedules: DoctorSchedule[];
@@ -194,6 +198,33 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
     });
   }, [schedules, sortField, sortDirection]);
 
+  // Quick-Filter Lokal (Temporary): Dropdown Pilih Dokter di ScheduleTable
+  const [selectedDoctorFilter, setSelectedDoctorFilter] = useState<string>('');
+
+  // Daftar Dokter unik untuk dropdown Quick-Filter
+  const uniqueDoctorsList = useMemo(() => {
+    const map = new Map<string, { dpjp: string; spesialisasi?: string; poli?: string; totalJadwal: number }>();
+    schedules.forEach((s) => {
+      if (s.dpjp && s.dpjp.trim()) {
+        const key = s.dpjp.trim();
+        if (!map.has(key)) {
+          map.set(key, {
+            dpjp: key,
+            spesialisasi: s.spesialisasi || '',
+            poli: s.poli || '',
+            totalJadwal: 1
+          });
+        } else {
+          const existing = map.get(key)!;
+          existing.totalJadwal += 1;
+          if (!existing.spesialisasi && s.spesialisasi) existing.spesialisasi = s.spesialisasi;
+          if (!existing.poli && s.poli) existing.poli = s.poli;
+        }
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.dpjp.localeCompare(b.dpjp));
+  }, [schedules]);
+
   // Kolom Pencarian Khusus Ruangan & Poli di dalam ScheduleTable
   const [roomOrPoliSearch, setRoomOrPoliSearch] = useState('');
 
@@ -219,28 +250,53 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
     return Array.from(list).sort();
   }, [schedules]);
 
-  // Jadwal yang ditampilkan setelah difilter oleh kolom pencarian Ruangan / Poli
+  // Jadwal yang ditampilkan setelah difilter oleh Dropdown Dokter & pencarian Ruangan / Poli
   const displaySchedules = useMemo(() => {
-    if (!roomOrPoliSearch.trim()) return sortedSchedules;
-    const query = normalize(roomOrPoliSearch);
-    return sortedSchedules.filter((sch) => {
-      const roomNorm = normalize(sch.ruangan || 'R. Praktik');
-      const poliNorm = normalize(sch.poli || '');
-      const dpjpNorm = normalize(sch.dpjp || '');
-      const specNorm = normalize(sch.spesialisasi || '');
-      return roomNorm.includes(query) || poliNorm.includes(query) || dpjpNorm.includes(query) || specNorm.includes(query);
-    });
-  }, [sortedSchedules, roomOrPoliSearch]);
+    let result = sortedSchedules;
 
-  // Pengumuman libur yang difilter oleh pencarian Ruangan / Poli jika dalam mode libur
+    // 1. Filter Lokal: Dropdown Pilih Dokter
+    if (selectedDoctorFilter.trim()) {
+      const docTarget = normalize(selectedDoctorFilter);
+      result = result.filter((sch) => normalize(sch.dpjp) === docTarget);
+    }
+
+    // 2. Filter Lokal: Kolom Pencarian Ruangan / Poli
+    if (roomOrPoliSearch.trim()) {
+      const query = normalize(roomOrPoliSearch);
+      result = result.filter((sch) => {
+        const roomNorm = normalize(sch.ruangan || 'R. Praktik');
+        const poliNorm = normalize(sch.poli || '');
+        const dpjpNorm = normalize(sch.dpjp || '');
+        const specNorm = normalize(sch.spesialisasi || '');
+        return roomNorm.includes(query) || poliNorm.includes(query) || dpjpNorm.includes(query) || specNorm.includes(query);
+      });
+    }
+
+    return result;
+  }, [sortedSchedules, selectedDoctorFilter, roomOrPoliSearch]);
+
+  // Pengumuman libur yang difilter oleh Dropdown Dokter & pencarian Ruangan / Poli jika dalam mode libur
   const displayLeaves = useMemo(() => {
-    if (!roomOrPoliSearch.trim()) return filteredLeaves;
-    const query = normalize(roomOrPoliSearch);
-    return filteredLeaves.filter((doc) => {
-      const poliNorm = normalize(doc.poli || '');
-      return poliNorm.includes(query);
-    });
-  }, [filteredLeaves, roomOrPoliSearch]);
+    let result = filteredLeaves;
+
+    // 1. Filter Lokal: Dropdown Pilih Dokter
+    if (selectedDoctorFilter.trim()) {
+      const docTarget = normalize(selectedDoctorFilter);
+      result = result.filter((doc) => normalize(doc.dpjp) === docTarget);
+    }
+
+    // 2. Filter Lokal: Kolom Pencarian Ruangan / Poli
+    if (roomOrPoliSearch.trim()) {
+      const query = normalize(roomOrPoliSearch);
+      result = result.filter((doc) => {
+        const poliNorm = normalize(doc.poli || '');
+        const dpjpNorm = normalize(doc.dpjp || '');
+        return poliNorm.includes(query) || dpjpNorm.includes(query);
+      });
+    }
+
+    return result;
+  }, [filteredLeaves, selectedDoctorFilter, roomOrPoliSearch]);
 
   // Bulk selection state
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<Set<string>>(new Set());
@@ -705,7 +761,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                 {/* Tombol Tambah Catatan */}
                 {onAddNewLeave && (
                   <button
-                    onClick={onAddNewLeave}
+                    onClick={() => requestAdminAction(onAddNewLeave, 'Tambah Catatan Libur Dokter')}
                     className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
                     title="Tambah Catatan Libur / Perubahan Dokter"
                   >
@@ -718,7 +774,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 {/* BUTTON A: + Tambah Dokter Baru (Primary Green Button) */}
                 <button
-                  onClick={onAddNewDoctor || onAddNewSchedule}
+                  onClick={() => requestAdminAction(onAddNewDoctor || onAddNewSchedule, 'Tambah Dokter Spesialis Baru')}
                   className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs hover:shadow-sm active:scale-95 transition-all cursor-pointer"
                   title="Pendaftaran dokter baru ke dalam sistem RSUMB"
                 >
@@ -728,7 +784,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
 
                 {/* BUTTON B: + Tambah / Edit Jadwal (Secondary / Outline Button) */}
                 <button
-                  onClick={onAddOrEditSchedule || onAddNewSchedule}
+                  onClick={() => requestAdminAction(onAddOrEditSchedule || onAddNewSchedule, 'Tambah / Edit Jadwal Dokter')}
                   className="px-3 py-2 bg-white hover:bg-teal-50 text-teal-800 border-2 border-teal-700 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs active:scale-95 transition-all cursor-pointer"
                   title="Tambah hari praktik atau perbarui jam dokter yang sudah terdaftar"
                 >
@@ -741,24 +797,52 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         </div>
       </div>
 
-      {/* SEARCH BAR KHUSUS DI DALAM SCHEDULETABLE: Filter Berdasarkan Nama Ruangan & Poli */}
+      {/* QUICK-FILTER BAR DI DALAM SCHEDULETABLE: Dropdown Pilih Dokter, Ruangan, & Poli */}
       <div
         id="schedule-table-room-poli-search-bar"
-        className="px-5 sm:px-6 py-2.5 bg-slate-50/90 border-b border-slate-200 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 print:hidden no-print"
+        className="px-4 sm:px-6 py-2.5 bg-slate-50/95 border-b border-slate-200 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 print:hidden no-print"
       >
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 min-w-0">
-          {/* Label & Ikon Ruangan / Poli */}
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 shrink-0">
-            <span className="p-1 rounded-md bg-teal-100/90 text-teal-800 border border-teal-200/60 shadow-2xs">
-              <Building2 className="w-3.5 h-3.5" />
-            </span>
-            <label htmlFor="input-search-room-poli" className="cursor-pointer">
-              Cari Ruangan / Poli:
-            </label>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 min-w-0 flex-wrap">
+          {/* QUICK-FILTER A: DROPDOWN PILIH DOKTER */}
+          <div className="flex items-center gap-1.5 min-w-[240px] sm:min-w-[280px]">
+            <div className="flex items-center gap-1.5 bg-white border border-emerald-300 hover:border-emerald-500 rounded-lg px-2.5 py-1.5 shadow-2xs transition-all w-full focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-600">
+              <span className="p-1 rounded-md bg-emerald-100 text-emerald-800 shrink-0">
+                <Stethoscope className="w-3.5 h-3.5" />
+              </span>
+              <label htmlFor="select-quick-filter-doctor" className="sr-only">
+                Pilih Dokter (Quick-Filter)
+              </label>
+              <select
+                id="select-quick-filter-doctor"
+                value={selectedDoctorFilter}
+                onChange={(e) => setSelectedDoctorFilter(e.target.value)}
+                className="w-full text-xs font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer pr-1 truncate"
+                title="Pilih nama dokter untuk memfilter jadwal mingguan secara langsung di tabel"
+              >
+                <option value="">-- Pilih Dokter ({uniqueDoctorsList.length} DPJP) --</option>
+                {uniqueDoctorsList.map((doc) => (
+                  <option key={doc.dpjp} value={doc.dpjp}>
+                    {doc.dpjp} ({doc.poli ? doc.poli.replace(/^Poli\s+/i, '') : doc.spesialisasi || 'DPJP'} • {doc.totalJadwal}x)
+                  </option>
+                ))}
+              </select>
+              {selectedDoctorFilter && (
+                <button
+                  type="button"
+                  id="btn-clear-doctor-filter"
+                  onClick={() => setSelectedDoctorFilter('')}
+                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 rounded-md transition-colors cursor-pointer shrink-0"
+                  title="Hapus Filter Dokter"
+                  aria-label="Hapus Filter Dokter"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Kolom Input Search Ruangan & Poliklinik */}
-          <div className="relative flex-1 max-w-lg">
+          {/* QUICK-FILTER B: Kolom Input Search Ruangan & Poliklinik */}
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
             <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
               <Search className="w-3.5 h-3.5" />
             </div>
@@ -767,7 +851,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
               type="text"
               value={roomOrPoliSearch}
               onChange={(e) => setRoomOrPoliSearch(e.target.value)}
-              placeholder="Ketik ruangan (cth: R. 101, Ruang 3) atau poli (cth: Anak, Bedah, Saraf)..."
+              placeholder="Cari ruangan (R. 101) atau poli..."
               className="w-full pl-8 pr-8 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-600 transition shadow-2xs"
             />
             {roomOrPoliSearch && (
@@ -830,25 +914,39 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         </div>
 
         {/* Counter Info & Reset Action */}
-        <div className="flex items-center gap-2 shrink-0 self-end lg:self-center">
-          {roomOrPoliSearch && (
-            <span className="text-xs text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 shadow-2xs">
-              <span>Hasil:</span>
-              <span className="font-bold text-teal-900">
-                {isLeaveMode ? displayLeaves.length : displaySchedules.length}
+        <div className="flex items-center gap-2 shrink-0 self-end xl:self-center">
+          {selectedDoctorFilter && (
+            <span className="text-xs text-emerald-900 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-md font-bold flex items-center gap-1.5 shadow-2xs animate-in fade-in">
+              <Stethoscope className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="truncate max-w-[150px] sm:max-w-[200px]">{selectedDoctorFilter}</span>
+              <span className="bg-emerald-200 text-emerald-900 text-[10px] px-1.5 rounded-full font-mono">
+                {isLeaveMode ? displayLeaves.length : displaySchedules.length} Jadwal
               </span>
-              <span>data</span>
             </span>
           )}
 
-          {roomOrPoliSearch && (
+          {(selectedDoctorFilter || roomOrPoliSearch) && (
+            <span className="text-xs text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 shadow-2xs">
+              <span>Hasil:</span>
+              <span className="font-bold text-slate-900">
+                {isLeaveMode ? displayLeaves.length : displaySchedules.length}
+              </span>
+            </span>
+          )}
+
+          {(selectedDoctorFilter || roomOrPoliSearch) && (
             <button
               type="button"
-              id="btn-reset-room-poli-search"
-              onClick={() => setRoomOrPoliSearch('')}
-              className="text-xs text-slate-500 hover:text-slate-800 font-semibold underline cursor-pointer"
+              id="btn-reset-all-table-filters"
+              onClick={() => {
+                setSelectedDoctorFilter('');
+                setRoomOrPoliSearch('');
+              }}
+              className="text-xs text-rose-600 hover:text-rose-800 font-bold hover:underline cursor-pointer flex items-center gap-1 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-md border border-rose-200 transition"
+              title="Reset filter dokter dan pencarian lokal tabel"
             >
-              Reset
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Filter</span>
             </button>
           )}
         </div>
@@ -957,8 +1055,8 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
       {/* TAMPILAN TABEL KHUSUS: MODE LIBUR / PERUBAHAN JADWAL (POLI, DOKTER, LIBUR/MAJU, MASUK KEMBALI, KETERANGAN) */}
       {/* ========================================================================= */}
       {isLeaveMode ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-left border-collapse min-w-[720px]">
             <thead>
               <tr className="text-xs font-bold uppercase tracking-wider border-b border-slate-200">
                 <th className="px-4 py-3 text-center w-12 bg-slate-100 text-slate-600">NO</th>
@@ -1129,27 +1227,59 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                         </div>
                       </td>
 
-                      {/* MASUK KEMBALI (background hijau muda lembut) */}
+                      {/* MASUK KEMBALI / JADWAL MAJU (background hijau muda lembut) */}
                       <td className="px-5 py-3.5 bg-emerald-50/70 border-r border-emerald-100/90 align-top">
                         <div className="space-y-2">
-                          {(Array.isArray(doc.jadwal) ? doc.jadwal : []).map((j, jIdx) => (
-                            <div key={jIdx} className="text-xs">
-                              <span className="font-semibold text-emerald-950 text-xs sm:text-sm">
-                                {j.tglMasuk || '-'}
-                              </span>
-                            </div>
-                          ))}
+                          {(Array.isArray(doc.jadwal) ? doc.jadwal : []).map((j, jIdx) => {
+                            const isMaju = j.tipe === 'MAJU';
+                            const cleanCetak = j.jamCetakBaru
+                              ? j.jamCetakBaru.replace(/^cetak\s*/i, '').trim()
+                              : '';
+
+                            return (
+                              <div key={jIdx} className="text-xs space-y-0.5">
+                                <span className="font-semibold text-emerald-950 text-xs sm:text-sm block">
+                                  {j.tglMasuk || '-'}
+                                </span>
+                                {isMaju && j.jamPraktikBaru && (
+                                  <span className="text-[11px] font-semibold text-blue-800 bg-blue-100/80 px-1.5 py-0.5 rounded block w-fit border border-blue-200">
+                                    🕒 {j.jamPraktikBaru}
+                                  </span>
+                                )}
+                                {isMaju && cleanCetak && (
+                                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded block w-fit border border-emerald-300">
+                                    🎫 Cetak {cleanCetak}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </td>
 
                       {/* KETERANGAN */}
                       <td className="px-4 py-3.5 text-slate-700 text-xs align-top">
                         <div className="space-y-2">
-                          {(Array.isArray(doc.jadwal) ? doc.jadwal : []).map((j, jIdx) => (
-                            <div key={jIdx} className="text-slate-600 font-medium">
-                              {j.keterangan || '-'}
-                            </div>
-                          ))}
+                          {(Array.isArray(doc.jadwal) ? doc.jadwal : []).map((j, jIdx) => {
+                            const isMaju = j.tipe === 'MAJU';
+                            const cleanCetak = j.jamCetakBaru
+                              ? j.jamCetakBaru.replace(/^cetak\s*/i, '').trim()
+                              : '';
+                            const customOrFormatted =
+                              j.keterangan && j.keterangan !== 'JADWAL MAJU'
+                                ? j.keterangan
+                                : isMaju
+                                ? `Jadwal Maju tgl ${j.tglMasuk || 'terjadwal'} menjadi jam ${j.jamPraktikBaru || '07.00 - 10.00 WIB'}${
+                                    cleanCetak ? ` (Cetak tiket mulai ${cleanCetak})` : ''
+                                  }`
+                                : j.keterangan || '-';
+
+                            return (
+                              <div key={jIdx} className="text-slate-600 font-medium">
+                                {customOrFormatted}
+                              </div>
+                            );
+                          })}
                         </div>
                       </td>
 
@@ -1170,7 +1300,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                           {onEditLeave && (
                             <button
                               type="button"
-                              onClick={() => onEditLeave(doc)}
+                              onClick={() => requestAdminAction(() => onEditLeave(doc), 'Edit Catatan Libur Dokter')}
                               className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-100/80 active:bg-amber-200/70 rounded-md transition-colors shadow-2xs cursor-pointer border border-transparent hover:border-amber-300/50"
                               title={`Edit catatan ${doc.dpjp}`}
                               aria-label={`Edit catatan ${doc.dpjp}`}
@@ -1181,7 +1311,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                           {onDeleteLeave && (
                             <button
                               type="button"
-                              onClick={() => onDeleteLeave(doc.id)}
+                              onClick={() => requestAdminAction(() => onDeleteLeave(doc.id), 'Hapus Catatan Libur Dokter')}
                               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 rounded-md transition-colors shadow-2xs cursor-pointer border border-transparent hover:border-rose-200"
                               title={`Hapus pengumuman ${doc.dpjp}`}
                               aria-label={`Hapus pengumuman ${doc.dpjp}`}
@@ -1202,8 +1332,8 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         /* ========================================================================= */
         /* TAMPILAN TABEL STANDAR: DAFTAR JADWAL PRAKTIK POLIKLINIK (HARI & HFIS BPJS) */
         /* ========================================================================= */
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-left border-collapse min-w-[760px]">
             <thead>
               <tr className="bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider border-b border-slate-200">
                 <th className="px-3 py-3 text-center w-10 print:hidden no-print">
@@ -1497,7 +1627,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                           </button>
 
                           <button
-                            onClick={() => onEditSchedule(sch)}
+                            onClick={() => requestAdminAction(() => onEditSchedule(sch), 'Edit Jadwal Praktik Dokter')}
                             className="p-1.5 text-slate-400 hover:text-teal-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
                             title="Edit Jadwal"
                           >
@@ -1505,7 +1635,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                           </button>
 
                           <button
-                            onClick={() => onDeleteSchedule(sch.id)}
+                            onClick={() => requestAdminAction(() => onDeleteSchedule(sch.id), 'Hapus Jadwal Dokter')}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
                             title="Hapus Jadwal"
                           >

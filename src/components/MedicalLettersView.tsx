@@ -119,6 +119,12 @@ export const MedicalLettersView: React.FC<MedicalLettersViewProps> = ({
     saveMasterPosters(updated);
   };
 
+  const handleUpdatePoster = (updatedPoster: PosterPromoItem) => {
+    const updated = posters.map((p) => (p.id === updatedPoster.id ? updatedPoster : p));
+    setPosters(updated);
+    saveMasterPosters(updated);
+  };
+
   const handleDeletePoster = (id: string) => {
     const updated = posters.filter((p) => p.id !== id);
     setPosters(updated);
@@ -987,6 +993,7 @@ export const MedicalLettersView: React.FC<MedicalLettersViewProps> = ({
         <PosterGalleryView
           posters={posters}
           onUploadPoster={handleUploadPoster}
+          onUpdatePoster={handleUpdatePoster}
           onDeletePoster={handleDeletePoster}
           showToast={showToast}
         />

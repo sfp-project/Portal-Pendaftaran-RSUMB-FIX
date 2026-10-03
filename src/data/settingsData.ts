@@ -1,7 +1,25 @@
 import { PortalSystemSettings, ThermalPrinterSettings, ShiftTimeframeConfig, MohatFeeSettings, WaBroadcastSettings } from '../types/settingsTypes';
 import { DEFAULT_BROADCAST_TEMPLATES } from './broadcastTemplates';
+import { RSUMB_LOGO_BASE64 } from '../assets/logoRsumbBase64';
 
 export const STORAGE_KEY_SYSTEM_SETTINGS = 'rsumb_system_settings_v1';
+export const STORAGE_KEY_HOSPITAL_LOGO = 'rsumb_hospital_logo';
+export const DEFAULT_HOSPITAL_LOGO = RSUMB_LOGO_BASE64;
+
+export function getEffectiveHospitalLogo(): string {
+  try {
+    const custom = localStorage.getItem(STORAGE_KEY_HOSPITAL_LOGO);
+    if (custom && custom.trim() && custom.trim().length > 20) return custom.trim();
+    const settingsRaw = localStorage.getItem(STORAGE_KEY_SYSTEM_SETTINGS);
+    if (settingsRaw) {
+      const parsed = JSON.parse(settingsRaw);
+      if (parsed.hospitalLogo && parsed.hospitalLogo.trim() && parsed.hospitalLogo.trim().length > 20) {
+        return parsed.hospitalLogo.trim();
+      }
+    }
+  } catch {}
+  return DEFAULT_HOSPITAL_LOGO;
+}
 
 export const DEFAULT_THERMAL_SETTINGS: ThermalPrinterSettings = {
   paperSize: '80mm',
@@ -42,6 +60,7 @@ export const DEFAULT_PORTAL_SETTINGS: PortalSystemSettings = {
   waBroadcast: DEFAULT_WA_BROADCAST_SETTINGS,
   autoRefreshHfis: true,
   queueAudio: true,
+  hospitalLogo: DEFAULT_HOSPITAL_LOGO,
   lastUpdated: new Date().toISOString()
 };
 
@@ -51,6 +70,7 @@ export const DEFAULT_PORTAL_SETTINGS: PortalSystemSettings = {
 export function loadPortalSettings(): PortalSystemSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SYSTEM_SETTINGS);
+    const customLogo = localStorage.getItem(STORAGE_KEY_HOSPITAL_LOGO);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
@@ -59,6 +79,7 @@ export function loadPortalSettings(): PortalSystemSettings {
         thermal: { ...DEFAULT_THERMAL_SETTINGS, ...(parsed.thermal || {}) },
         shiftTimes: { ...DEFAULT_SHIFT_TIMEFRAMES, ...(parsed.shiftTimes || {}) },
         mohatFees: { ...DEFAULT_MOHAT_FEE_SETTINGS, ...(parsed.mohatFees || {}) },
+        hospitalLogo: customLogo || parsed.hospitalLogo || DEFAULT_HOSPITAL_LOGO,
         waBroadcast: {
           ...DEFAULT_WA_BROADCAST_SETTINGS,
           ...(parsed.waBroadcast || {}),
@@ -66,6 +87,11 @@ export function loadPortalSettings(): PortalSystemSettings {
             ? parsed.waBroadcast.templates
             : DEFAULT_BROADCAST_TEMPLATES
         }
+      };
+    } else if (customLogo) {
+      return {
+        ...DEFAULT_PORTAL_SETTINGS,
+        hospitalLogo: customLogo
       };
     }
   } catch (err) {
@@ -84,9 +110,47 @@ export function savePortalSettings(settings: PortalSystemSettings): void {
       lastUpdated: new Date().toISOString()
     };
     localStorage.setItem(STORAGE_KEY_SYSTEM_SETTINGS, JSON.stringify(toSave));
+    if (settings.hospitalLogo) {
+      localStorage.setItem(STORAGE_KEY_HOSPITAL_LOGO, settings.hospitalLogo);
+      window.dispatchEvent(new CustomEvent('rsumb_logo_updated', { detail: { logo: settings.hospitalLogo } }));
+    }
     // Also trigger custom storage event so other components update synchronously
     window.dispatchEvent(new CustomEvent('rsumb_settings_updated', { detail: toSave }));
   } catch (err) {
     console.error('Failed to save portal system settings', err);
+  }
+}
+
+/**
+ * Update logo RSUMB secara mandiri dan picu event global
+ */
+export function saveHospitalLogo(logoBase64OrUrl: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_HOSPITAL_LOGO, logoBase64OrUrl);
+    const current = loadPortalSettings();
+    savePortalSettings({
+      ...current,
+      hospitalLogo: logoBase64OrUrl
+    });
+    window.dispatchEvent(new CustomEvent('rsumb_logo_updated', { detail: { logo: logoBase64OrUrl } }));
+  } catch (err) {
+    console.error('Failed to save hospital logo', err);
+  }
+}
+
+/**
+ * Reset logo RSUMB ke logo resmi bawaan
+ */
+export function resetHospitalLogo(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY_HOSPITAL_LOGO);
+    const current = loadPortalSettings();
+    savePortalSettings({
+      ...current,
+      hospitalLogo: DEFAULT_HOSPITAL_LOGO
+    });
+    window.dispatchEvent(new CustomEvent('rsumb_logo_updated', { detail: { logo: DEFAULT_HOSPITAL_LOGO } }));
+  } catch (err) {
+    console.error('Failed to reset hospital logo', err);
   }
 }

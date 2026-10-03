@@ -20,6 +20,7 @@ export const initialKllRecords: PatientKllRecord[] = [
     lpFileName: 'Surat_LP_Lantas_Sugiono_148921.pdf',
     isInsidenActive: true,
     catatan: 'JR (KONFIRMASI PAK BAMBANG JR LAMONGAN - PLAFON AWAL 20JT SUDAH AKTIF)',
+    isResolved: false,
     createdAt: '2026-09-14T08:30:00Z'
   },
   {
@@ -33,6 +34,7 @@ export const initialKllRecords: PatientKllRecord[] = [
     statusLp: 'BELUM',
     isInsidenActive: true,
     catatan: 'Kecelakaan kerja. Keluarga sedang mengurus Form KK2 ke kantor BPJS TK Lamongan.',
+    isResolved: false,
     createdAt: '2026-09-15T09:15:00Z'
   },
   {
@@ -47,6 +49,7 @@ export const initialKllRecords: PatientKllRecord[] = [
     lpFileName: 'LP_Kepolisian_SitiNurhaliza.jpg',
     isInsidenActive: false,
     catatan: 'Kasus KLL ganda telah diinput di V-Claim KLL dengan nomor LP resmi.',
+    isResolved: true,
     createdAt: '2026-09-12T14:20:00Z'
   },
   {
@@ -60,6 +63,7 @@ export const initialKllRecords: PatientKllRecord[] = [
     statusLp: 'BELUM',
     isInsidenActive: true,
     catatan: 'Keluarga menolak buat LP karena kesepakatan damai. Pasien sepakat masuk pasien UMUM.',
+    isResolved: false,
     createdAt: '2026-09-16T06:45:00Z'
   }
 ];
@@ -161,6 +165,7 @@ export const initialAsuransiSwastaRecords: PatientAsuransiSwastaRecord[] = [
     namaAsuransi: 'Prudential (PRUPrime Healthcare)',
     statusKlaim: 'Menunggu Guarantee Letter',
     catatanHandover: 'Pasien rawat inap rencana tindakan bedah laparoskopi. Dokumen medis awal sudah dikirim via email/portal Admedika. Follow up GL final jam 14.00.',
+    isResolved: false,
     createdAt: '2026-09-15T13:40:00Z'
   },
   {
@@ -170,6 +175,7 @@ export const initialAsuransiSwastaRecords: PatientAsuransiSwastaRecord[] = [
     namaAsuransi: 'Mandiri Inhealth (Gold)',
     statusKlaim: 'Excess Fee',
     catatanHandover: 'Plafon kamar Rp 750.000, pasien menempati VIP (Rp 950.000). Ada selisih Rp 200.000/hari yang sudah disetujui ditanggung pribadi.',
+    isResolved: false,
     createdAt: '2026-09-14T16:00:00Z'
   },
   {
@@ -179,6 +185,7 @@ export const initialAsuransiSwastaRecords: PatientAsuransiSwastaRecord[] = [
     namaAsuransi: 'Allianz Life Indonesia',
     statusKlaim: 'Konfirmasi Off-Hours',
     catatanHandover: 'Masuk malam hari pukul 22.30 WIB. Hotline klaim asuransi tutup. Menggunakan jaminan deposit sementara, hubungi agen asuransi pagi ini.',
+    isResolved: false,
     createdAt: '2026-09-16T02:00:00Z'
   },
   {
@@ -188,6 +195,7 @@ export const initialAsuransiSwastaRecords: PatientAsuransiSwastaRecord[] = [
     namaAsuransi: 'AIA Financial',
     statusKlaim: 'Form Klaim Kurang',
     catatanHandover: 'Form discharge summary belum ditandatangani dr. Spesialis Bedah. Berkas pending di meja perawat lantai 2.',
+    isResolved: true,
     createdAt: '2026-09-15T18:20:00Z'
   }
 ];
@@ -202,6 +210,7 @@ export const initialUmumBeresikoRecords: PatientUmumBeresikoRecord[] = [
     kronologiMasalah: 'Pasien lansia 74 tahun dengan hematemesis melena + riwayat sirosis hepatis. Masuk kamar rawat inap tanpa penjamin (pasien UMUM murni).',
     potensiMasalah: ['Biaya Operasi/Ranap Tinggi', 'Risiko APS/Kabur', 'Tidak Ada Keluarga yang Faham'],
     tindakLanjut: 'Edukasi estimasi billing harian kepada anak kedua. Dibuatkan surat pernyataan kesanggupan biaya dan deposit awal Rp 2.500.000.',
+    isResolved: false,
     createdAt: '2026-09-14T21:10:00Z'
   },
   {
@@ -212,6 +221,7 @@ export const initialUmumBeresikoRecords: PatientUmumBeresikoRecord[] = [
     kronologiMasalah: 'Rencana operasi elektif Herniotomi. Keluarga pasien sangat kritis mempertanyakan rincian biaya alkes mesh dan honor dokter operator.',
     potensiMasalah: ['Pasien/Keluarga Vokal', 'Komplain Pelayanan'],
     tindakLanjut: 'Dikoordinasikan langsung dengan Ka. Instalasi Bedah Sentral & Customer Care. Diserahkan lembar rincian paket tindakan sebelum operasi.',
+    isResolved: false,
     createdAt: '2026-09-15T10:00:00Z'
   },
   {
@@ -222,6 +232,7 @@ export const initialUmumBeresikoRecords: PatientUmumBeresikoRecord[] = [
     kronologiMasalah: 'Bayi lahir di bidan luar dengan asfiksia berat dan BBLR 1.800 gram dirujuk ke Perinatologi RSUMB. Orang tua muda belum mengurus BPJS bayi.',
     potensiMasalah: ['Biaya Operasi/Ranap Tinggi', 'Tidak Ada Orang Tua/Wali', 'Readmisi'],
     tindakLanjut: 'Diarahkan segera mengurus BPJS Bayi Baru Lahir ke Mal Pelayanan Publik / BPJS Lamongan dengan surat keterangan lahir dari RSUMB.',
+    isResolved: false,
     createdAt: '2026-09-16T05:30:00Z'
   },
   {
@@ -232,6 +243,7 @@ export const initialUmumBeresikoRecords: PatientUmumBeresikoRecord[] = [
     kronologiMasalah: 'Pasien berobat ke Poli Bedah namun tidak membawa KTP maupun kartu identitas resmi, hanya membawa kartu periksa lama yang pudar.',
     potensiMasalah: ['Tidak membawa identitas / kurang lengkap', 'Non spesialistik'],
     tindakLanjut: 'Diverifikasi via data NIK rekam medis elektronik. Pasien diedukasi untuk membawa e-KTP fisik pada kunjungan berikutnya.',
+    isResolved: true,
     createdAt: '2026-09-16T08:40:00Z'
   }
 ];
@@ -337,12 +349,14 @@ export function loadKllRecords(): PatientKllRecord[] {
     const raw = localStorage.getItem(STORAGE_KEY_KLL);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((r: any) => !r.is_deleted && !r.isDeleted);
+      }
     }
   } catch (e) {
     console.error('Failed to load KLL records:', e);
   }
-  return initialKllRecords;
+  return initialKllRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
 }
 
 export function saveKllRecords(records: PatientKllRecord[]): void {
@@ -358,12 +372,14 @@ export function loadBpjsKendalaRecords(): PatientBpjsKendalaRecord[] {
     const raw = localStorage.getItem(STORAGE_KEY_BPJS);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((r: any) => !r.is_deleted && !r.isDeleted);
+      }
     }
   } catch (e) {
     console.error('Failed to load BPJS Kendala records:', e);
   }
-  return initialBpjsKendalaRecords;
+  return initialBpjsKendalaRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
 }
 
 export function saveBpjsKendalaRecords(records: PatientBpjsKendalaRecord[]): void {
@@ -379,12 +395,14 @@ export function loadAsuransiSwastaRecords(): PatientAsuransiSwastaRecord[] {
     const raw = localStorage.getItem(STORAGE_KEY_ASURANSI);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((r: any) => !r.is_deleted && !r.isDeleted);
+      }
     }
   } catch (e) {
     console.error('Failed to load Asuransi Swasta records:', e);
   }
-  return initialAsuransiSwastaRecords;
+  return initialAsuransiSwastaRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
 }
 
 export function saveAsuransiSwastaRecords(records: PatientAsuransiSwastaRecord[]): void {
@@ -400,12 +418,14 @@ export function loadUmumBeresikoRecords(): PatientUmumBeresikoRecord[] {
     const raw = localStorage.getItem(STORAGE_KEY_UMUM);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((r: any) => !r.is_deleted && !r.isDeleted);
+      }
     }
   } catch (e) {
     console.error('Failed to load UMUM Beresiko records:', e);
   }
-  return initialUmumBeresikoRecords;
+  return initialUmumBeresikoRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
 }
 
 export function saveUmumBeresikoRecords(records: PatientUmumBeresikoRecord[]): void {
@@ -421,12 +441,14 @@ export function loadShiftHandoverRecords(): PatientShiftHandoverRecord[] {
     const raw = localStorage.getItem(STORAGE_KEY_HANDOVER);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((r: any) => !r.is_deleted && !r.isDeleted);
+      }
     }
   } catch (e) {
     console.error('Failed to load Shift Handover records:', e);
   }
-  return initialShiftHandoverRecords;
+  return initialShiftHandoverRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
 }
 
 export function saveShiftHandoverRecords(records: PatientShiftHandoverRecord[]): void {

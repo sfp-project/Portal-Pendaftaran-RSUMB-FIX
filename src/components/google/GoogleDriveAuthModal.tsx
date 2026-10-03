@@ -1,32 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Cloud,
+  FileSpreadsheet,
   CheckCircle2,
-  FolderSync,
   RefreshCw,
   X,
   Database,
+  Code,
+  Copy,
+  ExternalLink,
   ShieldCheck,
-  Sparkles,
-  Info,
   Check,
-  Users
+  AlertCircle,
+  AlertTriangle,
+  HelpCircle,
+  UploadCloud,
+  DownloadCloud,
+  Sparkles,
+  Info
 } from 'lucide-react';
 import {
-  googleSignIn,
-  logoutGoogleDrive,
-  isGoogleDriveConnected,
-  getCachedUser,
-  addAuthListener
-} from '../../services/googleAuthService';
+  getGasWebAppUrl,
+  setGasWebAppUrl,
+  isGasConnected,
+  testGasConnection,
+  getGasScriptTemplate
+} from '../../services/googleSheetsGasService';
 import {
-  pushLocalDataToDrive,
-  pullDataFromDrive,
+  pushDatabaseToSheets,
+  pullDatabaseFromSheets,
   getDualSyncState,
   addSyncStateListener,
   DualSyncState
 } from '../../services/dualSyncStorage';
-import { GoogleSignInButton } from './GoogleSignInButton';
+import { GoogleSheetsLogo } from './GoogleDriveSyncBadge';
 
 interface GoogleDriveAuthModalProps {
   isOpen: boolean;
@@ -34,103 +40,146 @@ interface GoogleDriveAuthModalProps {
   showToast?: (message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
-const RSUMB_STAFF_MEMBERS = [
-  'Hisyam',
-  'Alivia',
-  'Abi',
-  'Ady',
-  'Melinda',
-  'Agnia',
-  'Ismed',
-  'Syafik'
-];
-
 export const GoogleDriveAuthModal: React.FC<GoogleDriveAuthModalProps> = ({
   isOpen,
   onClose,
   showToast
 }) => {
-  const [googleUser, setGoogleUser] = useState(() => getCachedUser());
+  const [activeTab, setActiveTab] = useState<'connection' | 'script_code' | 'tutorial'>('connection');
+  const [gasUrlInput, setGasUrlInput] = useState(() => getGasWebAppUrl());
   const [syncState, setSyncState] = useState<DualSyncState>(() => getDualSyncState());
   const [isLoading, setIsLoading] = useState(false);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [isPushing, setIsPushing] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+  const [showPullConfirmModal, setShowPullConfirmModal] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
-    const unsubAuth = addAuthListener((user) => {
-      setGoogleUser(user);
-    });
+    setGasUrlInput(getGasWebAppUrl());
     const unsubSync = addSyncStateListener((state) => {
       setSyncState(state);
     });
 
     return () => {
-      unsubAuth();
       unsubSync();
     };
-  }, []);
-
-  const handleLogin = async () => {
-    setIsLoading(true);
-    setActionMessage('Menghubungkan akun Google Drive SIMRS...');
-    try {
-      const res = await googleSignIn();
-      if (res) {
-        showToast?.('Berhasil login Google Drive. Memulai sinkronisasi cloud...', 'success');
-        setActionMessage('Menyinkronkan database rsumb_database.json...');
-        try {
-          const pullRes = await pullDataFromDrive(true);
-          if (pullRes.restoredKeys > 0) {
-            showToast?.(`Tersinkron: ${pullRes.restoredKeys} data dipulihkan dari cloud.`, 'success');
-          } else {
-            await pushLocalDataToDrive(true);
-          }
-        } catch {
-          await pushLocalDataToDrive(true);
-        }
-        setActionMessage(null);
-        setTimeout(() => {
-          onClose();
-        }, 800);
-      }
-    } catch (err: any) {
-      if (err?.code !== 'auth/popup-closed-by-user' && err?.message !== 'popup_closed_by_user') {
-        showToast?.(`Gagal otentikasi Google: ${err?.message || 'Akses ditolak'}`, 'error');
-      }
-      setActionMessage(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    setIsLoading(true);
-    try {
-      await logoutGoogleDrive();
-      showToast?.('Koneksi Google Drive telah diputuskan. Mode offline aktif.', 'info');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleManualSyncNow = async () => {
-    setIsLoading(true);
-    setActionMessage('Menyimpan perubahan ke Google Drive...');
-    try {
-      const res = await pushLocalDataToDrive(false);
-      if (res.success) {
-        showToast?.('Database berhasil disinkronkan ke Google Drive (/RSUMB_Portal_Data/rsumb_database.json).', 'success');
-      }
-    } catch (err: any) {
-      showToast?.(`Gagal sinkron: ${err?.message}`, 'error');
-    } finally {
-      setIsLoading(false);
-      setActionMessage(null);
-    }
-  };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const isConnected = isGoogleDriveConnected();
+  const isConnected = isGasConnected();
+  const scriptCode = getGasScriptTemplate();
+
+  const handleSaveUrl = () => {
+    const trimmed = gasUrlInput.trim();
+    if (!trimmed) {
+      setGasWebAppUrl('');
+      setTestResult(null);
+      showToast?.('URL Google Sheets Web App dihapus. Mode lokal aktif.', 'info');
+      return;
+    }
+
+    if (!trimmed.startsWith('https://script.google.com/macros/s/')) {
+      showToast?.('Format URL tidak valid. Harus diawali https://script.google.com/macros/s/...', 'error');
+      return;
+    }
+
+    setGasWebAppUrl(trimmed);
+    showToast?.('URL Google Sheets Web App berhasil disimpan!', 'success');
+  };
+
+  const handleTestConnection = async () => {
+    const targetUrl = gasUrlInput.trim();
+    if (!targetUrl) {
+      showToast?.('Silakan masukkan URL Google Apps Script Web App terlebih dahulu.', 'error');
+      return;
+    }
+
+    setIsLoading(true);
+    setTestResult(null);
+    try {
+      const res = await testGasConnection(targetUrl);
+      setTestResult(res);
+      if (res.success) {
+        setGasWebAppUrl(targetUrl);
+        showToast?.(res.message, 'success');
+      } else {
+        showToast?.(res.message, 'error');
+      }
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: err?.message || 'Gagal menghubungi Web App'
+      });
+      showToast?.(`Gagal terhubung: ${err?.message}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * Fungsi: pushDatabaseToSheets()
+   * Menyimpan seluruh data tabel portal ke Google Sheets
+   */
+  const handlePushDatabaseToSheets = async () => {
+    const trimmed = gasUrlInput.trim();
+    if (!isGasConnected() && trimmed.startsWith('https://script.google.com/macros/s/')) {
+      setGasWebAppUrl(trimmed);
+    }
+
+    setIsPushing(true);
+    try {
+      const res = await pushDatabaseToSheets(false);
+      if (res.success) {
+        showToast?.('Database SIMRS berhasil disinkronkan langsung ke Google Sheets!', 'success');
+      } else if (res.message) {
+        showToast?.(res.message, 'info');
+      }
+    } catch (err: any) {
+      showToast?.(`Gagal sinkron ke Google Sheets: ${err?.message}`, 'error');
+    } finally {
+      setIsPushing(false);
+    }
+  };
+
+  /**
+   * Fungsi: Buka Dialog Konfirmasi Tarik Data dari Sheets
+   */
+  const handleInitiatePullDatabase = () => {
+    const trimmed = gasUrlInput.trim();
+    if (!isGasConnected() && trimmed.startsWith('https://script.google.com/macros/s/')) {
+      setGasWebAppUrl(trimmed);
+    }
+    setShowPullConfirmModal(true);
+  };
+
+  /**
+   * Eksekusi penarikan data dari Google Sheets setelah dikonfirmasi staf
+   */
+  const executePullDatabaseFromSheets = async () => {
+    setIsPulling(true);
+    try {
+      const res = await pullDatabaseFromSheets(false);
+      if (res.success) {
+        showToast?.(res.message || 'Sukses! Data portal berhasil dipulihkan dari Google Sheets.', 'success');
+        setShowPullConfirmModal(false);
+      } else if (res.message) {
+        showToast?.(res.message, 'error');
+      }
+    } catch (err: any) {
+      showToast?.(`Gagal memuat data: ${err?.message}`, 'error');
+    } finally {
+      setIsPulling(false);
+    }
+  };
+
+  const handleCopyScript = () => {
+    navigator.clipboard.writeText(scriptCode);
+    setIsCopied(true);
+    showToast?.('Kode Google Apps Script (Code.gs) berhasil disalin ke clipboard!', 'success');
+    setTimeout(() => setIsCopied(false), 3000);
+  };
 
   return (
     <div
@@ -141,260 +190,392 @@ export const GoogleDriveAuthModal: React.FC<GoogleDriveAuthModalProps> = ({
     >
       <div className="fixed inset-0 bg-transparent" onClick={onClose} aria-hidden="true" />
 
-      {/* Modal Card with Strict Viewport Boundaries & Scroll Isolation */}
-      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden z-10 flex flex-col my-auto max-h-[92vh]">
-        {/* MODAL HEADER: Harmonious Emerald Gradient Palette */}
-        <div className="bg-gradient-to-r from-emerald-950 via-[#004732] to-[#005d42] text-white p-5 sm:p-6 relative overflow-hidden shrink-0">
-          <div className="absolute -top-12 -right-12 w-44 h-44 bg-emerald-400/10 rounded-full blur-2xl pointer-events-none" />
-
-          <div className="flex items-start justify-between gap-3 relative z-10">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur-xs flex items-center justify-center border border-white/20 text-emerald-300 shrink-0 shadow-inner">
-                <Cloud className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 id="drive-modal-title" className="text-base sm:text-lg font-extrabold text-white tracking-tight">
-                    Integrasi Google Drive & Cloud Sync
-                  </h3>
-                  <span className="bg-emerald-400/25 text-emerald-200 border border-emerald-400/35 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    <span>SIMRS RSUMB</span>
-                  </span>
-                </div>
-                <p className="text-xs text-emerald-100/85 mt-0.5 leading-relaxed break-words">
-                  Pencadangan database otomatis & sinkronisasi data operasional staf pendaftaran
-                </p>
-              </div>
+      <div className="relative w-full max-w-3xl my-auto bg-white rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col max-h-[92vh] z-10">
+        
+        {/* HEADER */}
+        <div className="bg-gradient-to-r from-[#004732] to-[#005d42] text-white p-4 sm:p-6 flex items-center justify-between shrink-0 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 shrink-0">
+              <GoogleSheetsLogo className="w-6 h-6" />
             </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer border border-white/15 shrink-0"
-              title="Tutup Modal"
-              aria-label="Tutup Dialog"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* STATUS PILL IN HEADER */}
-          <div className="mt-4 pt-3 border-t border-white/15 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-emerald-200 font-medium">Status:</span>
-              {isConnected ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-400/25 text-emerald-100 border border-emerald-400/40 font-bold text-[11px]">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-                  <span>Tersinkronisasi Cloud</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 id="drive-modal-title" className="text-base sm:text-lg font-black tracking-tight text-white">
+                  Database Google Sheets (GAS Web App)
+                </h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 font-bold uppercase tracking-wider">
+                  Tanpa OAuth / Selalu Online
                 </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-200 border border-amber-400/35 font-bold text-[11px]">
-                  <span className="w-2 h-2 rounded-full bg-amber-400" />
-                  <span>Mode Offline (LocalStorage Aktif)</span>
-                </span>
-              )}
-            </div>
-
-            <div className="text-[11px] text-emerald-200/90 font-mono bg-white/10 px-2 py-0.5 rounded border border-white/10">
-              rsumb_database.json
+              </div>
+              <p className="text-xs text-emerald-100/90 font-medium">
+                Penyimpanan cloud otomatis langsung ke baris spreadsheet Google Sheets RSUMB
+              </p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl text-emerald-200 hover:text-white hover:bg-white/10 transition cursor-pointer"
+            aria-label="Tutup Modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* MODAL BODY WITH PERFECT RESPONSIVE PADDING & SCROLLABILITY */}
-        <div className="p-4 sm:p-6 space-y-4 text-xs text-slate-700 overflow-y-auto overscroll-contain flex-1">
-          {isConnected && googleUser ? (
-            /* CONNECTED VIEW */
-            <div className="space-y-4">
-              <div className="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                <div className="flex items-center gap-3 min-w-0">
-                  {googleUser.photoURL ? (
-                    <img
-                      src={googleUser.photoURL}
-                      alt={googleUser.displayName || 'Google User'}
-                      className="w-11 h-11 rounded-full border-2 border-emerald-500 shrink-0 shadow-xs"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-11 h-11 rounded-full bg-[#005d42] text-white font-extrabold flex items-center justify-center text-sm shrink-0 shadow-xs">
-                      {(googleUser.displayName || googleUser.email || 'G')[0].toUpperCase()}
+        {/* NAVIGATION TABS */}
+        <div className="flex items-center gap-2 px-4 sm:px-6 pt-3 pb-1 border-b border-slate-200 bg-slate-50/80 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab('connection')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'connection'
+                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <Database className="w-4 h-4 text-emerald-600" />
+            <span>Koneksi & Sinkronisasi</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('script_code')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'script_code'
+                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <Code className="w-4 h-4 text-emerald-600" />
+            <span>Kode Script (Code.gs)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('tutorial')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'tutorial'
+                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4 text-emerald-600" />
+            <span>Panduan Pemasangan</span>
+          </button>
+        </div>
+
+        {/* MODAL BODY */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1 min-h-0 bg-white">
+          
+          {/* TAB 1: CONNECTION & SYNC */}
+          {activeTab === 'connection' && (
+            <div className="space-y-5">
+              {/* Status Banner */}
+              <div
+                className={`p-4 rounded-2xl border flex items-start gap-3.5 transition ${
+                  isConnected
+                    ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                    : 'bg-amber-50/80 border-amber-200 text-amber-950'
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    isConnected ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
+                  }`}
+                >
+                  {isConnected ? <CheckCircle2 className="w-5 h-5" /> : <Database className="w-5 h-5" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-sm">
+                      {isConnected ? '🟢 Database Google Sheets: Terhubung' : '🟡 Database: Mode Lokal'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    {isConnected
+                      ? 'Portal terhubung dengan Google Apps Script Web App. Setiap pembaruan kupon fee, catatan stiker ranap, dan jadwal otomatis tersimpan ke Google Sheets.'
+                      : 'URL Google Apps Script belum terpasang. Data saat ini disimpan aman di peramban staf (LocalStorage). Masukkan URL Web App di bawah untuk mengaktifkan sinkronisasi.'}
+                  </p>
+                  {syncState.lastSyncTime && (
+                    <div className="mt-2 text-[11px] font-mono text-slate-500">
+                      Sinkronisasi Terakhir:{' '}
+                      <span className="font-bold text-slate-700">
+                        {new Date(syncState.lastSyncTime).toLocaleString('id-ID')}
+                      </span>
                     </div>
                   )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-extrabold text-slate-900 text-sm truncate">
-                        {googleUser.displayName || 'Akun Google SIMRS'}
-                      </span>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    </div>
-                    <p className="text-[11px] text-slate-600 truncate mt-0.5">{googleUser.email}</p>
-                    <p className="text-[10px] text-emerald-800 font-semibold mt-1 flex items-center gap-1">
-                      <FolderSync className="w-3.5 h-3.5 shrink-0" />
-                      <span>Sinkronisasi Latar Belakang Aktif & Otomatis</span>
-                    </p>
+                </div>
+              </div>
+
+              {/* URL Input Form */}
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <label className="block text-xs font-bold text-slate-800">
+                  URL Google Apps Script (Web App Deployment URL):
+                </label>
+                <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                  <input
+                    type="url"
+                    value={gasUrlInput}
+                    onChange={(e) => setGasUrlInput(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
+                    className="flex-1 px-3.5 py-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestConnection}
+                      disabled={isLoading || isPushing || isPulling || !gasUrlInput.trim()}
+                      className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-300 rounded-xl text-xs flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                      <span>Uji Koneksi</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveUrl}
+                      className="px-4 py-2.5 bg-[#005d42] hover:bg-[#004732] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Simpan</span>
+                    </button>
                   </div>
                 </div>
+
+                {testResult && (
+                  <div
+                    className={`p-3 rounded-xl text-xs flex items-center gap-2 border ${
+                      testResult.success
+                        ? 'bg-emerald-100/70 border-emerald-300 text-emerald-900'
+                        : 'bg-rose-100/70 border-rose-300 text-rose-900'
+                    }`}
+                  >
+                    {testResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-700 shrink-0" />
+                    )}
+                    <span className="font-medium">{testResult.message}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons: Push & Pull Database */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={handlePushDatabaseToSheets}
+                  disabled={isPushing || isPulling || (!isConnected && !gasUrlInput.trim())}
+                  className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/80 text-emerald-950 flex items-center gap-3.5 transition cursor-pointer text-left group shadow-xs disabled:opacity-50"
+                  title="Kirim dan simpan seluruh tabel lokal ke spreadsheet Google Sheets sekarang"
+                >
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-700 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                    {isPushing ? (
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <UploadCloud className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-extrabold text-xs text-emerald-950 flex items-center gap-1.5">
+                      <span>Kirim Data ke Sheets (Push)</span>
+                      {isPushing && <span className="text-[10px] text-emerald-700 font-mono animate-pulse">Menyimpan...</span>}
+                    </div>
+                    <div className="text-[11px] text-emerald-800/80 mt-0.5 leading-snug">
+                      Simpan seluruh tabel data lokal ke spreadsheet Google Sheets
+                    </div>
+                  </div>
+                </button>
 
                 <button
                   type="button"
-                  onClick={handleLogout}
-                  disabled={isLoading}
-                  className="px-3.5 py-1.5 text-xs text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-xl font-bold transition cursor-pointer disabled:opacity-50 shrink-0 self-start sm:self-auto shadow-2xs"
-                  title="Putuskan sambungan akun Google"
+                  onClick={handleInitiatePullDatabase}
+                  disabled={isPushing || isPulling || (!isConnected && !gasUrlInput.trim())}
+                  className="p-4 rounded-2xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100/80 text-blue-950 flex items-center gap-3.5 transition cursor-pointer text-left group shadow-xs disabled:opacity-50"
+                  title="Tarik data terbaru dari Google Sheets dan pulihkan ke browser ini"
                 >
-                  Putuskan
+                  <div className="w-11 h-11 rounded-2xl bg-blue-700 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                    {isPulling ? (
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <DownloadCloud className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-extrabold text-xs text-blue-950 flex items-center gap-1.5">
+                      <span>Tarik Data dari Sheets (Pull)</span>
+                      {isPulling && <span className="text-[10px] text-blue-700 font-mono animate-pulse">Memuat...</span>}
+                    </div>
+                    <div className="text-[11px] text-blue-800/80 mt-0.5 leading-snug">
+                      Pulihkan database dari Google Sheets ke browser lokal
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: CODE SCRIPT (Code.gs) */}
+          {activeTab === 'script_code' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-emerald-50 rounded-2xl border border-emerald-200">
+                <div className="text-xs text-emerald-900 font-semibold">
+                  📄 Salin seluruh kode di bawah ini ke editor <strong>Apps Script</strong> pada Google Sheets Anda:
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyScript}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0 ${
+                    isCopied
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                  }`}
+                >
+                  {isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{isCopied ? 'Tersalin!' : '📋 Salin Kode Script (Code.gs)'}</span>
                 </button>
               </div>
 
-              {/* FOLDER DETAILS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/90">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Folder Database Utama</span>
-                  <p className="font-mono font-bold text-slate-800 mt-1 text-xs">/RSUMB_Portal_Data/</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">File: rsumb_database.json</p>
-                </div>
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/90">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Folder Berkas & Cadangan</span>
-                  <p className="font-mono font-bold text-slate-800 mt-1 text-xs">/RSUMB_Portal_Files/</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Backup: /RSUMB_Portal_Backups/</p>
-                </div>
+              <div className="relative rounded-2xl bg-slate-900 text-slate-200 p-4 border border-slate-800 max-h-[380px] overflow-y-auto font-mono text-[11px] leading-relaxed shadow-inner">
+                <pre>{scriptCode}</pre>
               </div>
-
-              {syncState.lastSyncTime && (
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/90 text-slate-600 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span>Waktu Sinkronisasi Terakhir:</span>
-                  <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
-                    {new Date(syncState.lastSyncTime).toLocaleString('id-ID')} WIB
-                  </span>
-                </div>
-              )}
             </div>
-          ) : (
-            /* DISCONNECTED VIEW: Themed, High-Legibility & Zero-Clipping */
-            <div className="space-y-4">
-              {/* OFFLINE RESILIENCE INFO CARD */}
-              <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 space-y-1.5 shadow-2xs">
-                <div className="flex items-center gap-2 text-[#005d42] font-bold text-xs">
-                  <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <span>Data Tetap Aman di Browser (Penyimpanan Lokal Aktif)</span>
-                </div>
-                <p className="text-[11px] text-slate-700 leading-relaxed">
-                  Operasional portal tidak terhenti. Seluruh data kupon fee, catatan handover, poster, jadwal, dan pengaturan pendaftaran otomatis tersimpan di peramban (LocalStorage) perangkat ini.
-                </p>
-              </div>
+          )}
 
-              {/* BENEFITS LIST WITH ZERO TEXT OVERFLOW / CLIPPING */}
-              <div className="p-4 rounded-2xl bg-slate-50/90 border border-slate-200/90 space-y-3.5">
-                <h4 className="font-bold text-slate-900 text-xs flex items-center gap-2">
-                  <Cloud className="w-4 h-4 text-[#005d42] shrink-0" />
-                  <span>Manfaat Menghubungkan Google Drive SIMRS RSUMB:</span>
+          {/* TAB 3: TUTORIAL / SETUP GUIDE */}
+          {activeTab === 'tutorial' && (
+            <div className="space-y-4 text-xs text-slate-700 leading-relaxed">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  <span>5 Langkah Praktis Pemasangan Google Sheets Backend:</span>
                 </h4>
+                
+                <ol className="list-decimal list-inside space-y-2.5 font-medium">
+                  <li className="pl-1">
+                    <strong>Buat Spreadsheet Baru:</strong> Buka tab baru browser dan ketik{' '}
+                    <a
+                      href="https://sheets.new"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-700 font-bold underline inline-flex items-center gap-1"
+                    >
+                      sheets.new <ExternalLink className="w-3 h-3 inline" />
+                    </a>{' '}
+                    lalu beri judul file (misal: <em>"DATABASE PORTAL RSUMB"</em>).
+                  </li>
+                  <li className="pl-1">
+                    <strong>Buka Apps Script:</strong> Klik menu <strong>Ekstensi (Extensions)</strong> &gt;{' '}
+                    <strong>Apps Script</strong> pada menu bar Google Sheets.
+                  </li>
+                  <li className="pl-1">
+                    <strong>Paste Kode:</strong> Hapus seluruh kode bawaan di file <code>Code.gs</code>, lalu klik tombol{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('script_code');
+                        handleCopyScript();
+                      }}
+                      className="text-emerald-700 font-bold underline inline cursor-pointer"
+                    >
+                      Salin Kode Script (Code.gs)
+                    </button>{' '}
+                    dan paste ke editor. Tekan <code>Ctrl + S</code> untuk menyimpan.
+                  </li>
+                  <li className="pl-1">
+                    <strong>Deploy sebagai Web App:</strong>
+                    <div className="pl-5 mt-1 space-y-1 text-slate-600 text-[11px]">
+                      <div>• Klik tombol biru <strong>Deploy (Terapkan)</strong> di kanan atas &gt; <strong>New deployment (Penerapan baru)</strong>.</div>
+                      <div>• Klik ikon gerigi &gt; pilih <strong>Web app (Aplikasi web)</strong>.</div>
+                      <div>• <strong>Execute as:</strong> "Me (email akun Anda)".</div>
+                      <div>• <strong>Who has access:</strong> <span className="font-bold text-emerald-800">"Anyone" (Siapa saja)</span> &lt;-- Wajib agar portal dapat menyimpan data.</div>
+                      <div>• Klik <strong>Deploy</strong> dan izinkan akses (*Authorize Access*).</div>
+                    </div>
+                  </li>
+                  <li className="pl-1">
+                    <strong>Tempel URL:</strong> Salin <strong>Web app URL</strong> (akhiran <code>/exec</code>), kembali ke portal ini, lalu paste pada tab <strong>Koneksi &amp; Sinkronisasi</strong>.
+                  </li>
+                </ol>
+              </div>
 
-                <div className="space-y-3 text-[11px] text-slate-700">
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 mt-0.5">
-                      <Check className="w-3 h-3 stroke-[2.5]" />
-                    </div>
-                    <div className="flex-1 min-w-0 leading-relaxed">
-                      <strong className="text-slate-900 font-bold">Pencadangan Cloud Otomatis:</strong>{' '}
-                      <span>Data otomatis disinkronkan ke file <code className="font-mono text-emerald-800 bg-emerald-100/70 px-1 py-0.5 rounded text-[10px]">rsumb_database.json</code> di Google Drive Anda.</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 mt-0.5">
-                      <Check className="w-3 h-3 stroke-[2.5]" />
-                    </div>
-                    <div className="flex-1 min-w-0 leading-relaxed">
-                      <strong className="text-slate-900 font-bold">Sinkronisasi Antar-Perangkat:</strong>{' '}
-                      <span>Memudahkan koordinasi operan shift staf antar-meja pendaftaran:</span>
-                      
-                      {/* Responsive, Unclipped List of 8 Registration Staff Members */}
-                      <div className="mt-2 p-2.5 bg-white rounded-xl border border-emerald-200/70 shadow-2xs">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
-                          <Users className="w-3.5 h-3.5 text-[#005d42]" />
-                          <span>8 Petugas Pendaftaran RSUMB:</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {RSUMB_STAFF_MEMBERS.map((staffName) => (
-                            <span
-                              key={staffName}
-                              className="inline-flex items-center px-2.5 py-1 bg-emerald-50 text-[#005d42] border border-emerald-300 rounded-lg font-bold text-[11px] shadow-2xs hover:bg-emerald-100 transition"
-                            >
-                              {staffName}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 mt-0.5">
-                      <Check className="w-3 h-3 stroke-[2.5]" />
-                    </div>
-                    <div className="flex-1 min-w-0 leading-relaxed">
-                      <strong className="text-slate-900 font-bold">Aman Saat Bersihkan Cache Browser:</strong>{' '}
-                      <span>Data tidak hilang saat komputer pendaftaran di-restart atau riwayat browser dibersihkan.</span>
-                    </div>
-                  </div>
+              <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-[11px] flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Kelebihan Menggunakan Google Apps Script:</strong> Tidak ada sesi token yang kedaluwarsa, tidak memerlukan pop-up otentikasi harian, dan seluruh baris data Kupon Fee Mohat serta Catatan Pasien langsung tersusun rapi di tab-tab Google Sheets yang bisa dibuka oleh seluruh staf.
                 </div>
               </div>
-
-              {/* ACTION PROMPT BUTTON */}
-              <div className="pt-2 text-center space-y-2">
-                <GoogleSignInButton
-                  onClick={handleLogin}
-                  isLoading={isLoading}
-                  text="Login Akun Google / Hubungkan Drive"
-                  className="w-full py-3 shadow-md hover:shadow-lg font-bold text-sm bg-white text-slate-800 border-slate-300 hover:border-emerald-400"
-                />
-                <p className="text-[10px] text-slate-500">
-                  Otentikasi aman via Google Identity Services & Firebase OAuth Client RSUMB
-                </p>
-              </div>
             </div>
           )}
 
-          {actionMessage && (
-            <div className="p-3.5 bg-emerald-50 text-emerald-950 rounded-2xl border border-emerald-200 flex items-center gap-2.5 font-medium shadow-2xs">
-              <RefreshCw className="w-4 h-4 animate-spin text-[#005d42] shrink-0" />
-              <span className="text-xs">{actionMessage}</span>
-            </div>
-          )}
         </div>
 
         {/* MODAL FOOTER */}
-        <div className="p-4 sm:p-5 bg-slate-50/95 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-            <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span>Kerahasiaan data terjamin sesuai hak akses Google Drive staf.</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Kerahasiaan database terenkripsi HTTPS langsung ke akun Google RSUMB.</span>
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-auto">
-            {isConnected ? (
-              <button
-                type="button"
-                onClick={handleManualSyncNow}
-                disabled={isLoading}
-                className="px-4 py-2 bg-[#005d42] hover:bg-[#004732] text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 shadow-xs"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>Sinkronkan Sekarang</span>
-              </button>
-            ) : null}
-
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold border border-slate-300 rounded-xl text-xs transition cursor-pointer"
+              className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
             >
-              {isConnected ? 'Selesai' : 'Lanjutkan Mode Offline'}
+              Tutup
             </button>
           </div>
         </div>
+
       </div>
+
+      {/* POP-UP MODAL: Konfirmasi Tarik Data dari Google Sheets */}
+      {showPullConfirmModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-3 sm:p-4 z-[999999] bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          style={{ position: 'fixed', inset: 0, zIndex: 999999 }}
+        >
+          <div className="fixed inset-0" onClick={() => !isPulling && setShowPullConfirmModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden z-10 p-5 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center mx-auto">
+              <DownloadCloud className="w-6 h-6" />
+            </div>
+
+            <div className="text-center">
+              <h3 className="font-extrabold text-base text-slate-900">Konfirmasi Tarik Data dari Google Sheets?</h3>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Sistem akan mengunduh seluruh data terbaru dari Google Sheets dan <b>menimpa database lokal</b> di browser ini.
+              </p>
+            </div>
+
+            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2 text-left">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <b>Perhatian:</b> Data lokal yang belum dikirim ke Google Sheets akan digantikan oleh data cloud. Pastikan Anda telah menyimpan perubahan yang diperlukan.
+              </span>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isPulling}
+                onClick={() => setShowPullConfirmModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executePullDatabaseFromSheets}
+                disabled={isPulling}
+                className="flex-1 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold shadow-sm transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isPulling ? 'animate-spin' : ''}`} />
+                <span>{isPulling ? 'Menarik Data...' : 'Ya, Timpa & Tarik Data'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

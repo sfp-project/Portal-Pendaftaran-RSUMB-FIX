@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
   Plus,
@@ -29,8 +29,25 @@ import {
   PatientQueueItem,
   EmergencyAlertData
 } from '../types';
-import { MASTER_DOCTORS } from '../data/initialData';
-import { formatDoctorScheduleTime } from '../utils/dateHelpers';
+import { MASTER_DOCTORS, initialSchedules } from '../data/initialData';
+import {
+  formatDoctorScheduleTime,
+  extractDayNameFromDate,
+  findDoctorScheduleForDay
+} from '../utils/dateHelpers';
+
+const formatTimeStringWithWib = (timeStr?: string): string => {
+  if (!timeStr || !timeStr.trim() || timeStr.trim() === '-') return '';
+  let clean = timeStr.trim().replace(/\s*WIB\s*$/i, '').trim();
+  clean = clean.replace(/\s*-\s*/g, ' - ');
+  return `${clean} WIB`;
+};
+
+const handleNumericKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (['-', '+', 'e', 'E'].includes(e.key)) {
+    e.preventDefault();
+  }
+};
 
 // Helper to determine if a doctor belongs to a given Poliklinik (matching standard names and synonyms)
 export const isDoctorInPoli = (doctorPoli: string, targetPoli: string, doctorName?: string): boolean => {
@@ -685,12 +702,6 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
     }
   };
 
-  const handleNumericKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (['-', '+', 'e', 'E'].includes(e.key)) {
-      e.preventDefault();
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
@@ -753,8 +764,8 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-auto max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+      <div className="relative z-[100000] bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-auto max-h-[85vh] flex flex-col overflow-y-auto">
         {/* Header Modal Overlay */}
         <div className="flex items-center justify-between pb-4 mb-3 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
@@ -1355,8 +1366,8 @@ export const AddOrEditScheduleModal: React.FC<AddOrEditScheduleModalProps> = ({
   const isExistingDay = activeDoctorDays.includes(hari);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-auto max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+      <div className="relative z-[100000] bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-auto max-h-[85vh] flex flex-col overflow-y-auto">
         {/* Header Modal Overlay */}
         <div className="flex items-center justify-between pb-4 mb-3 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
@@ -2094,6 +2105,7 @@ interface LeaveModalProps {
   initialData?: DoctorLeaveAnnouncement | null;
   doctorOptions?: { dpjp: string; poli: string }[];
   poliOptions?: string[];
+  schedules?: DoctorSchedule[];
 }
 
 export const LeaveModal: React.FC<LeaveModalProps> = ({
@@ -2103,8 +2115,13 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
   onDelete,
   initialData,
   doctorOptions,
-  poliOptions
+  poliOptions,
+  schedules
 }) => {
+  const allSchedules = useMemo(() => {
+    return schedules && schedules.length > 0 ? schedules : initialSchedules;
+  }, [schedules]);
+
   const [dpjp, setDpjp] = useState('');
   const [poli, setPoli] = useState('Penyakit Dalam');
   const [jadwalList, setJadwalList] = useState<DoctorLeaveItem[]>([
@@ -2150,12 +2167,74 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Helper to look up regular schedule for a doctor on a target date
+  const getDoctorScheduleForTargetDate = (doctorName: string, dateStr: string) => {
+    if (!doctorName || !dateStr) return null;
+    const dayName = extractDayNameFromDate(dateStr);
+    if (!dayName) return null;
+    return findDoctorScheduleForDay(doctorName, dayName, allSchedules);
+  };
+
   const handleUpdateItem = (index: number, field: keyof DoctorLeaveItem, value: any) => {
     setJadwalList((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
+      const updated = { ...next[index], [field]: value };
+      
+      // Auto-prefill schedule when Tgl Masuk / Pengganti is updated or when switching to MAJU
+      if (field === 'tglMasuk' || (field === 'tipe' && value === 'MAJU')) {
+        const targetDate = field === 'tglMasuk' ? value : updated.tglMasuk;
+        if (targetDate && dpjp) {
+          const matched = getDoctorScheduleForTargetDate(dpjp, targetDate);
+          if (matched) {
+            const autoPraktik = formatTimeStringWithWib(matched.jadwal) || '07.00 - 10.00 WIB';
+            const autoHfis = formatTimeStringWithWib(matched.jamHfis || matched.jadwal) || autoPraktik;
+            const autoCetak = computeAutoPrintTime(autoHfis) || '06.00 WIB';
+
+            updated.jamPraktikBaru = autoPraktik;
+            updated.jamHfisBaru = autoHfis;
+            updated.jamCetakBaru = autoCetak;
+          } else if (field === 'tipe' && value === 'MAJU') {
+            if (!updated.jamPraktikBaru) updated.jamPraktikBaru = '07.00 - 10.00 WIB';
+            if (!updated.jamHfisBaru) updated.jamHfisBaru = '07.00 - 10.00 WIB';
+            if (!updated.jamCetakBaru) updated.jamCetakBaru = '06.00 WIB';
+          }
+        } else if (field === 'tipe' && value === 'MAJU') {
+          if (!updated.jamPraktikBaru) updated.jamPraktikBaru = '07.00 - 10.00 WIB';
+          if (!updated.jamHfisBaru) updated.jamHfisBaru = '07.00 - 10.00 WIB';
+          if (!updated.jamCetakBaru) updated.jamCetakBaru = '06.00 WIB';
+        }
+      }
+
+      next[index] = updated;
       return next;
     });
+  };
+
+  const handleSelectDoctor = (selectedDoctor: string, doctorPoli?: string) => {
+    setDpjp(selectedDoctor);
+    if (doctorPoli) {
+      setPoli(doctorPoli);
+    }
+    // Auto-prefill schedule for any session item that already has tglMasuk and is MAJU
+    setJadwalList((prev) =>
+      prev.map((item) => {
+        if (item.tglMasuk && (item.tipe === 'MAJU' || !item.jamPraktikBaru)) {
+          const matched = getDoctorScheduleForTargetDate(selectedDoctor, item.tglMasuk);
+          if (matched) {
+            const autoPraktik = formatTimeStringWithWib(matched.jadwal) || '07.00 - 10.00 WIB';
+            const autoHfis = formatTimeStringWithWib(matched.jamHfis || matched.jadwal) || autoPraktik;
+            const autoCetak = computeAutoPrintTime(autoHfis) || '06.00 WIB';
+            return {
+              ...item,
+              jamPraktikBaru: autoPraktik,
+              jamHfisBaru: autoHfis,
+              jamCetakBaru: autoCetak
+            };
+          }
+        }
+        return item;
+      })
+    );
   };
 
   const handleAddItem = () => {
@@ -2183,12 +2262,30 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
       id: initialData ? initialData.id : `leave-${Date.now()}`,
       dpjp,
       poli,
-      jadwal: jadwalList.map((item) => ({
-        keterangan: item.keterangan || (item.tipe === 'MAJU' ? 'JADWAL MAJU' : item.tipe === 'CUTI' ? 'CUTI TAHUNAN' : 'LIBUR PRAKTIK'),
-        tglLibur: item.tglLibur || 'Sesuai Pengumuman',
-        tglMasuk: item.tglMasuk || 'Konfirmasi Poliklinik',
-        tipe: item.tipe
-      })),
+      jadwal: jadwalList.map((item) => {
+        const isMaju = item.tipe === 'MAJU';
+        const defaultKet = isMaju
+          ? 'JADWAL MAJU'
+          : item.tipe === 'CUTI'
+          ? 'CUTI TAHUNAN'
+          : 'LIBUR PRAKTIK';
+
+        const jPraktik = isMaju ? (item.jamPraktikBaru?.trim() || '07.00 - 10.00 WIB') : undefined;
+        const jHfis = isMaju ? (item.jamHfisBaru?.trim() || jPraktik || '07.00 - 10.00 WIB') : undefined;
+        const jCetak = isMaju
+          ? (item.jamCetakBaru?.trim() || (jHfis ? computeAutoPrintTime(jHfis) : '') || '06.00 WIB')
+          : undefined;
+
+        return {
+          keterangan: item.keterangan || defaultKet,
+          tglLibur: item.tglLibur || 'Sesuai Pengumuman',
+          tglMasuk: item.tglMasuk || 'Konfirmasi Poliklinik',
+          tipe: item.tipe,
+          jamPraktikBaru: jPraktik,
+          jamHfisBaru: jHfis,
+          jamCetakBaru: jCetak
+        };
+      }),
       active: true
     });
     onClose();
@@ -2202,8 +2299,8 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col p-6 shadow-2xl border border-slate-200 overflow-hidden">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+      <div className="relative z-[100000] bg-white rounded-2xl max-w-lg w-full max-h-[85vh] my-auto flex flex-col p-6 shadow-2xl border border-slate-200 overflow-hidden">
         {/* Header Modal */}
         <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -2230,10 +2327,7 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
           <DoctorSearchSelect
             value={dpjp}
             onChange={(selectedDoctor, doctorPoli) => {
-              setDpjp(selectedDoctor);
-              if (doctorPoli) {
-                setPoli(doctorPoli);
-              }
+              handleSelectDoctor(selectedDoctor, doctorPoli);
             }}
             doctorOptions={doctorOptions}
           />
@@ -2321,6 +2415,159 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
                       accentColor="emerald"
                     />
                   </div>
+
+                  {/* Conditional Time Inputs for JADWAL MAJU */}
+                  {item.tipe === 'MAJU' && (() => {
+                    const matchedSch = getDoctorScheduleForTargetDate(dpjp, item.tglMasuk);
+                    const currentHfis = item.jamHfisBaru || item.jamPraktikBaru || '07.00 - 10.00 WIB';
+                    const hfisStart = currentHfis.split('-')[0].trim();
+                    const computedCetak = computeAutoPrintTime(currentHfis) || '06.00 WIB';
+
+                    return (
+                      <div className="mt-3 pt-3 border-t border-blue-100 bg-blue-50/60 -mx-3.5 -mb-3.5 p-3.5 rounded-b-xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wider">
+                            <Clock className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Waktu & Jam Layanan Dimajukan</span>
+                          </span>
+                          <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200">
+                            Jadwal Maju
+                          </span>
+                        </div>
+
+                        {/* Matched Schedule Banner Indicator if detected for this date */}
+                        {matchedSch && (
+                          <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200/90 text-emerald-950 text-xs flex items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-bold text-[11.5px] text-emerald-950 truncate">
+                                  Jadwal Reguler ({matchedSch.hari}): Praktik {matchedSch.jadwal} • HFIS {matchedSch.jamHfis || matchedSch.jadwal}
+                                </p>
+                                <p className="text-[10px] text-emerald-700">
+                                  Otomatis terisi dari jadwal DPJP pada hari tersebut.
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const autoPraktik = formatTimeStringWithWib(matchedSch.jadwal) || '07.00 - 10.00 WIB';
+                                const autoHfis = formatTimeStringWithWib(matchedSch.jamHfis || matchedSch.jadwal) || autoPraktik;
+                                const autoCetak = computeAutoPrintTime(autoHfis) || '06.00 WIB';
+                                handleUpdateItem(index, 'jamPraktikBaru', autoPraktik);
+                                handleUpdateItem(index, 'jamHfisBaru', autoHfis);
+                                handleUpdateItem(index, 'jamCetakBaru', autoCetak);
+                              }}
+                              className="text-[10px] font-bold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 px-2 py-1 rounded transition-colors cursor-pointer shrink-0 shadow-2xs"
+                              title="Terapkan ulang jadwal reguler hari ini"
+                            >
+                              Muat Reguler
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Presets Cepat */}
+                        <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                          <span className="text-slate-500 font-semibold text-[10px] mr-0.5">Preset:</span>
+                          {[
+                            '07.00 - 10.00 WIB',
+                            '08.00 - 11.00 WIB',
+                            '13.00 - 16.00 WIB',
+                            '14.00 - 17.00 WIB',
+                            '15.00 - 17.00 WIB',
+                            '06.30 - 09.30 WIB'
+                          ].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => {
+                                const autoCetak = computeAutoPrintTime(preset) || '06.00 WIB';
+                                handleUpdateItem(index, 'jamPraktikBaru', preset);
+                                handleUpdateItem(index, 'jamHfisBaru', preset);
+                                handleUpdateItem(index, 'jamCetakBaru', autoCetak);
+                              }}
+                              className="px-2 py-0.5 rounded bg-white text-blue-700 hover:bg-blue-100 border border-blue-200 font-medium text-[10.5px] transition-colors cursor-pointer shadow-2xs"
+                            >
+                              {preset.replace(' WIB', '')}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Inputs Jam Praktik & Jam HFIS */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Jam Praktik Baru (RS)
+                            </label>
+                            <input
+                              type="text"
+                              value={item.jamPraktikBaru || '07.00 - 10.00 WIB'}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                handleUpdateItem(index, 'jamPraktikBaru', val);
+                              }}
+                              placeholder="Contoh: 15.00 - 17.00 WIB"
+                              className="w-full px-3 py-1.5 text-xs font-semibold bg-white border border-blue-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Jam HFIS BPJS Baru
+                            </label>
+                            <input
+                              type="text"
+                              value={item.jamHfisBaru || item.jamPraktikBaru || '07.00 - 10.00 WIB'}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                handleUpdateItem(index, 'jamHfisBaru', val);
+                                const autoCetak = computeAutoPrintTime(val);
+                                if (autoCetak) handleUpdateItem(index, 'jamCetakBaru', autoCetak);
+                              }}
+                              placeholder="Contoh: 14.00 - 20.00 WIB"
+                              className="w-full px-3 py-1.5 text-xs font-semibold bg-white border border-blue-200 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Jam Cetak Otomatis (Calculated Field) */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[11px] font-bold text-slate-700">
+                              Jam Cetak Otomatis (Tiket Antrean)
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const auto = computeAutoPrintTime(currentHfis) || '06.00 WIB';
+                                handleUpdateItem(index, 'jamCetakBaru', auto);
+                              }}
+                              className="text-[10px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                              title="Reset waktu cetak ke rumus otomatis (HFIS - 1 jam)"
+                            >
+                              Reset Auto (HFIS - 1 Jam)
+                            </button>
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={item.jamCetakBaru || computedCetak}
+                              onChange={(e) => handleUpdateItem(index, 'jamCetakBaru', e.target.value)}
+                              placeholder="Contoh: 13.00 WIB"
+                              className="w-full px-3 py-1.5 text-xs font-bold bg-amber-50/90 border border-amber-300 rounded-lg text-amber-950 focus:ring-2 focus:ring-amber-500 outline-none"
+                            />
+                          </div>
+                          <p className="text-[10.5px] text-blue-800/90 mt-1 leading-snug bg-white/80 p-2 rounded-lg border border-blue-200/60 flex items-start gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                            <span>
+                              <strong>Kalkulasi Otomatis:</strong> 1 jam sebelum HFIS ({hfisStart} $\rightarrow$ {item.jamCetakBaru || computedCetak}). Waktu cetak tiket mulai tayang di banner pengumuman & kartu dokter.
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -2427,8 +2674,8 @@ export const BookPatientModal: React.FC<BookPatientModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+      <div className="relative z-[100000] bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 my-auto">
         <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
           <div>
             <h3 className="font-bold text-lg text-slate-900">Reservasi Antrean Poliklinik</h3>
@@ -2533,8 +2780,8 @@ export const EmergencyModal: React.FC<EmergencyModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-200">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+      <div className="relative z-[100000] bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-200 my-auto">
         <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-red-100 text-red-700 rounded-xl animate-pulse">

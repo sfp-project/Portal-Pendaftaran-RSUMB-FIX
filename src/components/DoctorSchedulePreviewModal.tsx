@@ -215,12 +215,12 @@ export const DoctorSchedulePreviewModal: React.FC<DoctorSchedulePreviewModalProp
       {/* 1. INTERACTIVE SCREEN MODAL (Visible on Screen, Hidden during window.print)*/}
       {/* ========================================================================= */}
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto no-print animate-in fade-in duration-150"
+        className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden no-print animate-in fade-in duration-150"
         role="dialog"
         aria-modal="true"
         aria-labelledby="preview-doctor-title"
       >
-        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col my-auto transition-all animate-in zoom-in-95 duration-150">
+        <div className="relative z-[100000] bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[85vh] my-auto flex flex-col overflow-hidden transition-all animate-in zoom-in-95 duration-150">
           {/* MODAL HEADER */}
           <div className="px-5 py-4 bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white border-b border-emerald-800/60 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -287,7 +287,7 @@ export const DoctorSchedulePreviewModal: React.FC<DoctorSchedulePreviewModalProp
           </div>
 
           {/* MODAL BODY */}
-          <div className="p-5 sm:p-6 space-y-5 overflow-y-auto max-h-[75vh]">
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 max-h-[calc(85vh-130px)]">
             {/* DOCTOR INFO SUMMARY CARD */}
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80 shadow-2xs">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -117,8 +117,8 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+      <div className="relative z-[100000] bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] my-auto">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-2.5 text-slate-800 font-bold text-base">
@@ -141,7 +141,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         </div>
 
         {/* Modal Body / Thermal Slip Preview */}
-        <div className="p-6 overflow-y-auto bg-slate-100/70 flex justify-center">
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-100/70 flex justify-center max-h-[calc(85vh-130px)]">
           {/* Thermal Paper Simulation Container */}
           <div
             id="thermal-print-area"

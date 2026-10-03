@@ -1560,8 +1560,8 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
 
       {/* MODAL 1: Upload Jadwal Dinas Bulanan */}
       {isUploadModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-lg w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-[#005d42] flex items-center justify-center">
@@ -1635,8 +1635,8 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
 
       {/* MODAL 2: Rincian Harian Staf */}
       {selectedStaffForDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
               <div>
                 <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
@@ -1754,8 +1754,8 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
 
       {/* MODAL 3: Tambah / Edit Pegawai */}
       {isAddStaffModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-md w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
               <h3 className="font-bold text-slate-900 text-base">
                 {editingStaffId ? 'Edit Nama Pegawai' : 'Tambah Pegawai Baru'}
@@ -1829,8 +1829,8 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
 
       {/* MODAL 5: Konfirmasi Hapus Pegawai */}
       {staffToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-rose-100 overflow-hidden">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-md w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-rose-100 overflow-hidden">
             <div className="p-6">
               <div className="flex items-center gap-3.5 mb-4">
                 <div className="w-11 h-11 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
@@ -1873,8 +1873,8 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
 
       {/* MODAL 6: Konfirmasi Reset ke Data Contoh RSUMB */}
       {isResetConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-amber-100 overflow-hidden">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-md w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-amber-100 overflow-hidden">
             <div className="p-6">
               <div className="flex items-center gap-3.5 mb-4">
                 <div className="w-11 h-11 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
@@ -1913,8 +1913,8 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
 
       {/* MODAL 8: Konfirmasi Hapus Arsip Rekapitulasi */}
       {archiveToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-rose-100 overflow-hidden">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-md w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-rose-100 overflow-hidden">
             <div className="p-6">
               <div className="flex items-center gap-3.5 mb-4">
                 <div className="w-11 h-11 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">

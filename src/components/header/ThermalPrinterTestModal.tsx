@@ -96,31 +96,13 @@ BARCODE CODE128: ||| | |||| || |||| ||| |
   };
 
   return (
-    <div
-      className="fixed inset-0 flex items-center justify-center p-3 sm:p-4 z-[99999] bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 99999,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)'
-      }}
-    >
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden animate-in fade-in duration-150">
       {/* Click outside backdrop */}
       <div className="fixed inset-0" onClick={onClose} />
 
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl border border-slate-200/80 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 z-10 my-auto"
-        style={{
-          maxHeight: '85vh',
-          overflowY: 'auto',
-          margin: 'auto'
-        }}
-      >
+      <div className="relative w-full max-w-lg max-h-[85vh] my-auto flex flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200 z-10">
         {/* Header Modal */}
-        <div className="bg-gradient-to-r from-emerald-800 to-[#005d42] text-white p-4 flex items-center justify-between shrink-0">
+        <div className="sticky top-0 z-10 shrink-0 bg-gradient-to-r from-emerald-800 to-[#005d42] text-white p-4 flex items-center justify-between border-b shadow-md">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
               <Printer className="w-5 h-5 text-emerald-200" />
@@ -144,7 +126,7 @@ BARCODE CODE128: ||| | |||| || |||| ||| |
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 max-h-[calc(85vh-130px)]">
           {/* Quick info banner */}
           <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200/80 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -242,7 +224,7 @@ BARCODE CODE128: ||| | |||| || |||| ||| |
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+        <div className="sticky bottom-0 z-10 shrink-0 bg-slate-50 border-t p-4 flex flex-col sm:flex-row items-center justify-between gap-2.5 w-full">
           <button
             type="button"
             onClick={handleCopyRaw}

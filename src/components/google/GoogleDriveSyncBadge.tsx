@@ -1,63 +1,62 @@
 import React, { useState, useEffect } from 'react';
 import {
-  RefreshCw
+  RefreshCw,
+  Cloud,
+  CloudOff,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
-import {
-  googleSignIn,
-  addAuthListener,
-  isGoogleDriveConnected,
-  getCachedUser
-} from '../../services/googleAuthService';
 import {
   getDualSyncState,
   addSyncStateListener,
-  pushLocalDataToDrive,
-  pullDataFromDrive,
+  pushDatabaseToSheets,
   DualSyncState
 } from '../../services/dualSyncStorage';
+import { isGasConnected } from '../../services/googleSheetsGasService';
 
 interface GoogleDriveSyncBadgeProps {
   onOpenSettings?: () => void;
   showToast?: (msg: string, type?: 'success' | 'info' | 'error') => void;
 }
 
-// Official Google Drive logo icon
-export const GoogleDriveLogo: React.FC<{ className?: string }> = ({ className = "w-4 h-4 shrink-0" }) => (
-  <svg className={className} viewBox="0 0 87.3 78" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" fill="#0066DA"/>
-    <path d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44C.4 49.9 0 51.45 0 53h27.5l16.15-28z" fill="#00AC47"/>
-    <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.9 10.2 7.85 13.6z" fill="#EA4335"/>
-    <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2L43.65 25z" fill="#00832D"/>
-    <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.45 1.2h50.9c1.55 0 3.1-.4 4.45-1.2L59.8 53z" fill="#2684FC"/>
-    <path d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 59.8 53h27.5c0-1.55-.4-3.1-1.2-4.5l-12.7-22z" fill="#FFBA00"/>
+// Official Google Sheets Logo Icon
+export const GoogleSheetsLogo: React.FC<{ className?: string }> = ({ className = "w-4 h-4 shrink-0" }) => (
+  <svg className={className} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M37 6H19L7 18V42C7 43.1 7.9 44 9 44H37C38.1 44 39 43.1 39 42V8C39 6.9 38.1 6 37 6Z" fill="#0F9D58"/>
+    <path d="M19 6L7 18H19V6Z" fill="#87CEAC"/>
+    <path d="M14 26H34V29H14V26Z" fill="white"/>
+    <path d="M14 32H34V35H14V32Z" fill="white"/>
+    <path d="M22 23V38H25V23H22Z" fill="#0F9D58"/>
   </svg>
 );
+
+export const GoogleDriveLogo = GoogleSheetsLogo;
 
 export const GoogleDriveSyncBadge: React.FC<GoogleDriveSyncBadgeProps> = ({
   showToast
 }) => {
   const [syncState, setSyncState] = useState<DualSyncState>(() => getDualSyncState());
-  const [, setCurrentUser] = useState(() => getCachedUser());
   const [isSyncingAction, setIsSyncingAction] = useState(false);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Subscribe to auth & sync state changes
+  // Subscribe to sync state changes & URL changes
   useEffect(() => {
-    const unsubAuth = addAuthListener((user) => {
-      setCurrentUser(user);
-    });
-
     const unsubSync = addSyncStateListener((state) => {
       setSyncState(state);
     });
 
+    const handleUrlChanged = () => {
+      setSyncState(getDualSyncState());
+    };
+
+    window.addEventListener('rsumb_gas_url_changed', handleUrlChanged);
+
     return () => {
-      unsubAuth();
       unsubSync();
+      window.removeEventListener('rsumb_gas_url_changed', handleUrlChanged);
     };
   }, []);
 
-  const isConnected = isGoogleDriveConnected();
+  const isConnected = isGasConnected();
   const isSyncing = syncState.status === 'syncing' || isSyncingAction;
   const isError = syncState.status === 'error';
 
@@ -80,34 +79,32 @@ export const GoogleDriveSyncBadge: React.FC<GoogleDriveSyncBadgeProps> = ({
 
   // Tooltip text
   const tooltipText = isSyncing
-    ? 'Sinkronisasi data Google Drive sedang berlangsung...'
-    : isConnected
-    ? `Drive: Tersinkron (Terakhir disinkronkan: ${formattedTimeOnly || 'Baru saja'}) • Klik untuk sinkronkan manual`
-    : 'Drive: Belum terhubung / Offline • Klik untuk hubungkan akun Google';
+    ? 'Sedang menyinkronkan data ke Google Sheets...'
+    : isConnected && !isError
+    ? `Google Sheets: 🟢 Terhubung & Tersinkron (Terakhir: ${formattedTimeOnly || 'Baru saja'}) • Klik untuk sync manual`
+    : 'Google Sheets: 🔴 Offline / Belum Terhubung • Klik untuk menghubungkan URL Web App';
 
-  // Clicking badge in navbar directly triggers manual sync (no large modal)
+  // Handling badge click
   const handleBadgeClick = async () => {
-    if (!isGoogleDriveConnected()) {
-      setIsAuthenticating(true);
-      try {
-        const user = await googleSignIn();
-        if (user) {
-          showToast?.('Google Drive terhubung! Memulai sinkronisasi cloud...', 'success');
-          await pullDataFromDrive(true);
-        }
-      } catch (err: any) {
-        showToast?.(`Gagal login Google: ${err?.message || 'Akses ditolak'}`, 'error');
-      } finally {
-        setIsAuthenticating(false);
-      }
+    if (!isGasConnected()) {
+      window.dispatchEvent(
+        new CustomEvent('rsumb_drive_not_connected_prompt', {
+          detail: { action: 'configure_gas' }
+        })
+      );
       return;
     }
 
     setIsSyncingAction(true);
     try {
-      const res = await pushLocalDataToDrive(false);
+      const res = await pushDatabaseToSheets(false);
       if (res.success) {
-        showToast?.('Data portal berhasil disinkronkan ke Google Drive (rsumb_database.json).', 'success');
+        showToast?.('Data portal berhasil disinkronkan ke Google Sheets!', 'success');
+        setSyncState(prev => ({
+          ...prev,
+          status: 'synced',
+          lastError: null
+        }));
       }
     } catch (err: any) {
       showToast?.(`Gagal menyinkronkan: ${err?.message}`, 'error');
@@ -116,67 +113,83 @@ export const GoogleDriveSyncBadge: React.FC<GoogleDriveSyncBadgeProps> = ({
     }
   };
 
+  // Dinamika UI: Hijau (Sukses), Kuning (Syncing), Merah (Error/Offline)
+  const getBadgeStyle = () => {
+    if (isSyncing) {
+      return 'bg-amber-50 hover:bg-amber-100 text-amber-950 border-amber-300 shadow-amber-500/10';
+    }
+    if (!isConnected || isError) {
+      return 'bg-rose-50 hover:bg-rose-100 text-rose-950 border-rose-300 shadow-rose-500/10';
+    }
+    return 'bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border-emerald-300 shadow-emerald-500/10';
+  };
+
   return (
     <button
       type="button"
       onClick={handleBadgeClick}
-      disabled={isSyncing || isAuthenticating}
-      className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-2xl text-xs font-semibold border transition-all cursor-pointer shadow-2xs group shrink-0 ${
-        isSyncing
-          ? 'bg-amber-50 hover:bg-amber-100/90 text-amber-900 border-amber-300'
-          : !isConnected || isError
-          ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200 hover:border-rose-300'
-          : 'bg-emerald-50/90 hover:bg-emerald-100/90 text-[#005d42] border-emerald-300/80 hover:border-emerald-400'
-      }`}
+      disabled={isSyncing}
+      className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer shadow-xs group shrink-0 ${getBadgeStyle()}`}
       title={tooltipText}
-      aria-label="Status Sinkronisasi Google Drive"
+      aria-label="Status Sinkronisasi Google Sheets"
     >
-      {/* Google Drive Logo */}
-      <GoogleDriveLogo className="w-4 h-4 group-hover:scale-105 transition-transform" />
+      {/* Dynamic Cloud Icon */}
+      {isSyncing ? (
+        <div className="relative flex items-center justify-center">
+          <Cloud className="w-4 h-4 text-amber-600 animate-pulse shrink-0" />
+          <RefreshCw className="w-2.5 h-2.5 text-amber-800 animate-spin absolute" />
+        </div>
+      ) : !isConnected || isError ? (
+        <CloudOff className="w-4 h-4 text-rose-600 group-hover:scale-110 transition-transform shrink-0" />
+      ) : (
+        <Cloud className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
+      )}
 
-      {/* Real-time Indicator Dot / Icon */}
+      {/* Label & Status Dot */}
       <div className="flex items-center gap-1.5 min-w-0">
         {isSyncing ? (
           <>
-            <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin shrink-0" />
-            <span className="hidden md:inline font-bold text-[11px] text-amber-900 truncate">
-              Menyinkronkan...
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
             </span>
-            <span className="inline md:hidden font-bold text-[11px] text-amber-900">
-              Sync...
+            <span className="hidden sm:inline font-bold text-[11px] truncate">
+              🟡 Syncing...
+            </span>
+            <span className="inline sm:hidden font-bold text-[11px]">
+              🟡 Sync
             </span>
           </>
         ) : !isConnected || isError ? (
           <>
             <span className="relative flex h-2 w-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
             </span>
-            <span className="hidden md:inline font-bold text-[11px] text-rose-800 truncate">
-              {!isConnected ? 'Drive: Offline' : 'Drive: Gagal'}
+            <span className="hidden sm:inline font-bold text-[11px] truncate">
+              🔴 Offline (Sheets)
             </span>
-            <span className="inline md:hidden font-bold text-[11px] text-rose-800">
-              Offline
+            <span className="inline sm:hidden font-bold text-[11px]">
+              🔴 Offline
             </span>
           </>
         ) : (
           <>
             <span className="relative flex h-2 w-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600" />
+              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
             </span>
-            <span className="hidden lg:inline font-bold text-[11px] text-[#005d42] truncate">
-              Drive: Tersinkron
+            <span className="hidden sm:inline font-bold text-[11px] truncate">
+              🟢 Sheets Sukses
             </span>
-            <span className="inline lg:hidden font-bold text-[11px] text-[#005d42]">
-              Tersinkron
+            <span className="inline sm:hidden font-bold text-[11px]">
+              🟢 Terhubung
             </span>
           </>
         )}
 
-        {/* Small subtitle timestamp on wider screens */}
-        {formattedTimeOnly && isConnected && !isSyncing && (
-          <span className="text-[10px] text-emerald-700/80 font-mono hidden xl:inline">
+        {/* Timestamp */}
+        {formattedTimeOnly && isConnected && !isSyncing && !isError && (
+          <span className="text-[10px] text-emerald-800 font-mono hidden xl:inline">
             ({formattedTimeOnly})
           </span>
         )}

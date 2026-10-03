@@ -170,7 +170,7 @@ const DoctorLeavePosterModalContent: React.FC<DoctorLeavePosterModalContentProps
   // Dynamic values combining original and overrides
   const displayLeaveDate = customLeaveDate || currentItem.tglLibur || 'Sesuai Pengumuman';
   const displayReturnDate = customReturnDate || currentItem.tglMasuk || 'Sesuai Jadwal';
-  const displayPracticeHour = customPracticeHour || defaultPracticeTime;
+  const displayPracticeHour = customPracticeHour || currentItem.jamPraktikBaru || defaultPracticeTime;
   const displayDoctorSpecialty = useMemo(() => {
     return getDoctorFullSpecialty(leave.poli, leave.dpjp);
   }, [leave.poli, leave.dpjp]);
@@ -731,11 +731,19 @@ const DoctorLeavePosterModalContent: React.FC<DoctorLeavePosterModalContentProps
 
                       <div className="mt-1">
                         <span className="text-lg sm:text-xl font-black text-[#0A2540] block">
-                          Praktik Kembali: {displayReturnDate}
+                          {currentItem.tipe === 'MAJU' ? 'Jadwal Maju: ' : 'Praktik Kembali: '}
+                          {displayReturnDate}
                         </span>
-                        <div className="inline-flex items-center gap-1.5 mt-1.5 px-3 py-1 rounded-full bg-white border border-emerald-300 text-emerald-900 text-xs font-bold shadow-2xs">
-                          <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>{displayPracticeHour}</span>
+                        <div className="flex flex-wrap items-center justify-center gap-2 mt-1.5">
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-emerald-300 text-emerald-900 text-xs font-bold shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{displayPracticeHour}</span>
+                          </div>
+                          {currentItem.tipe === 'MAJU' && currentItem.jamCetakBaru && (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100/90 border border-amber-300 text-amber-950 text-xs font-bold shadow-2xs">
+                              <span>🎫 Cetak Tiket Mulai: {currentItem.jamCetakBaru.replace(/^cetak\s*/i, '')}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

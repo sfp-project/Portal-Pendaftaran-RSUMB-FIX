@@ -50,6 +50,9 @@ export const AsuransiSwastaModal: React.FC<AsuransiSwastaModalProps> = ({
   const [catatanHandover, setCatatanHandover] = useState(
     initialData?.catatanHandover || ''
   );
+  const [isResolved, setIsResolved] = useState(
+    initialData ? Boolean(initialData.isResolved) : false
+  );
 
   if (!isOpen) return null;
 
@@ -67,6 +70,7 @@ export const AsuransiSwastaModal: React.FC<AsuransiSwastaModalProps> = ({
       namaAsuransi: namaAsuransi.trim(),
       statusKlaim,
       catatanHandover: catatanHandover.trim(),
+      isResolved,
       createdAt: initialData?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -181,6 +185,26 @@ export const AsuransiSwastaModal: React.FC<AsuransiSwastaModalProps> = ({
               placeholder="Contoh: Pasien rawat inap rencana tindakan bedah laparoskopi. Dokumen medis awal sudah dikirim via portal. Harap follow up GL final jam 14.00..."
               className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:bg-white focus:outline-none text-slate-800"
             />
+          </div>
+          {/* Status Follow-Up Checkbox */}
+          <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-emerald-950 block">
+                Status Follow-Up: {isResolved ? '✅ Selesai / Aman' : '⏳ Belum Selesai (Pending)'}
+              </span>
+              <span className="text-[11px] text-emerald-800">
+                Tandai selesai apabila Guarantee Letter (GL) / klaim asuransi telah terbit & aman.
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isResolved}
+                onChange={(e) => setIsResolved(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
           </div>
         </form>
 

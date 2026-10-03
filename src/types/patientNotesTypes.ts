@@ -1,6 +1,6 @@
 // Tipe Data untuk Modul Catatan Khusus Pasien
 
-export type PatientNotesTab = 'kll' | 'bpjs_kendala' | 'asuransi_swasta' | 'umum_beresiko' | 'handover_shift';
+export type PatientNotesTab = 'kll' | 'bpjs_kendala' | 'asuransi_swasta' | 'umum_beresiko' | 'handover_shift' | 'belum_cetak_sep';
 
 // TAB 5: Handover Shift Admisi
 export type ShiftAdmisi = 'Pagi' | 'Siang' | 'Malam';
@@ -42,6 +42,7 @@ export interface PatientKllRecord {
   lpFileType?: 'pdf' | 'image';
   isInsidenActive: boolean; // Centang Insiden
   catatan: string; // e.g. 'JR (KONFIRMASI PAK...)'
+  isResolved?: boolean; // Status follow-up: true = Selesai/Aman, false = Belum Selesai/Pending
   createdAt: string;
   updatedAt?: string;
 }
@@ -87,6 +88,7 @@ export interface PatientAsuransiSwastaRecord {
   namaAsuransi: string; // e.g. Prudential, Allianz, Mandiri Inhealth, Admedika, AIA
   statusKlaim: StatusKlaimAsuransi | string;
   catatanHandover: string;
+  isResolved?: boolean; // Status follow-up: true = Selesai/Aman, false = Belum Selesai/Pending
   createdAt: string;
   updatedAt?: string;
 }
@@ -112,6 +114,7 @@ export interface PatientUmumBeresikoRecord {
   kronologiMasalah: string;
   potensiMasalah: string[]; // multi-select of PotensiMasalahUmum
   tindakLanjut: string;
+  isResolved?: boolean; // Status follow-up: true = Selesai/Aman, false = Belum Selesai/Pending
   createdAt: string;
   updatedAt?: string;
 }

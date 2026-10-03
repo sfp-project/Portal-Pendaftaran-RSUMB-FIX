@@ -1,10 +1,10 @@
 import {
-  syncDatabaseToGoogleDrive,
-  fetchDatabaseFromGoogleDrive,
-  saveBackupToGoogleDrive,
-  deleteDriveFile
-} from './googleDriveService';
-import { isGoogleDriveConnected, getCachedUser } from './googleAuthService';
+  isGasConnected,
+  getGasWebAppUrl,
+  syncDatabaseToGas,
+  fetchDatabaseFromGas
+} from './googleSheetsGasService';
+import { loadActiveStaff } from '../data/headerData';
 
 export type SyncStatusType = 'idle' | 'syncing' | 'synced' | 'error';
 
@@ -13,10 +13,12 @@ export interface DualSyncState {
   lastSyncTime: string | null;
   lastError: string | null;
   syncedBy: string | null;
-  isDriveConnected: boolean;
+  isDriveConnected: boolean; // True jika Google Sheets GAS Web App terpasang
+  isGasConnected: boolean;
+  gasUrl: string;
 }
 
-// Monitored keys to compile into rsumb_database.json
+// Monitored keys to compile into database snapshot
 export const MONITORED_STORAGE_KEYS = [
   'rsumb_portal_settings',
   'rsumb_settings_v2',
@@ -47,18 +49,25 @@ export const MONITORED_STORAGE_KEYS = [
 
 let syncState: DualSyncState = {
   status: 'idle',
-  lastSyncTime: localStorage.getItem('rsumb_last_drive_sync') || null,
+  lastSyncTime: localStorage.getItem('rsumb_gas_last_sync_time') || localStorage.getItem('rsumb_last_drive_sync') || null,
   lastError: null,
   syncedBy: null,
-  isDriveConnected: false
+  isDriveConnected: isGasConnected(),
+  isGasConnected: isGasConnected(),
+  gasUrl: getGasWebAppUrl()
 };
 
 const listeners = new Set<(state: DualSyncState) => void>();
 
-export const getDualSyncState = (): DualSyncState => ({
-  ...syncState,
-  isDriveConnected: isGoogleDriveConnected()
-});
+export const getDualSyncState = (): DualSyncState => {
+  const gasOk = isGasConnected();
+  return {
+    ...syncState,
+    isDriveConnected: gasOk,
+    isGasConnected: gasOk,
+    gasUrl: getGasWebAppUrl()
+  };
+};
 
 export const addSyncStateListener = (cb: (state: DualSyncState) => void): (() => void) => {
   listeners.add(cb);
@@ -69,13 +78,17 @@ export const addSyncStateListener = (cb: (state: DualSyncState) => void): (() =>
 };
 
 const updateSyncState = (partial: Partial<DualSyncState>) => {
+  const gasOk = isGasConnected();
   syncState = {
     ...syncState,
     ...partial,
-    isDriveConnected: isGoogleDriveConnected()
+    isDriveConnected: gasOk,
+    isGasConnected: gasOk,
+    gasUrl: getGasWebAppUrl()
   };
   if (partial.lastSyncTime) {
     try {
+      localStorage.setItem('rsumb_gas_last_sync_time', partial.lastSyncTime);
       localStorage.setItem('rsumb_last_drive_sync', partial.lastSyncTime);
     } catch {
       // ignore
@@ -133,7 +146,7 @@ export const collectLocalDatabaseSnapshot = (): Record<string, any> => {
 };
 
 /**
- * Menyimpan snapshot dari Google Drive ke dalam LocalStorage
+ * Menyimpan snapshot dari Google Sheets ke dalam LocalStorage
  */
 export const applyDatabaseSnapshotToLocalStorage = (snapshot: Record<string, any>): void => {
   if (!snapshot || typeof snapshot !== 'object') return;
@@ -161,10 +174,10 @@ export const applyDatabaseSnapshotToLocalStorage = (snapshot: Record<string, any
 let debounceTimer: any = null;
 
 /**
- * Picu sinkronisasi data lokal ke Google Drive secara silent di latar belakang
+ * Picu sinkronisasi data lokal ke Google Sheets secara silent di latar belakang
  */
 export const triggerSilentDriveSync = (delayMs: number = 2500) => {
-  if (!isGoogleDriveConnected()) {
+  if (!isGasConnected()) {
     return;
   }
 
@@ -174,7 +187,7 @@ export const triggerSilentDriveSync = (delayMs: number = 2500) => {
 
   debounceTimer = setTimeout(() => {
     pushLocalDataToDrive(true).catch((err) => {
-      console.warn('Silent Google Drive auto-sync notice:', err);
+      console.warn('Silent Google Sheets auto-sync notice:', err);
     });
   }, delayMs);
 };
@@ -195,14 +208,12 @@ export interface PullSyncResult {
 }
 
 /**
- * Push data lokal ke Google Drive (/RSUMB_Portal_Data/rsumb_database.json)
- * Jika Google Drive belum terhubung, fallback dengan aman ke LocalStorage tanpa memblokir sistem.
+ * Push data lokal ke Google Sheets Database (via GAS Web App)
  */
 export const pushLocalDataToDrive = async (
   isSilent: boolean = false
 ): Promise<PushSyncResult> => {
-  if (!isGoogleDriveConnected()) {
-    // Verifikasi data lokal di LocalStorage tetap utuh
+  if (!isGasConnected()) {
     const snapshot = collectLocalDatabaseSnapshot();
     const count = Object.keys(snapshot).length;
 
@@ -212,7 +223,6 @@ export const pushLocalDataToDrive = async (
     });
 
     if (!isSilent) {
-      // Picu prompt halus untuk menawarkan login ke Google Drive
       window.dispatchEvent(
         new CustomEvent('rsumb_drive_not_connected_prompt', {
           detail: { totalKeys: count, action: 'push' }
@@ -222,7 +232,7 @@ export const pushLocalDataToDrive = async (
         success: false,
         offlineFallback: true,
         lastUpdated: syncState.lastSyncTime || '',
-        message: 'Data tersimpan aman di LocalStorage (Mode Offline). Hubungkan Google Drive untuk mengaktifkan sinkronisasi cloud.'
+        message: 'Data tersimpan aman di LocalStorage (Mode Lokal). Hubungkan URL Google Sheets Web App untuk pencadangan otomatis.'
       };
     }
 
@@ -233,12 +243,19 @@ export const pushLocalDataToDrive = async (
     updateSyncState({ status: 'syncing', lastError: null });
 
     const snapshot = collectLocalDatabaseSnapshot();
-    const user = getCachedUser();
-    const staffName = user?.displayName || user?.email || 'Admin Pendaftaran RSUMB';
+    let staffName = 'Admin Pendaftaran RSUMB';
+    try {
+      const active = loadActiveStaff();
+      if (active?.name) staffName = active.name;
+    } catch {}
 
-    await syncDatabaseToGoogleDrive(snapshot, staffName);
+    const result = await syncDatabaseToGas(snapshot, staffName);
 
-    const nowIso = new Date().toISOString();
+    if (!result.success) {
+      throw new Error(result.message);
+    }
+
+    const nowIso = result.timestamp || new Date().toISOString();
     updateSyncState({
       status: 'synced',
       lastSyncTime: nowIso,
@@ -246,12 +263,12 @@ export const pushLocalDataToDrive = async (
       lastError: null
     });
 
-    return { success: true, lastUpdated: nowIso };
+    return { success: true, lastUpdated: nowIso, message: result.message };
   } catch (err: any) {
-    console.error('Failed pushing data to Google Drive:', err);
-    const msg = err?.message || 'Gagal menyinkronkan data ke Google Drive.';
+    const msg = err?.message || 'Gagal menyinkronkan data ke Google Sheets.';
+    console.warn('Notice pushing data to Google Sheets:', err);
     updateSyncState({
-      status: 'error',
+      status: 'idle',
       lastError: msg
     });
     if (!isSilent) throw err;
@@ -260,10 +277,10 @@ export const pushLocalDataToDrive = async (
 };
 
 /**
- * Tarik data dari Google Drive (/RSUMB_Portal_Data/rsumb_database.json) dan pulihkan ke LocalStorage
+ * Tarik data dari Google Sheets dan pulihkan ke LocalStorage
  */
 export const pullDataFromDrive = async (isSilent: boolean = false): Promise<PullSyncResult> => {
-  if (!isGoogleDriveConnected()) {
+  if (!isGasConnected()) {
     if (!isSilent) {
       window.dispatchEvent(
         new CustomEvent('rsumb_drive_not_connected_prompt', {
@@ -276,44 +293,53 @@ export const pullDataFromDrive = async (isSilent: boolean = false): Promise<Pull
       restoredKeys: 0,
       lastUpdated: '',
       offlineFallback: true,
-      message: 'Google Drive belum terhubung. Mode offline aktif.'
+      message: 'Google Sheets belum terhubung. Mode lokal aktif.'
     };
   }
 
   try {
     updateSyncState({ status: 'syncing', lastError: null });
 
-    const driveRecord = await fetchDatabaseFromGoogleDrive();
+    const res = await fetchDatabaseFromGas();
 
-    if (!driveRecord || !driveRecord.data) {
+    if (!res.success || !res.database) {
+      throw new Error(res.message || 'Data tidak ditemukan di Google Sheets.');
+    }
+
+    const count = Object.keys(res.database).length;
+    if (count === 0) {
+      // If sheet empty, initialize it by pushing current snapshot
+      const pushRes = await pushLocalDataToDrive(true);
+      const nowIso = pushRes.lastUpdated || new Date().toISOString();
       updateSyncState({
         status: 'synced',
+        lastSyncTime: nowIso,
         lastError: null
       });
       return {
         success: true,
         restoredKeys: 0,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: nowIso,
+        message: 'Spreadsheet baru telah diinisialisasi dengan data portal RSUMB saat ini.'
       };
     }
 
-    applyDatabaseSnapshotToLocalStorage(driveRecord.data);
+    applyDatabaseSnapshotToLocalStorage(res.database);
 
-    const count = Object.keys(driveRecord.data).length;
+    const nowIso = new Date().toISOString();
     updateSyncState({
       status: 'synced',
-      lastSyncTime: driveRecord.lastUpdated,
-      syncedBy: driveRecord.syncedBy,
+      lastSyncTime: nowIso,
+      syncedBy: 'Google Sheets Web App',
       lastError: null
     });
 
-    // Notify all app components that cloud data has been pulled and local storage updated
     window.dispatchEvent(
       new CustomEvent('rsumb_database_synced', {
         detail: {
           restoredKeys: count,
-          lastUpdated: driveRecord.lastUpdated,
-          source: 'drive'
+          lastUpdated: nowIso,
+          source: 'sheets'
         }
       })
     );
@@ -321,111 +347,42 @@ export const pullDataFromDrive = async (isSilent: boolean = false): Promise<Pull
     return {
       success: true,
       restoredKeys: count,
-      lastUpdated: driveRecord.lastUpdated
+      lastUpdated: nowIso,
+      message: `Berhasil memulihkan ${count} tabel data dari Google Sheets.`
     };
   } catch (err: any) {
-    console.error('Failed pulling data from Google Drive:', err);
-    const msg = err?.message || 'Gagal memulihkan database dari Google Drive.';
+    const msg = err?.message || 'Gagal memulihkan database dari Google Sheets.';
+    console.warn('Notice pulling data from Google Sheets:', err);
     updateSyncState({
-      status: 'error',
+      status: 'idle',
       lastError: msg
     });
     if (!isSilent) throw err;
     return {
       success: false,
       restoredKeys: 0,
-      lastUpdated: '',
+      lastUpdated: syncState.lastSyncTime || '',
       message: msg
     };
   }
 };
 
 /**
- * Buat Snapshot Backup manual ke folder /RSUMB_Portal_Backups/
+ * Alias eksplisit sesuai konvensi Google Sheets Web App
  */
-export const createDriveBackupSnapshot = async (): Promise<{
-  fileId: string;
-  fileName: string;
-  webViewLink?: string;
-}> => {
-  if (!isGoogleDriveConnected()) {
-    window.dispatchEvent(
-      new CustomEvent('rsumb_drive_not_connected_prompt', {
-        detail: { action: 'backup' }
-      })
-    );
-    throw new Error('Google Drive belum terhubung. Silakan hubungkan Google Drive terlebih dahulu.');
-  }
+export const pushDatabaseToSheets = pushLocalDataToDrive;
+export const pullDatabaseFromSheets = pullDataFromDrive;
 
-  const snapshot = collectLocalDatabaseSnapshot();
-  const user = getCachedUser();
-  const staffName = user?.displayName || user?.email || 'Admin Pendaftaran RSUMB';
-
-  return await saveBackupToGoogleDrive(snapshot, staffName);
+/**
+ * Cadangan Snapshot
+ */
+export const createDriveBackupSnapshot = async (
+  tag: string = 'Manual'
+): Promise<{ success: boolean; message: string; timestamp?: string }> => {
+  const res = await pushLocalDataToDrive(false);
+  return {
+    success: res.success,
+    message: res.message || 'Snapshot database berhasil disimpan ke Google Sheets.',
+    timestamp: res.lastUpdated
+  };
 };
-
-// Global listener to detect storage events and trigger auto-sync
-if (typeof window !== 'undefined') {
-  window.addEventListener('rsumb_kupon_saved', () => triggerSilentDriveSync(2000));
-  window.addEventListener('rsumb_settings_saved', () => triggerSilentDriveSync(1500));
-  window.addEventListener('rsumb_posters_saved', () => triggerSilentDriveSync(2000));
-  window.addEventListener('rsumb_documents_saved', () => triggerSilentDriveSync(2000));
-  window.addEventListener('rsumb_staff_handover_saved', () => triggerSilentDriveSync(1500));
-  window.addEventListener('rsumb_patient_notes_saved', () => triggerSilentDriveSync(2000));
-  window.addEventListener('rsumb_khitan_saved', () => triggerSilentDriveSync(2000));
-  window.addEventListener('rsumb_jr_saved', () => triggerSilentDriveSync(2000));
-  window.addEventListener('rsumb_surgery_saved', () => triggerSilentDriveSync(2000));
-  window.addEventListener('rsumb_schedules_saved', () => triggerSilentDriveSync(2000));
-  window.addEventListener('rsumb_database_updated', () => triggerSilentDriveSync(1500));
-
-  // Resume background auto-sync and immediately pull latest cloud data once Google Drive is connected
-  window.addEventListener('rsumb_drive_connected', () => {
-    console.info('[DualSync] Google Drive connected event detected. Initiating immediate background cloud pull...');
-    setTimeout(async () => {
-      try {
-        const pullRes = await pullDataFromDrive(true);
-        if (pullRes.restoredKeys === 0) {
-          // If no cloud data existed yet, push our local snapshot
-          await pushLocalDataToDrive(true);
-        }
-      } catch (err) {
-        console.warn('Initial cloud sync notice on connect:', err);
-      }
-    }, 600);
-  });
-
-  // Background real-time sync polling every 45 seconds across staff devices
-  setInterval(async () => {
-    if (isGoogleDriveConnected() && syncState.status !== 'syncing') {
-      try {
-        const driveRecord = await fetchDatabaseFromGoogleDrive();
-        if (driveRecord && driveRecord.data && driveRecord.lastUpdated) {
-          const localLastSync = localStorage.getItem('rsumb_last_drive_sync');
-          // If drive record has a newer update than our last sync time, pull it silently
-          if (!localLastSync || new Date(driveRecord.lastUpdated).getTime() > new Date(localLastSync).getTime() + 2000) {
-            console.info('[DualSync] Mendeteksi pembaruan database Google Drive dari staf lain. Memperbarui data lokal...');
-            applyDatabaseSnapshotToLocalStorage(driveRecord.data);
-            updateSyncState({
-              status: 'synced',
-              lastSyncTime: driveRecord.lastUpdated,
-              syncedBy: driveRecord.syncedBy,
-              lastError: null
-            });
-            window.dispatchEvent(
-              new CustomEvent('rsumb_database_synced', {
-                detail: {
-                  restoredKeys: Object.keys(driveRecord.data).length,
-                  lastUpdated: driveRecord.lastUpdated,
-                  source: 'polling'
-                }
-              })
-            );
-          }
-        }
-      } catch (err) {
-        // Silent background polling check
-        console.warn('[DualSync] Background polling check notice:', err);
-      }
-    }
-  }, 45000);
-}

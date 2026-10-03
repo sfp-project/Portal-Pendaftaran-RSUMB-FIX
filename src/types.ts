@@ -34,6 +34,9 @@ export interface DoctorLeaveItem {
   tglLibur: string;
   tglMasuk: string;
   tipe: 'LIBUR' | 'MAJU' | 'CUTI' | 'SUBSTITUSI';
+  jamPraktikBaru?: string; // e.g. "07.00 - 10.00 WIB"
+  jamHfisBaru?: string; // e.g. "07.00 - 10.00 WIB"
+  jamCetakBaru?: string; // e.g. "06.00 WIB" or "cetak 06.00"
 }
 
 export interface DoctorLeaveAnnouncement {

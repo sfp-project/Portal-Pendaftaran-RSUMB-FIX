@@ -26,7 +26,7 @@ interface UploadPosterModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpload: (newPoster: PosterPromoItem) => void;
-  showToast: (msg: string) => void;
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
@@ -37,6 +37,8 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
 }) => {
   const [judul, setJudul] = useState('');
   const [kategoriPromo, setKategoriPromo] = useState<KategoriPromo>('Layanan Unggulan');
+  const [isPermanent, setIsPermanent] = useState<boolean>(true); // Default to permanent for Layanan Unggulan
+
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tanggalMulai, setTanggalMulai] = useState('');
@@ -56,6 +58,28 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
 
   // Common quick tag suggestions
   const quickTags = ['mcu', 'poli jantung', 'khitan', 'diskon', 'spesialis', 'rawat inap', 'mohat', 'bpjs'];
+
+  // Handle Category selection & Preset default selection rules:
+  // - Default selection to "Poster Layanan / Informasi Umum (Permanen)" if "Layanan Unggulan", "BPJS/MCU", or "Umum" is picked.
+  // - Auto-switch to "Poster Promo" when the user clicks "Tarif Promo".
+  const handleCategorySelect = (cat: KategoriPromo) => {
+    setKategoriPromo(cat);
+    if (cat === 'Tarif Promo') {
+      setIsPermanent(false);
+    } else {
+      setIsPermanent(true);
+      setTanggalMulai('');
+      setTanggalKadaluarsa('');
+    }
+  };
+
+  const handleJenisPosterChange = (permanent: boolean) => {
+    setIsPermanent(permanent);
+    if (permanent) {
+      setTanggalMulai('');
+      setTanggalKadaluarsa('');
+    }
+  };
 
   // Add tag
   const handleAddTag = (rawText: string) => {
@@ -106,7 +130,6 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
         const result = e.target?.result as string;
         const img = new Image();
         img.onload = () => {
-          // Scale to max 1200px width/height for fast rendering and safe LocalStorage footprint
           const maxDim = 1200;
           let width = img.width;
           let height = img.height;
@@ -182,7 +205,7 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
       return;
     }
 
-    if (tanggalMulai && tanggalKadaluarsa && tanggalMulai > tanggalKadaluarsa) {
+    if (!isPermanent && tanggalMulai && tanggalKadaluarsa && tanggalMulai > tanggalKadaluarsa) {
       setErrorMessage('Tanggal mulai promo tidak boleh melampaui tanggal kadaluarsa.');
       return;
     }
@@ -209,7 +232,6 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
 
       let driveData: { fileId?: string; viewLink?: string; downloadLink?: string } = {};
 
-      // If Google Drive sync is selected and user is authenticated
       if (syncToDrive && isGoogleDriveConnected()) {
         setDriveUploadProgress('Mengunggah ke folder Google Drive /RSUMB_Portal_Files/...');
         try {
@@ -233,8 +255,9 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
         judul: judul.trim(),
         kategoriPromo,
         tags: finalTags,
-        tanggalMulai: tanggalMulai || undefined,
-        tanggalKadaluarsa: tanggalKadaluarsa || undefined,
+        isPermanent,
+        tanggalMulai: isPermanent ? undefined : (tanggalMulai || undefined),
+        tanggalKadaluarsa: isPermanent ? undefined : (tanggalKadaluarsa || undefined),
         namaBerkas: selectedFile.name,
         formatBerkas: ext,
         ukuranBerkas: formatFileSize(selectedFile.size),
@@ -250,7 +273,7 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
 
       onUpload(newPoster);
       const driveMsg = driveData.fileId ? ' & tersimpan di Google Drive (/RSUMB_Portal_Files/)' : '';
-      showToast(`Poster promo "${newPoster.judul}" berhasil diunggah${driveMsg}.`);
+      showToast(`Poster promo "${newPoster.judul}" berhasil diunggah${driveMsg}.`, 'success');
       handleReset();
       onClose();
     } catch (err) {
@@ -265,6 +288,7 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
   const handleReset = () => {
     setJudul('');
     setKategoriPromo('Layanan Unggulan');
+    setIsPermanent(true);
     setTagInput('');
     setTags([]);
     setTanggalMulai('');
@@ -334,7 +358,7 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
               required
               value={judul}
               onChange={(e) => setJudul(e.target.value)}
-              placeholder="Contoh: Paket Medical Check Up Eksekutif 2026 atau Promo Khitan Ceria"
+              placeholder="Contoh: Paket Medical Check Up Eksekutif 2026 atau Tarif Poli Spesialis"
               className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#005d42]/30 focus:border-[#005d42]"
             />
           </div>
@@ -351,7 +375,7 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
                   <button
                     key={opt.value}
                     type="button"
-                    onClick={() => setKategoriPromo(opt.value)}
+                    onClick={() => handleCategorySelect(opt.value)}
                     className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-emerald-50 border-[#005d42] ring-2 ring-[#005d42]/20 shadow-xs'
@@ -369,42 +393,99 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
             </div>
           </div>
 
-          {/* Tanggal Berlaku / Masa Promo (Range) */}
+          {/* Jenis Poster Toggle (Permanen vs Berbatas Waktu) - Right above Kategori / below */}
           <div>
-            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-              <span>Masa Berlaku / Tanggal Promo (Opsional)</span>
-              <span className="text-[10.5px] font-normal text-slate-500 lowercase">
-                Otomatis tandai status jika telah kadaluarsa
-              </span>
+            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
+              Jenis Poster / Publikasi <span className="text-rose-500">*</span>
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="relative">
-                <span className="text-[11px] font-medium text-slate-500 mb-1 block">Tanggal Mulai:</span>
-                <div className="relative">
-                  <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="date"
-                    value={tanggalMulai}
-                    onChange={(e) => setTanggalMulai(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#005d42]/30 focus:border-[#005d42]"
-                  />
+              <button
+                type="button"
+                onClick={() => handleJenisPosterChange(true)}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                  isPermanent
+                    ? 'bg-emerald-50 border-[#005d42] ring-2 ring-[#005d42]/20 shadow-xs'
+                    : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 font-bold ${isPermanent ? 'bg-[#005d42] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  📌
                 </div>
-              </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900">Poster Layanan / Informasi Umum (Permanen)</span>
+                    {isPermanent && <Check className="w-4 h-4 text-[#005d42]" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                    Untuk tarif resmi, alur pelayanan, poli spesialis, dan informasi yang berlaku seterusnya.
+                  </p>
+                </div>
+              </button>
 
-              <div className="relative">
-                <span className="text-[11px] font-medium text-slate-500 mb-1 block">Tanggal Berakhir (Kadaluarsa):</span>
+              <button
+                type="button"
+                onClick={() => handleJenisPosterChange(false)}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                  !isPermanent
+                    ? 'bg-amber-50 border-amber-600 ring-2 ring-amber-500/20 shadow-xs'
+                    : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 font-bold ${!isPermanent ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  🏷️
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900">Poster Promo / Program Berbatas Waktu</span>
+                    {!isPermanent && <Check className="w-4 h-4 text-amber-700" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                    Untuk promo diskon, paket khusus event, atau penawaran dengan batas tanggal tertentu.
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Dynamic Input Behavior for Expiry Dates (Shown only when !isPermanent) */}
+          {!isPermanent && (
+            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3 animate-in fade-in duration-150">
+              <label className="block text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center justify-between">
+                <span>Masa Berlaku / Tanggal Promo (Opsional)</span>
+                <span className="text-[10.5px] font-normal text-amber-700 lowercase">
+                  Otomatis tandai status jika telah kadaluarsa
+                </span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="relative">
-                  <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="date"
-                    value={tanggalKadaluarsa}
-                    onChange={(e) => setTanggalKadaluarsa(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#005d42]/30 focus:border-[#005d42]"
-                  />
+                  <span className="text-[11px] font-medium text-slate-600 mb-1 block">Tanggal Mulai:</span>
+                  <div className="relative">
+                    <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="date"
+                      value={tanggalMulai}
+                      onChange={(e) => setTanggalMulai(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <span className="text-[11px] font-medium text-slate-600 mb-1 block">Tanggal Berakhir (Kadaluarsa):</span>
+                  <div className="relative">
+                    <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="date"
+                      required={!isPermanent}
+                      value={tanggalKadaluarsa}
+                      onChange={(e) => setTanggalKadaluarsa(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-600"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Kata Kunci / Tag Search */}
           <div>
@@ -464,7 +545,7 @@ export const UploadPosterModal: React.FC<UploadPosterModalProps> = ({
             </div>
           </div>
 
-          {/* File Upload Box (Drag-and-Drop or Browse File from PC with Image Preview) */}
+          {/* File Upload Box */}
           <div>
             <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
               Berkas Poster / Flyer <span className="text-rose-500">*</span>

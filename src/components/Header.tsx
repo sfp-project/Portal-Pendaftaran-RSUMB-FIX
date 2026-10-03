@@ -18,7 +18,10 @@ import {
   Clock,
   ArrowRight,
   Activity,
-  HeartHandshake
+  HeartHandshake,
+  Database,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { ActiveNavTab, DoctorSchedule, DoctorLeaveAnnouncement } from '../types';
 import { ElectiveSurgerySchedule } from '../data/surgeryData';
@@ -37,6 +40,14 @@ import { StaffHandoverModal } from './header/StaffHandoverModal';
 import { ThermalPrinterTestModal } from './header/ThermalPrinterTestModal';
 import { SwitchAccountModal } from './header/SwitchAccountModal';
 import { GoogleDriveSyncBadge } from './google/GoogleDriveSyncBadge';
+import { CentralBackupModal } from './header/CentralBackupModal';
+import { AdminPinModal } from './admin/AdminPinModal';
+import {
+  getIsAdminUnlocked,
+  addAdminAuthListener,
+  lockAdmin
+} from '../services/adminAuthService';
+import { getEffectiveHospitalLogo, DEFAULT_HOSPITAL_LOGO } from '../data/settingsData';
 
 interface HeaderProps {
   onToggleMobileMenu: () => void;
@@ -97,7 +108,62 @@ export const Header: React.FC<HeaderProps> = ({
   const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
   const [isThermalTestModalOpen, setIsThermalTestModalOpen] = useState(false);
   const [isSwitchAccountModalOpen, setIsSwitchAccountModalOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isAdminPinModalOpen, setIsAdminPinModalOpen] = useState(false);
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(() => getIsAdminUnlocked());
+  const [pendingActionTitle, setPendingActionTitle] = useState<string>('Pengeditan Data SIMRS');
+  const pendingActionCallbackRef = useRef<(() => void) | null>(null);
   const [toastNotice, setToastNotice] = useState<string | null>(null);
+  const [hospitalLogo, setHospitalLogo] = useState<string>(() => getEffectiveHospitalLogo());
+
+  useEffect(() => {
+    const unsub = addAdminAuthListener((unlocked) => {
+      setIsAdminUnlocked(unlocked);
+    });
+
+    const handleOpenAdminPinModal = (e: CustomEvent) => {
+      if (e.detail?.actionCallback) {
+        pendingActionCallbackRef.current = e.detail.actionCallback;
+      }
+      if (e.detail?.actionTitle) {
+        setPendingActionTitle(e.detail.actionTitle);
+      } else {
+        setPendingActionTitle('Pengeditan Data SIMRS');
+      }
+      setIsAdminPinModalOpen(true);
+    };
+
+    const handleActiveStaffChanged = () => {
+      setActiveStaff(loadActiveStaff());
+    };
+
+    const handleLogoUpdated = (e: any) => {
+      if (e?.detail?.logo) {
+        setHospitalLogo(e.detail.logo);
+      } else {
+        setHospitalLogo(getEffectiveHospitalLogo());
+      }
+    };
+
+    const handleSettingsUpdated = () => {
+      setHospitalLogo(getEffectiveHospitalLogo());
+    };
+
+    window.addEventListener('rsumb_open_admin_pin_modal', handleOpenAdminPinModal as EventListener);
+    window.addEventListener('rsumb_active_staff_changed', handleActiveStaffChanged);
+    window.addEventListener('rsumb_logo_updated', handleLogoUpdated);
+    window.addEventListener('rsumb_settings_updated', handleSettingsUpdated);
+    window.addEventListener('storage', handleSettingsUpdated);
+
+    return () => {
+      unsub();
+      window.removeEventListener('rsumb_open_admin_pin_modal', handleOpenAdminPinModal as EventListener);
+      window.removeEventListener('rsumb_active_staff_changed', handleActiveStaffChanged);
+      window.removeEventListener('rsumb_logo_updated', handleLogoUpdated);
+      window.removeEventListener('rsumb_settings_updated', handleSettingsUpdated);
+      window.removeEventListener('storage', handleSettingsUpdated);
+    };
+  }, []);
 
   const showToast = (msg: string) => {
     setToastNotice(msg);
@@ -368,18 +434,28 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="bg-[#f8f9ff]/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#d8e4f5] shadow-xs px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 transition-all">
-      {/* Left side: Hamburger (Mobile) & App Title */}
-      <div className="flex items-center gap-3 shrink-0">
+    <header className="bg-[#f8f9ff]/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#d8e4f5] shadow-xs px-4 sm:px-6 h-16 flex items-center justify-between gap-4 transition-all w-full">
+      {/* Left side: Hamburger (Mobile & Tablet) & App Title */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <button
           onClick={onToggleMobileMenu}
-          className="p-2 -ml-1 text-[#005d42] hover:bg-[#e5eeff] rounded-lg md:hidden transition-colors cursor-pointer"
+          className="p-2 -ml-1 text-[#005d42] hover:bg-[#e5eeff] active:bg-[#d5e4ff] rounded-xl lg:hidden transition-colors cursor-pointer border border-[#c5d8f0]"
           aria-label="Buka Menu Navigasi"
+          title="Buka Menu Navigasi (Mobile & Tablet)"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-5 h-5 text-[#005d42]" />
         </button>
 
         <div className="flex items-center gap-2 sm:gap-2.5">
+          <img
+            src={hospitalLogo || DEFAULT_HOSPITAL_LOGO}
+            alt="Logo RSU Muhammadiyah Babat"
+            className="w-9 h-9 sm:w-10 sm:h-10 object-contain drop-shadow-sm rounded-full bg-white p-0.5 ring-2 ring-emerald-600/30 shrink-0 hover:scale-105 transition-transform"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = DEFAULT_HOSPITAL_LOGO;
+            }}
+            referrerPolicy="no-referrer"
+          />
           <h2 className="font-bold text-lg sm:text-xl lg:text-2xl text-[#005d42] tracking-tight whitespace-nowrap">
             PENDAFTARAN RSUMB
           </h2>
@@ -625,6 +701,51 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
+        {/* Indikator Status Otorisasi RBAC: Mode Baca / Mode Admin */}
+        <button
+          onClick={() => {
+            if (isAdminUnlocked) {
+              lockAdmin();
+              showToast('Mode Admin dikunci kembali. Portal dalam Mode Baca (Read-Only).');
+            } else {
+              setIsAdminPinModalOpen(true);
+            }
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-xs border shadow-xs transition-all hover:scale-102 active:scale-95 cursor-pointer ${
+            isAdminUnlocked
+              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400/80 shadow-emerald-600/20'
+              : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 border-amber-300'
+          }`}
+          title={
+            isAdminUnlocked
+              ? 'Mode Admin Terbuka (Akses Pengeditan Aktif). Klik untuk mengunci kembali.'
+              : 'Mode Baca / Terkunci (Read-Only). Klik dan masukkan PIN untuk membuka Mode Admin.'
+          }
+        >
+          {isAdminUnlocked ? (
+            <>
+              <Unlock className="w-3.5 h-3.5 text-white animate-pulse shrink-0" />
+              <span className="hidden sm:inline font-extrabold">Mode Admin (Terbuka)</span>
+            </>
+          ) : (
+            <>
+              <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span className="hidden sm:inline font-bold">Mode Baca (Terlock)</span>
+            </>
+          )}
+        </button>
+
+        {/* Tombol Pusat Database & Backup SIMRS */}
+        <button
+          onClick={() => setIsBackupModalOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white rounded-full font-bold text-xs border border-slate-700 shadow-xs hover:shadow-md transition-all hover:scale-102 active:scale-95 cursor-pointer"
+          aria-label="Pusat Database & Backup SIMRS"
+          title="Pusat Database & Backup (Unduh JSON, Restore, Sync Drive, & Audit Log)"
+        >
+          <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span className="hidden lg:inline font-bold">Pusat Database</span>
+        </button>
+
         {/* Google Drive Real-time Sync Status Badge / Button */}
         <GoogleDriveSyncBadge onOpenSettings={onOpenSettings} showToast={showToast} />
 
@@ -760,6 +881,27 @@ export const Header: React.FC<HeaderProps> = ({
           showToast(`Akun petugas berhasil dialihkan ke ${newStaff.name} (${newStaff.role})`);
         }}
         onLogout={handleLogout}
+      />
+
+      {/* MODAL 4: Pusat Database & Backup SIMRS */}
+      <CentralBackupModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        showToast={showToast}
+      />
+
+      {/* MODAL 5: PIN / Passcode Admin Otorisasi RBAC */}
+      <AdminPinModal
+        isOpen={isAdminPinModalOpen}
+        onClose={() => setIsAdminPinModalOpen(false)}
+        showToast={showToast}
+        actionTitle={pendingActionTitle}
+        onSuccess={() => {
+          if (pendingActionCallbackRef.current) {
+            pendingActionCallbackRef.current();
+            pendingActionCallbackRef.current = null;
+          }
+        }}
       />
     </header>
   );

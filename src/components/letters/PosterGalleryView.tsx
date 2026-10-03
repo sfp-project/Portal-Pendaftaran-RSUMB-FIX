@@ -18,39 +18,44 @@ import {
   Layers,
   Check,
   Cloud,
-  ExternalLink
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 import {
   PosterPromoItem,
   KategoriPromo,
-  KATEGORI_PROMO_OPTIONS,
-  StatusPromoFilter
+  KATEGORI_PROMO_OPTIONS
 } from '../../types/posterPromoTypes';
-import { isPosterExpired, formatIndoDate } from '../../data/posterPromoData';
+import { isPosterExpired, formatIndoDate, getTodayDateString } from '../../data/posterPromoData';
 import { UploadPosterModal } from './UploadPosterModal';
 import { PosterPreviewModal } from './PosterPreviewModal';
 
 interface PosterGalleryViewProps {
   posters: PosterPromoItem[];
   onUploadPoster: (newPoster: PosterPromoItem) => void;
+  onUpdatePoster: (updatedPoster: PosterPromoItem) => void;
   onDeletePoster: (id: string) => void;
-  showToast: (msg: string) => void;
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
   posters,
   onUploadPoster,
+  onUpdatePoster,
   onDeletePoster,
   showToast
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKategori, setSelectedKategori] = useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = useState<StatusPromoFilter>('ALL');
+  // Sub-tabs: 'ACTIVE' (Promo Aktif) or 'EXPIRED' (Promo Habis / Arsip)
+  const [activeTab, setActiveTab] = useState<'ACTIVE' | 'EXPIRED'>('ACTIVE');
 
   // Modals state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewPoster, setPreviewPoster] = useState<PosterPromoItem | null>(null);
   const [posterToDelete, setPosterToDelete] = useState<PosterPromoItem | null>(null);
+  const [posterToExtend, setPosterToExtend] = useState<PosterPromoItem | null>(null);
+  const [newExtendDate, setNewExtendDate] = useState<string>('');
 
   // Statistics
   const stats = useMemo(() => {
@@ -69,12 +74,19 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
     return { total, active, expired };
   }, [posters]);
 
-  // Filtered Posters
+  // Filtered Posters based on Sub-Tab, Category, and Search
   const filteredPosters = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
 
     return posters.filter((p) => {
-      // Search filter
+      // 1. Tab Status Filter (Promo Aktif vs Promo Habis / Arsip)
+      const isExpired = isPosterExpired(p.tanggalKadaluarsa);
+      const matchTab = activeTab === 'ACTIVE' ? !isExpired : isExpired;
+
+      // 2. Category Filter
+      const matchKategori = selectedKategori === 'ALL' || p.kategoriPromo === selectedKategori;
+
+      // 3. Search Query Filter
       const matchQuery =
         !q ||
         p.judul.toLowerCase().includes(q) ||
@@ -83,25 +95,15 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
         (p.keterangan && p.keterangan.toLowerCase().includes(q)) ||
         (p.tags && p.tags.some((t) => t.toLowerCase().includes(q)));
 
-      // Category filter
-      const matchKategori = selectedKategori === 'ALL' || p.kategoriPromo === selectedKategori;
-
-      // Status filter
-      const isExpired = isPosterExpired(p.tanggalKadaluarsa);
-      const matchStatus =
-        statusFilter === 'ALL' ||
-        (statusFilter === 'ACTIVE' && !isExpired) ||
-        (statusFilter === 'EXPIRED' && isExpired);
-
-      return matchQuery && matchKategori && matchStatus;
+      return matchTab && matchKategori && matchQuery;
     });
-  }, [posters, searchQuery, selectedKategori, statusFilter]);
+  }, [posters, activeTab, selectedKategori, searchQuery]);
 
   // Handle Download File
   const handleDownload = (poster: PosterPromoItem) => {
     try {
       if (!poster.fileData) {
-        showToast('Berkas poster tidak tersedia untuk diunduh.');
+        showToast('Berkas poster tidak tersedia untuk diunduh.', 'error');
         return;
       }
 
@@ -111,10 +113,10 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      showToast(`Mengunduh poster: ${poster.namaBerkas}`);
+      showToast(`Mengunduh poster: ${poster.namaBerkas}`, 'success');
     } catch (err) {
       console.error('Error downloading poster:', err);
-      showToast('Gagal mengunduh poster.');
+      showToast('Gagal mengunduh poster.', 'error');
     }
   };
 
@@ -122,13 +124,48 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
   const confirmDelete = () => {
     if (posterToDelete) {
       onDeletePoster(posterToDelete.id);
-      showToast(`Poster "${posterToDelete.judul}" berhasil dihapus.`);
+      showToast(`Poster "${posterToDelete.judul}" berhasil dihapus.`, 'success');
       setPosterToDelete(null);
     }
   };
 
+  // Open Extend Modal with default +3 months from today or current expired date
+  const handleOpenExtendModal = (poster: PosterPromoItem) => {
+    setPosterToExtend(poster);
+    // Suggest default new end date: 3 months from today
+    const now = new Date();
+    now.setMonth(now.getMonth() + 3);
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    setNewExtendDate(`${yyyy}-${mm}-${dd}`);
+  };
+
+  const handleSaveExtension = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!posterToExtend || !newExtendDate) return;
+
+    const updated: PosterPromoItem = {
+      ...posterToExtend,
+      tanggalKadaluarsa: newExtendDate
+    };
+
+    onUpdatePoster(updated);
+    showToast(`Masa berlaku poster "${posterToExtend.judul}" berhasil diperpanjang hingga ${formatIndoDate(newExtendDate)}.`, 'success');
+    setPosterToExtend(null);
+  };
+
+  const handleQuickExtend = (months: number) => {
+    const now = new Date();
+    now.setMonth(now.getMonth() + months);
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    setNewExtendDate(`${yyyy}-${mm}-${dd}`);
+  };
+
   return (
-    <div className="space-y-5">
+    <div id="poster-gallery-module" className="flex flex-col gap-6 w-full max-w-7xl mx-auto">
       {/* 1. Header Banner & Actions */}
       <div className="bg-gradient-to-r from-[#005d42] via-[#004a35] to-[#013828] text-white rounded-2xl p-5 sm:p-6 shadow-md relative overflow-hidden border border-emerald-800">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -184,12 +221,12 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
         </div>
 
         <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
             <AlertCircle className="w-5 h-5" />
           </div>
           <div>
             <div className="text-[11px] font-semibold text-slate-500 uppercase">Telah Kadaluarsa</div>
-            <div className="text-base sm:text-lg font-black text-amber-700">{stats.expired} Materi</div>
+            <div className="text-base sm:text-lg font-black text-rose-700">{stats.expired} Materi</div>
           </div>
         </div>
 
@@ -198,33 +235,69 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
             <Calendar className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-[11px] font-semibold text-slate-500 uppercase">Status Sistem</div>
-            <div className="text-xs sm:text-sm font-bold text-blue-900">Auto-Expiry Alert</div>
+            <div className="text-[11px] font-semibold text-slate-500 uppercase">Sistem Detektor</div>
+            <div className="text-xs sm:text-sm font-bold text-blue-900">Auto-Expiry Aktif</div>
           </div>
         </div>
       </div>
 
-      {/* 3. Auto-Expiry Alert Notice if any expired posters exist */}
-      {stats.expired > 0 && statusFilter !== 'EXPIRED' && (
-        <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+      {/* 3. Top Alert Banner for Expired Posters */}
+      {stats.expired > 0 && activeTab !== 'EXPIRED' && (
+        <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50/95 border border-amber-300 text-amber-900 text-xs sm:text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-2.5">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
             <span>
-              Terdapat <strong>{stats.expired} poster promo</strong> yang telah melewati batas tanggal masa berlaku (status kadaluarsa).
+              ⚠️ Terdapat <strong>{stats.expired} poster promo</strong> yang telah habis masa berlakunya dan dipindahkan ke tab Promo Habis.
             </span>
           </div>
           <button
             type="button"
-            onClick={() => setStatusFilter('EXPIRED')}
-            className="px-3 py-1 bg-amber-200/80 hover:bg-amber-200 text-amber-900 font-bold rounded-lg text-xs transition cursor-pointer shrink-0"
+            onClick={() => setActiveTab('EXPIRED')}
+            className="px-3.5 py-1.5 bg-amber-200 hover:bg-amber-300 text-amber-950 font-bold rounded-xl text-xs transition cursor-pointer shrink-0 shadow-2xs"
           >
-            Lihat Poster Kadaluarsa →
+            Buka Tab Promo Habis ({stats.expired}) →
           </button>
         </div>
       )}
 
-      {/* 4. Filter & Search Bar */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs space-y-3.5">
+      {/* 4. Sub-Tabs & Category / Search Controls */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs space-y-4">
+        {/* Sub-Tabs Row */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3.5">
+          <button
+            type="button"
+            onClick={() => setActiveTab('ACTIVE')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeTab === 'ACTIVE'
+                ? 'bg-[#005d42] text-white shadow-md'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+            <span>🟢 Promo Aktif</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-extrabold ${activeTab === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+              {stats.active}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('EXPIRED')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeTab === 'EXPIRED'
+                ? 'bg-rose-700 text-white shadow-md'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-400"></span>
+            <span>🔴 Promo Habis / Arsip</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-extrabold ${activeTab === 'EXPIRED' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-800'}`}>
+              {stats.expired}
+            </span>
+          </button>
+        </div>
+
+        {/* Search & Category Filter Row */}
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           {/* Instant Search Filter */}
           <div className="relative flex-1">
@@ -261,17 +334,6 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
                 </option>
               ))}
             </select>
-
-            {/* Dropdown Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusPromoFilter)}
-              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#005d42]/30 focus:border-[#005d42] cursor-pointer"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="ACTIVE">Hanya Aktif</option>
-              <option value="EXPIRED">Hanya Kadaluarsa</option>
-            </select>
           </div>
         </div>
 
@@ -290,25 +352,22 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            Semua ({posters.length})
+            Semua
           </button>
-          {KATEGORI_PROMO_OPTIONS.map((opt) => {
-            const count = posters.filter((p) => p.kategoriPromo === opt.value).length;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setSelectedKategori(opt.value)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                  selectedKategori === opt.value
-                    ? 'bg-[#005d42] text-white shadow-xs font-bold'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {opt.label} ({count})
-              </button>
-            );
-          })}
+          {KATEGORI_PROMO_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setSelectedKategori(opt.value)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                selectedKategori === opt.value
+                  ? 'bg-[#005d42] text-white shadow-xs font-bold'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -318,23 +377,26 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
           <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
             <ImageIcon className="w-8 h-8" />
           </div>
-          <h4 className="text-base font-bold text-slate-800">Tidak Ada Poster yang Cocok</h4>
+          <h4 className="text-base font-bold text-slate-800">
+            {activeTab === 'ACTIVE' ? 'Tidak Ada Promo Aktif' : 'Tidak Ada Poster di Arsip / Promo Habis'}
+          </h4>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
-            {searchQuery || selectedKategori !== 'ALL' || statusFilter !== 'ALL'
+            {searchQuery || selectedKategori !== 'ALL'
               ? 'Tidak ditemukan poster dengan filter saat ini. Coba bersihkan pencarian atau ubah kategori.'
-              : 'Belum ada poster layanan atau promo yang diunggah. Silakan klik tombol "Unggah Poster / Promo" untuk menambahkan.'}
+              : activeTab === 'ACTIVE'
+              ? 'Semua materi promo telah kadaluarsa atau belum diunggah. Silakan cek tab Promo Habis atau unggah baru.'
+              : 'Belum ada poster promo yang melewati batas masa berlaku (bersih).'}
           </p>
-          {(searchQuery || selectedKategori !== 'ALL' || statusFilter !== 'ALL') && (
+          {(searchQuery || selectedKategori !== 'ALL') && (
             <button
               type="button"
               onClick={() => {
                 setSearchQuery('');
                 setSelectedKategori('ALL');
-                setStatusFilter('ALL');
               }}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer"
             >
-              Reset Semua Filter
+              Reset Filter Pencarian
             </button>
           )}
         </div>
@@ -351,7 +413,9 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
             return (
               <div
                 key={poster.id}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col overflow-hidden group"
+                className={`bg-white rounded-2xl border transition-all flex flex-col overflow-hidden group shadow-xs hover:shadow-md ${
+                  isExpired ? 'border-rose-300/80 bg-rose-50/10' : 'border-slate-200/90'
+                }`}
               >
                 {/* Thumbnail Container */}
                 <div
@@ -383,10 +447,14 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
                       {poster.kategoriPromo}
                     </span>
 
-                    {isExpired ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-600 text-white shadow-xs">
+                    {poster.isPermanent ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-600 text-white shadow-xs">
+                        📌 Permanen
+                      </span>
+                    ) : isExpired ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-600 text-white shadow-xs animate-pulse">
                         <AlertCircle className="w-3 h-3" />
-                        <span>Kadaluarsa</span>
+                        <span>⛔ Kedaluwarsa</span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-600 text-white shadow-xs">
@@ -418,14 +486,21 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
                     </h3>
 
                     {/* Masa Berlaku Date */}
-                    {(poster.tanggalMulai || poster.tanggalKadaluarsa) && (
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">
-                          {poster.tanggalMulai ? formatIndoDate(poster.tanggalMulai) : 'Sekarang'} -{' '}
-                          {poster.tanggalKadaluarsa ? formatIndoDate(poster.tanggalKadaluarsa) : 'Seterusnya'}
-                        </span>
+                    {poster.isPermanent ? (
+                      <div className="flex items-center gap-1 text-[11px] text-blue-700 font-semibold">
+                        <Calendar className="w-3.5 h-3.5 shrink-0 text-blue-500" />
+                        <span>Informasi Publik (Permanen)</span>
                       </div>
+                    ) : (
+                      (poster.tanggalMulai || poster.tanggalKadaluarsa) && (
+                        <div className={`flex items-center gap-1 text-[11px] ${isExpired ? 'text-rose-600 font-semibold' : 'text-slate-500'}`}>
+                          <Calendar className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">
+                            {poster.tanggalMulai ? formatIndoDate(poster.tanggalMulai) : 'Sekarang'} -{' '}
+                            {poster.tanggalKadaluarsa ? formatIndoDate(poster.tanggalKadaluarsa) : 'Seterusnya'}
+                          </span>
+                        </div>
+                      )
                     )}
 
                     {/* Tags */}
@@ -449,46 +524,60 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewPoster(poster)}
-                      className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-[#005d42] font-bold rounded-lg transition cursor-pointer"
-                      title="Lihat / Preview Full"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Lihat</span>
-                    </button>
-
-                    {poster.driveViewLink && (
-                      <a
-                        href={poster.driveViewLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition cursor-pointer border border-blue-200"
-                        title="Buka File di Google Drive"
+                  <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5">
+                    {isExpired && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenExtendModal(poster)}
+                        className="w-full py-1.5 px-2.5 bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold rounded-lg text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                        title="Perpanjang Masa Berlaku Promo"
                       >
-                        <Cloud className="w-3.5 h-3.5" />
-                      </a>
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Perpanjang Promo</span>
+                      </button>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleDownload(poster)}
-                      className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg transition cursor-pointer border border-slate-200"
-                      title="Unduh / Download"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center justify-between gap-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewPoster(poster)}
+                        className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-[#005d42] font-bold rounded-lg transition cursor-pointer"
+                        title="Lihat / Preview Full"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Lihat</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setPosterToDelete(poster)}
-                      className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition cursor-pointer border border-rose-100"
-                      title="Hapus Poster"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                      {poster.driveViewLink && (
+                        <a
+                          href={poster.driveViewLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition cursor-pointer border border-blue-200"
+                          title="Buka File di Google Drive"
+                        >
+                          <Cloud className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(poster)}
+                        className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg transition cursor-pointer border border-slate-200"
+                        title="Unduh / Download"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPosterToDelete(poster)}
+                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition cursor-pointer border border-rose-100"
+                        title="Hapus Poster"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -513,7 +602,103 @@ export const PosterGalleryView: React.FC<PosterGalleryViewProps> = ({
         onDownload={handleDownload}
       />
 
-      {/* Delete Confirmation Modal (Prompt: "Hapus poster promo ini?") */}
+      {/* Extend Promo Expiry Modal */}
+      {posterToExtend && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 relative space-y-4"
+            role="dialog"
+            aria-modal="true"
+          >
+            <button
+              type="button"
+              onClick={() => setPosterToExtend(null)}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                <RefreshCw className="w-5 h-5" />
+              </div>
+              <div className="pr-6">
+                <h3 className="text-base font-bold text-slate-900">Perpanjang Masa Berlaku Promo</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Perbarui tanggal kadaluarsa untuk poster <strong>"{posterToExtend.judul}"</strong> agar kembali aktif di sistem.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveExtension} className="space-y-4 pt-2">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">Pilih Tanggal Kadaluarsa Baru</label>
+                <input
+                  type="date"
+                  value={newExtendDate}
+                  onChange={(e) => setNewExtendDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-[#005d42]/30 focus:border-[#005d42]"
+                  required
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-semibold text-slate-500">Pintasan Perpanjangan:</div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickExtend(1)}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    +1 Bulan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickExtend(3)}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    +3 Bulan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickExtend(6)}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    +6 Bulan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickExtend(12)}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    +1 Tahun
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPosterToExtend(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#005d42] hover:bg-[#004732] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Simpan Perpanjangan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
       {posterToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div

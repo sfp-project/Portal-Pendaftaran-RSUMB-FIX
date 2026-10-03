@@ -54,18 +54,15 @@ export const KhitanPostControlModal: React.FC<KhitanPostControlModalProps> = ({
   const [tanggalKontrol, setTanggalKontrol] = useState('');
   const [jamKontrol, setJamKontrol] = useState('08:00 - 12:00 WIB');
   const [lokasiKontrol, setLokasiKontrol] = useState('Poli Bedah / Poli Umum RSU Muhammadiyah Babat');
-  const [dokterOperator, setDokterOperator] = useState('dr. H. Abd. Rokhim, MARS');
+  const [dokterOperator, setDokterOperator] = useState('Tim Medis Khitan RSU Muhammadiyah Babat');
   const [nomorSurat, setNomorSurat] = useState('');
   const [instruksiObat, setInstruksiObat] = useState(
     '1. Antibiotik diminum teratur sampai habis.\n2. Paracetamol diminum bila merasa nyeri/demam.\n3. Salep dioleskan tipis pada ujung luka 2x sehari.'
   );
   const [copiedWA, setCopiedWA] = useState(false);
 
-  // Operator Doctor Presets
+  // Operator Doctor Presets - Single standard preset button
   const doctorPresets = [
-    'dr. H. Abd. Rokhim, MARS',
-    'dr. Fathur, Sp.B',
-    'dr. M. Ainun Na\'im',
     'Tim Medis Khitan RSU Muhammadiyah Babat'
   ];
 
@@ -92,9 +89,9 @@ export const KhitanPostControlModal: React.FC<KhitanPostControlModalProps> = ({
         setTanggalKontrol(
           initialParticipant.tanggalKontrol || calculateDefaultControlDate(procDate, 3)
         );
-        if (initialParticipant.dokterOperatorKontrol) {
-          setDokterOperator(initialParticipant.dokterOperatorKontrol);
-        }
+        setDokterOperator(
+          initialParticipant.dokterOperatorKontrol || 'Tim Medis Khitan RSU Muhammadiyah Babat'
+        );
       } else {
         setSelectedParticipantId('');
         const todayStr = new Date().toISOString().split('T')[0];
@@ -105,6 +102,7 @@ export const KhitanPostControlModal: React.FC<KhitanPostControlModalProps> = ({
         setAlamatPasien('');
         setNamaWali('');
         setNoHp('');
+        setDokterOperator('Tim Medis Khitan RSU Muhammadiyah Babat');
       }
     }
   }, [isOpen, initialParticipant]);
@@ -124,9 +122,7 @@ export const KhitanPostControlModal: React.FC<KhitanPostControlModalProps> = ({
       setTanggalKontrol(
         found.tanggalKontrol || calculateDefaultControlDate(found.tanggalPelaksanaan, 3)
       );
-      if (found.dokterOperatorKontrol) {
-        setDokterOperator(found.dokterOperatorKontrol);
-      }
+      setDokterOperator(found.dokterOperatorKontrol || 'Tim Medis Khitan RSU Muhammadiyah Babat');
     }
   };
 
@@ -656,9 +652,9 @@ _Panitia Khitan Berkah & Tim Medis RSU Muhammadiyah Babat_`;
                   required
                   value={dokterOperator}
                   onChange={(e) => setDokterOperator(e.target.value)}
-                  placeholder="Nama Dokter Operator"
+                  placeholder="Nama Dokter / Operator Khitan"
                   list="doctor-presets"
-                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  className="w-full pl-9 pr-3 py-2 text-xs font-semibold text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
                 />
                 <datalist id="doctor-presets">
                   {doctorPresets.map((d) => (
@@ -673,13 +669,14 @@ _Panitia Khitan Berkah & Tim Medis RSU Muhammadiyah Babat_`;
                     key={docName}
                     type="button"
                     onClick={() => setDokterOperator(docName)}
-                    className={`text-[10px] px-2 py-0.5 rounded-md transition cursor-pointer border ${
+                    className={`text-[10px] px-2.5 py-1 rounded-md transition cursor-pointer border flex items-center gap-1 ${
                       dokterOperator === docName
-                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold'
+                        ? 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold shadow-2xs'
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    {docName}
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>{docName}</span>
                   </button>
                 ))}
               </div>

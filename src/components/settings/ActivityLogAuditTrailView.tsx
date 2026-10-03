@@ -19,6 +19,7 @@ import {
   ChevronRight,
   CheckCircle2,
   Trash2,
+  RotateCcw,
   SlidersHorizontal,
   X
 } from 'lucide-react';
@@ -31,6 +32,8 @@ import {
   loadSystemActivityLogs,
   saveSystemActivityLogs,
   clearSystemActivityLogs,
+  pruneSystemActivityLogs,
+  RETENTION_DAYS_LOGS,
   CATEGORY_META_MAP
 } from '../../data/auditLogData';
 import { exportToExcel, downloadBlob } from '../../utils/exportHelpers';
@@ -338,21 +341,39 @@ export const ActivityLogAuditTrailView: React.FC<ActivityLogAuditTrailViewProps>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-bold text-base sm:text-lg text-white">
-                  Activity Log & Audit Trail Sistem (1-3 Bulan)
+                  Activity Log & Audit Trail Sistem (30 Hari Terakhir)
                 </h3>
                 <span className="bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" />
-                  <span>RFC3339 & rsumb_database.json</span>
+                  <span>Retensi 30 Hari Otomatis • Payload Ringan</span>
                 </span>
               </div>
               <p className="text-xs text-emerald-100/85 mt-1 max-w-2xl leading-relaxed">
-                Pencatatan otomatis seluruh transaksi dan peristiwa operasional staf pendaftaran (penerbitan kupon Mohat, catatan operan shift, status SEP BPJS, dan perubahan pengaturan) tersinkronisasi langsung ke database lokal dan Google Drive.
+                Pencatatan otomatis seluruh transaksi dan peristiwa operasional staf pendaftaran dibatasi secara efisien pada 30 hari terakhir untuk menjaga ukuran payload database JSON tetap ringan dan sinkronisasi cloud berjalan secepat kilat.
               </p>
             </div>
           </div>
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+            <button
+              type="button"
+              onClick={() => {
+                const res = pruneSystemActivityLogs();
+                setLogs(loadSystemActivityLogs());
+                if (res.prunedCount > 0) {
+                  showToast?.(`Pembersihan sukses: ${res.prunedCount} log lama (> 30 hari) telah dihapus.`, 'success');
+                } else {
+                  showToast?.('Database log sudah optimal (seluruh data berada dalam rentang 30 hari terakhir).', 'info');
+                }
+              }}
+              className="py-2 px-3 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer text-emerald-100 hover:text-white"
+              title="Bersihkan riwayat log yang lebih lama dari 30 hari"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Bersihkan Log &gt;30 Hari</span>
+            </button>
+
             <button
               type="button"
               onClick={handleRefresh}

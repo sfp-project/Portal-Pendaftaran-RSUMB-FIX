@@ -15,10 +15,21 @@ export const getTodayDateString = (): string => {
 /**
  * Memeriksa apakah poster/promo telah melewati batas kadaluarsa
  */
-export const isPosterExpired = (tanggalKadaluarsa?: string): boolean => {
-  if (!tanggalKadaluarsa || !tanggalKadaluarsa.trim()) return false;
+export const isPosterExpired = (
+  tanggalKadaluarsaOrItem?: string | PosterPromoItem,
+  isPermanent?: boolean
+): boolean => {
+  if (typeof tanggalKadaluarsaOrItem === 'object' && tanggalKadaluarsaOrItem !== null) {
+    if (tanggalKadaluarsaOrItem.isPermanent) return false;
+    if (!tanggalKadaluarsaOrItem.tanggalKadaluarsa || !tanggalKadaluarsaOrItem.tanggalKadaluarsa.trim()) return false;
+    const today = getTodayDateString();
+    return tanggalKadaluarsaOrItem.tanggalKadaluarsa.trim() < today;
+  }
+  if (isPermanent) return false;
+  const tgl = tanggalKadaluarsaOrItem;
+  if (!tgl || typeof tgl !== 'string' || !tgl.trim()) return false;
   const today = getTodayDateString();
-  return tanggalKadaluarsa.trim() < today;
+  return tgl.trim() < today;
 };
 
 /**

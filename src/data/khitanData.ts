@@ -310,18 +310,20 @@ export function loadKhitanParticipants(): KhitanParticipant[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Pastikan setiap peserta memiliki draft data kontrol post-khitan (H+3 hari default)
-        return parsed.map((p: KhitanParticipant) => ({
-          ...p,
-          tanggalKontrol: p.tanggalKontrol || calculateDefaultControlDate(p.tanggalPelaksanaan, 3),
-          dokterOperatorKontrol: p.dokterOperatorKontrol || 'dr. H. Abd. Rokhim, MARS'
-        }));
+        // Filter out soft-deleted items for active views
+        return parsed
+          .filter((p: any) => !p.is_deleted && !p.isDeleted)
+          .map((p: KhitanParticipant) => ({
+            ...p,
+            tanggalKontrol: p.tanggalKontrol || calculateDefaultControlDate(p.tanggalPelaksanaan, 3),
+            dokterOperatorKontrol: p.dokterOperatorKontrol || 'dr. H. Abd. Rokhim, MARS'
+          }));
       }
     }
   } catch (e) {
     console.error('Error loading khitan participants from localStorage', e);
   }
-  return INITIAL_KHITAN_PARTICIPANTS.map((p) => ({
+  return INITIAL_KHITAN_PARTICIPANTS.filter((p: any) => !p.is_deleted && !p.isDeleted).map((p) => ({
     ...p,
     tanggalKontrol: p.tanggalKontrol || calculateDefaultControlDate(p.tanggalPelaksanaan, 3),
     dokterOperatorKontrol: p.dokterOperatorKontrol || 'dr. H. Abd. Rokhim, MARS'

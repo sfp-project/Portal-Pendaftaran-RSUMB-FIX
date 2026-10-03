@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Search,
   Upload,
   FileImage,
+  FileText,
   CheckCircle2,
   AlertCircle,
   X,
@@ -17,7 +19,10 @@ import {
   Layers,
   ArrowUpDown,
   Filter,
-  Eye
+  Eye,
+  FileSpreadsheet,
+  Key,
+  HelpCircle
 } from 'lucide-react';
 import { JasaRaharjaItem } from '../types';
 import {
@@ -55,6 +60,160 @@ interface UploadedSheet {
   errorMsg?: string;
 }
 
+/**
+ * Resizes and compresses image to max 1600px width/height and 82% JPEG quality
+ * to prevent 413 Payload Too Large and optimize OCR speed & accuracy.
+ */
+async function compressImageForOcr(file: File): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onerror = () => {
+      // Fallback
+      resolve({ base64: '', mimeType: file.type || 'image/jpeg' });
+    };
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => {
+        resolve({ base64: reader.result as string, mimeType: file.type || 'image/jpeg' });
+      };
+      img.onload = () => {
+        const MAX_DIM = 1600;
+        let w = img.width;
+        let h = img.height;
+
+        if (w > h) {
+          if (w > MAX_DIM) {
+            h = Math.round((h * MAX_DIM) / w);
+            w = MAX_DIM;
+          }
+        } else {
+          if (h > MAX_DIM) {
+            h = Math.round((h * MAX_DIM) / h);
+            h = MAX_DIM;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve({ base64: reader.result as string, mimeType: file.type || 'image/jpeg' });
+          return;
+        }
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        resolve({
+          base64: compressedDataUrl,
+          mimeType: 'image/jpeg'
+        });
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Reads file as base64 data URL with support for Images & PDFs
+ */
+async function readFileAsBase64(file: File): Promise<{ base64: string; mimeType: string }> {
+  if (file.type.startsWith('image/')) {
+    return compressImageForOcr(file);
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve({
+        base64: reader.result as string,
+        mimeType: file.type || 'application/pdf'
+      });
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Browser-side Excel (.xlsx / .xls) and CSV Parser using SheetJS
+ */
+function parseExcelJasaRaharja(dataBuffer: ArrayBuffer): JasaRaharjaOcrItem[] {
+  const workbook = XLSX.read(dataBuffer, { type: 'array' });
+  if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+    throw new Error('Berkas Excel kosong atau tidak memiliki lembar kerja.');
+  }
+
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rawRows: Record<string, any>[] = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+  if (!rawRows || rawRows.length === 0) {
+    throw new Error('Tidak ada baris data yang ditemukan di dalam lembar Excel.');
+  }
+
+  const items: JasaRaharjaOcrItem[] = [];
+
+  for (let i = 0; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    const keys = Object.keys(row);
+
+    const getVal = (possibleCols: string[]): any => {
+      for (const col of possibleCols) {
+        const targetClean = col.replace(/[^a-z0-9]/g, '');
+        const foundKey = keys.find((k) => k.toLowerCase().trim().replace(/[^a-z0-9]/g, '') === targetClean);
+        if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
+          return row[foundKey];
+        }
+      }
+      return '';
+    };
+
+    const rawNoRm = String(getVal(['no rm', 'norm', 'no. rm', 'no_rm', 'rekam medis', 'no rekam medis', 'no. rekam medis', 'rm', 'id pasien']) || '').trim();
+    const rawNama = String(getVal(['nama pasien', 'nama', 'nama lengkap', 'pasien', 'nama_pasien']) || '').trim();
+    const rawTanggal = String(getVal(['tanggal', 'tgl', 'tanggal kunjungan', 'tgl kunjungan', 'tgl masuk', 'tanggal masuk', 'tgl laka', 'tanggal laka', 'tgl_masuk']) || '').trim();
+    const rawBiaya = getVal(['biaya', 'biaya terpakai', 'pemakaian', 'tagihan', 'total biaya', 'terpakai', 'klaim', 'nominal klaim', 'nominal terpakai', 'jumlah', 'biaya_terpakai']);
+    const rawSisa = getVal(['sisa', 'sisa plafon', 'sisa_plafon', 'sisa dana', 'saldo']);
+    const rawKet = String(getVal(['keterangan', 'ket', 'status', 'status rawat', 'jenis rawat', 'ranap', 'poli', 'rujuk', 'status_keterangan']) || '').trim();
+    const rawDiagnosa = String(getVal(['diagnosa', 'diagnosis', 'dx', 'keterangan medis', 'diagnosa utama']) || '').trim();
+
+    // Skip empty filler lines
+    if (!rawNoRm && !rawNama) continue;
+
+    // Normalize date string (handles Excel numeric timestamps or standard date strings)
+    let cleanTanggal = rawTanggal;
+    if (typeof rawTanggal === 'number' || (!isNaN(Number(rawTanggal)) && Number(rawTanggal) > 20000 && Number(rawTanggal) < 60000)) {
+      try {
+        const excelDate = new Date((Number(rawTanggal) - 25569) * 86400 * 1000);
+        if (!isNaN(excelDate.getTime())) {
+          cleanTanggal = excelDate.toISOString().slice(0, 10);
+        }
+      } catch {}
+    } else if (rawTanggal.includes('/')) {
+      const parts = rawTanggal.split('/');
+      if (parts.length === 3 && parts[2].length === 4) {
+        cleanTanggal = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    }
+
+    const itemBiaya = parseNominal(rawBiaya);
+    const itemSisa = rawSisa !== '' ? parseNominal(rawSisa) : Math.max(0, 20000000 - itemBiaya);
+
+    items.push({
+      noRm: rawNoRm || `JR-${Date.now()}-${i + 1}`,
+      namaPasien: rawNama || 'Pasien Tanpa Nama',
+      tanggal: cleanTanggal || new Date().toISOString().slice(0, 10),
+      biayaTerpakai: itemBiaya,
+      sisaPlafon: itemSisa,
+      keterangan: rawKet ? rawKet.toUpperCase() : (itemBiaya >= 20000000 ? 'HABIS' : 'RANAP')
+    });
+  }
+
+  return items;
+}
+
 export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
   items,
   onAddItem,
@@ -74,14 +233,21 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
   const [copiedRm, setCopiedRm] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  // 2. Multi-Upload State (1 - 4 Lembar)
+  // 2. Multi-Upload State (Images, PDF & Excel)
   // ---------------------------------------------------------------------------
   const [uploadedSheets, setUploadedSheets] = useState<UploadedSheet[]>([]);
   const [isProcessingOcr, setIsProcessingOcr] = useState(false);
   const [ocrProgressText, setOcrProgressText] = useState('');
+  const [ocrProgressPercent, setOcrProgressPercent] = useState<number>(0);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [lastUpsertSummary, setLastUpsertSummary] = useState<UpsertResult | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // File Input Ref
+  const genericInputRef = useRef<HTMLInputElement>(null);
+
+  // Gemini API Key Settings Modal
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
 
   // ---------------------------------------------------------------------------
   // 3. Edit & Manual Add Modal State
@@ -100,12 +266,9 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
   const [formDiagnosa, setFormDiagnosa] = useState<string>('');
   const [formCatatan, setFormCatatan] = useState<string>('');
 
-  // ---------------------------------------------------------------------------
   // Global Ctrl+F / Cmd+F Keyboard Shortcut Interceptor
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Ctrl+F or Cmd+F
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         if (searchInputRef.current) {
@@ -119,9 +282,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // ---------------------------------------------------------------------------
   // Quick Copy RM Handler
-  // ---------------------------------------------------------------------------
   const handleCopyNoRm = (noRm: string, e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(noRm);
@@ -131,60 +292,155 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // Helper: Read File to Base64
+  // Client-Side Gemini Vision Extraction Fallback (for static or serverless deployments)
   // ---------------------------------------------------------------------------
-  const readFileAsDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (err) => reject(err);
-      reader.readAsDataURL(file);
+  const extractWithDirectClientGemini = async (sheets: UploadedSheet[], apiKey: string): Promise<JasaRaharjaOcrItem[]> => {
+    const prompt = `Anda adalah sistem OCR cerdas untuk Rumah Sakit Muhammadiyah Babat (RSUMB).
+Tugas Anda adalah membaca gambar/foto tabel data fisik pasien penjamin Jasa Raharja (KLL).
+Kolom yang ada pada tabel:
+1. No. RM (contoh: 07-42-18, 08-95-30, 09.12.05)
+2. Nama Pasien
+3. Tanggal Kunjungan / Tindakan (format YYYY-MM-DD atau DD/MM/YYYY)
+4. Biaya Terpakai (Nominal Rupiah)
+5. Sisa Plafon (Nominal Rupiah)
+6. Keterangan / Status (RANAP, HABIS, RUJUK, AFF KWIRE, MENINGGAL, dsb)
+
+KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array berikut:
+[
+  {
+    "no_rm": "07-42-18",
+    "nama_pasien": "NAMA LENGKAP PASIEN",
+    "tanggal": "2026-09-08",
+    "biaya_terpakai": 11738348,
+    "sisa_plafon": 8261652,
+    "status_keterangan": "RANAP"
+  }
+]`;
+
+    const parts: any[] = [{ text: prompt }];
+
+    sheets.forEach((sheet) => {
+      let data = sheet.base64;
+      let mime = sheet.mimeType || 'image/jpeg';
+      const match = sheet.base64.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mime = match[1];
+        data = match[2];
+      }
+      parts.push({
+        inlineData: {
+          mimeType: mime,
+          data: data
+        }
+      });
     });
+
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }]
+      })
+    });
+
+    if (!response.ok) {
+      const errJson = await response.json().catch(() => ({}));
+      throw new Error(errJson.error?.message || `Google Gemini API Error (${response.status})`);
+    }
+
+    const resData = await response.json();
+    const candidateText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+    const cleanText = candidateText.replace(/```json\n?/gi, '').replace(/```\n?/gi, '').trim();
+
+    let items: JasaRaharjaOcrItem[] = [];
+    try {
+      items = JSON.parse(cleanText);
+    } catch {
+      const match = cleanText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (match) {
+        items = JSON.parse(match[0]);
+      }
+    }
+
+    return items;
   };
 
   // ---------------------------------------------------------------------------
-  // Trigger Automatic AI Extraction from Uploaded Sheets
+  // Trigger Automatic AI Extraction from Uploaded Sheets (with Server + Client Fallback)
   // ---------------------------------------------------------------------------
   const runExtractionOnSheets = useCallback(
     async (sheetsToProcess: UploadedSheet[]) => {
       if (sheetsToProcess.length === 0) return;
 
       setIsProcessingOcr(true);
-      setOcrProgressText(`Sedang mengekstrak tabel dari ${sheetsToProcess.length} foto lembar dengan AI...`);
+      setOcrProgressPercent(20);
+      setOcrProgressText(`Sedang mengekstrak tabel dari ${sheetsToProcess.length} foto lembar dengan AI Gemini...`);
       setLastUpsertSummary(null);
 
       try {
-        // Send batch payload to server OCR endpoint
-        const payloadImages = sheetsToProcess.map((sheet) => ({
-          imageBase64: sheet.base64,
-          mimeType: sheet.mimeType,
-          name: sheet.name,
-          sheetNumber: sheet.sheetNumber
-        }));
+        let extractedList: JasaRaharjaOcrItem[] = [];
+        let sourceUsed = 'server_ocr';
 
-        const response = await fetch('/api/jasaraharja/ocr', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            images: payloadImages,
-            // also provide first image for backward compatibility
-            imageBase64: payloadImages[0]?.imageBase64 || '',
-            mimeType: payloadImages[0]?.mimeType || 'image/jpeg'
-          })
-        });
+        // 1. Try server-side OCR endpoint first
+        try {
+          const payloadImages = sheetsToProcess.map((sheet) => ({
+            imageBase64: sheet.base64,
+            mimeType: sheet.mimeType,
+            name: sheet.name,
+            sheetNumber: sheet.sheetNumber
+          }));
 
-        const data = await response.json();
+          setOcrProgressPercent(45);
 
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Gagal mengekstrak data dari foto');
+          const response = await fetch('/api/jasaraharja/ocr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              images: payloadImages,
+              imageBase64: payloadImages[0]?.imageBase64 || '',
+              mimeType: payloadImages[0]?.mimeType || 'image/jpeg'
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && Array.isArray(data.items) && data.items.length > 0) {
+              extractedList = data.items;
+              sourceUsed = 'server';
+            }
+          }
+        } catch (serverErr) {
+          console.warn('Server OCR endpoint tidak dapat dihubungi, mencoba fallback client Gemini:', serverErr);
         }
 
-        const extractedList: JasaRaharjaOcrItem[] = Array.isArray(data.items) ? data.items : [];
+        // 2. If server did not return items, fallback to client-side direct Gemini call
+        if (extractedList.length === 0) {
+          setOcrProgressPercent(65);
+          const activeKey =
+            localStorage.getItem('gemini_api_key') ||
+            (import.meta as any).env?.VITE_GEMINI_API_KEY ||
+            '';
+
+          if (activeKey) {
+            setOcrProgressText('Menghubungi Gemini Vision AI secara langsung...');
+            extractedList = await extractWithDirectClientGemini(sheetsToProcess, activeKey);
+            sourceUsed = 'client_gemini';
+          } else {
+            // Prompt user for API Key if in deployed environment without backend key
+            setIsApiKeyModalOpen(true);
+            setIsProcessingOcr(false);
+            setOcrProgressText('');
+            showToast('Kunci API Gemini diperlukan untuk proses OCR di lingkungan ini. Silakan masukkan API Key Anda.', 'info');
+            return;
+          }
+        }
+
+        setOcrProgressPercent(90);
 
         if (extractedList.length === 0) {
-          showToast('Tidak ada baris data pasien yang dapat dikenali dari foto.', 'error');
+          showToast('Tidak ada baris data pasien yang dapat dikenali dari foto lembar.', 'error');
           setIsProcessingOcr(false);
           return;
         }
@@ -198,6 +454,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
           saveJasaRaharjaData(upsertResult.updatedList);
         }
 
+        setOcrProgressPercent(100);
         setLastUpsertSummary(upsertResult);
 
         // Update sheet statuses
@@ -209,30 +466,20 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
           }))
         );
 
-        if (data.warning) {
-          showToast(data.warning, 'info');
-        } else {
-          showToast(
-            `Ekstraksi AI Sukses: ${upsertResult.updatedCount} pasien diperbarui, ${upsertResult.addedCount} pasien baru ditambahkan!`,
-            'success'
-          );
-        }
+        showToast(
+          `Ekstraksi AI Sukses: ${upsertResult.updatedCount} pasien diperbarui, ${upsertResult.addedCount} pasien baru ditambahkan!`,
+          'success'
+        );
       } catch (err: any) {
         console.error('Error saat ekstraksi OCR:', err);
         let errorDisplayMsg = 'Terjadi kesalahan saat memproses foto tabel.';
         const rawErr = String(err?.message || err || '');
+
         if (rawErr.includes('503') || rawErr.includes('high demand') || rawErr.includes('UNAVAILABLE')) {
           errorDisplayMsg = 'Layanan AI sedang mengalami lonjakan antrean (503). Silakan coba klik tombol Ekstrak Ulang.';
-        } else if (rawErr.includes('{')) {
-          try {
-            const match = rawErr.match(/\{[\s\S]*\}/);
-            if (match) {
-              const parsed = JSON.parse(match[0]);
-              errorDisplayMsg = parsed.error?.message || parsed.message || rawErr;
-            }
-          } catch {
-            errorDisplayMsg = rawErr;
-          }
+        } else if (rawErr.includes('API key') || rawErr.includes('403') || rawErr.includes('unauthorized')) {
+          errorDisplayMsg = 'Kunci API Gemini tidak valid atau kuota habis. Silakan periksa pengaturan API Key.';
+          setIsApiKeyModalOpen(true);
         } else if (rawErr) {
           errorDisplayMsg = rawErr;
         }
@@ -248,50 +495,141 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
       } finally {
         setIsProcessingOcr(false);
         setOcrProgressText('');
+        setOcrProgressPercent(0);
       }
     },
     [items, onUpsertItems, showToast]
   );
 
   // ---------------------------------------------------------------------------
-  // Handle Multi-File Selection (1 to 4 Images)
+  // Handle Excel / CSV File Import (Local SheetJS Parser)
+  // ---------------------------------------------------------------------------
+  const handleExcelFileSelected = async (file: File) => {
+    setIsProcessingOcr(true);
+    setOcrProgressPercent(25);
+    setOcrProgressText(`Membaca file ${file.name}...`);
+    setLastUpsertSummary(null);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      setOcrProgressPercent(60);
+      setOcrProgressText('Memetakan kolom (No. RM, Pasien, Biaya, Plafon)...');
+
+      const extractedItems = parseExcelJasaRaharja(buffer);
+      setOcrProgressPercent(90);
+
+      if (extractedItems.length === 0) {
+        showToast('Tidak ada data pasien yang valid di dalam file Excel.', 'error');
+        return;
+      }
+
+      // Upsert into state
+      let upsertResult: UpsertResult;
+      if (onUpsertItems) {
+        upsertResult = onUpsertItems(extractedItems);
+      } else {
+        upsertResult = upsertJasaRaharjaItems(items, extractedItems);
+        saveJasaRaharjaData(upsertResult.updatedList);
+      }
+
+      setOcrProgressPercent(100);
+      setLastUpsertSummary(upsertResult);
+
+      showToast(
+        `Impor Excel Sukses: ${upsertResult.updatedCount} pasien diperbarui, ${upsertResult.addedCount} pasien baru ditambahkan dari ${file.name}!`,
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Error saat parsing file Excel:', err);
+      showToast(err?.message || 'Gagal membaca berkas Excel/CSV. Pastikan format tabel memiliki kolom data pasien.', 'error');
+    } finally {
+      setIsProcessingOcr(false);
+      setOcrProgressText('');
+      setOcrProgressPercent(0);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Handle Multi-File Selection (Images, PDF, or Spreadsheet)
   // ---------------------------------------------------------------------------
   const handleFilesSelected = async (filesList: FileList | File[]) => {
     const rawFiles = Array.from(filesList);
-    const validImageFiles = rawFiles
-      .filter((file) => file.type.startsWith('image/'))
-      .slice(0, 4); // Max 4 sheets per batch
+    if (rawFiles.length === 0) return;
 
-    if (validImageFiles.length === 0) {
-      showToast('Harap pilih file gambar (JPG, PNG, WEBP). Maksimal 4 lembar.', 'error');
-      return;
-    }
+    const excelFiles: File[] = [];
+    const mediaFiles: File[] = [];
 
-    const processedSheets: UploadedSheet[] = [];
+    for (const file of rawFiles) {
+      const lowerName = file.name.toLowerCase();
+      const isExcel =
+        lowerName.endsWith('.xlsx') ||
+        lowerName.endsWith('.xls') ||
+        lowerName.endsWith('.csv') ||
+        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.type === 'application/vnd.ms-excel' ||
+        file.type === 'text/csv';
 
-    for (let i = 0; i < validImageFiles.length; i++) {
-      const file = validImageFiles[i];
-      try {
-        const base64 = await readFileAsDataUrl(file);
-        processedSheets.push({
-          id: `sheet-${Date.now()}-${i}`,
-          name: file.name,
-          sheetNumber: i + 1,
-          previewUrl: base64,
-          base64: base64,
-          mimeType: file.type || 'image/jpeg',
-          size: file.size,
-          status: 'processing'
-        });
-      } catch (readErr) {
-        console.error('Gagal membaca file gambar:', readErr);
+      const isMediaOrPdf =
+        file.type.startsWith('image/') ||
+        file.type === 'application/pdf' ||
+        lowerName.endsWith('.pdf') ||
+        lowerName.endsWith('.jpg') ||
+        lowerName.endsWith('.jpeg') ||
+        lowerName.endsWith('.png') ||
+        lowerName.endsWith('.webp');
+
+      if (isExcel) {
+        excelFiles.push(file);
+      } else if (isMediaOrPdf) {
+        mediaFiles.push(file);
       }
     }
 
-    if (processedSheets.length > 0) {
-      setUploadedSheets(processedSheets);
-      // Automatically run AI extraction as requested!
-      runExtractionOnSheets(processedSheets);
+    if (excelFiles.length === 0 && mediaFiles.length === 0) {
+      showToast('Harap pilih file gambar (JPG, PNG), PDF (.pdf), atau berkas Excel (.xlsx, .xls, .csv).', 'error');
+      return;
+    }
+
+    // 1. Process Excel / CSV Files directly via SheetJS (XLSX)
+    for (const excelFile of excelFiles) {
+      await handleExcelFileSelected(excelFile);
+    }
+
+    // 2. Process Image / PDF Files via Gemini AI OCR
+    if (mediaFiles.length > 0) {
+      const validMediaFiles = mediaFiles.slice(0, 4); // Max 4 sheets/docs per batch
+      setIsProcessingOcr(true);
+      setOcrProgressPercent(15);
+      setOcrProgressText(`Memuat ${validMediaFiles.length} berkas foto/dokumen untuk ekstraksi AI...`);
+
+      const processedSheets: UploadedSheet[] = [];
+
+      for (let i = 0; i < validMediaFiles.length; i++) {
+        const file = validMediaFiles[i];
+        try {
+          const fileData = await readFileAsBase64(file);
+          processedSheets.push({
+            id: `sheet-${Date.now()}-${i}`,
+            name: file.name,
+            sheetNumber: i + 1,
+            previewUrl: fileData.base64,
+            base64: fileData.base64,
+            mimeType: fileData.mimeType,
+            size: file.size,
+            status: 'processing'
+          });
+        } catch (readErr) {
+          console.error('Gagal membaca berkas dokumen:', readErr);
+        }
+      }
+
+      if (processedSheets.length > 0) {
+        setUploadedSheets(processedSheets);
+        await runExtractionOnSheets(processedSheets);
+      } else {
+        setIsProcessingOcr(false);
+        setOcrProgressText('');
+      }
     }
   };
 
@@ -312,6 +650,46 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
     e.stopPropagation();
     setUploadedSheets([]);
     setLastUpsertSummary(null);
+  };
+
+  // Save Custom Gemini API Key
+  const handleSaveApiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (customApiKey.trim()) {
+      localStorage.setItem('gemini_api_key', customApiKey.trim());
+      showToast('Kunci API Gemini berhasil disimpan untuk lingkungan ini.', 'success');
+      setIsApiKeyModalOpen(false);
+      if (uploadedSheets.length > 0) {
+        runExtractionOnSheets(uploadedSheets);
+      }
+    } else {
+      localStorage.removeItem('gemini_api_key');
+      showToast('Kunci API kustom dihapus.', 'info');
+      setIsApiKeyModalOpen(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Helper to Highlight Matching Search Text
+  // ---------------------------------------------------------------------------
+  const renderHighlightedText = (text: string, highlight: string) => {
+    if (!highlight.trim()) return text;
+    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+
+    return (
+      <span>
+        {parts.map((part, i) =>
+          regex.test(part) ? (
+            <mark key={i} className="bg-amber-200 text-amber-950 font-bold px-0.5 rounded">
+              {part}
+            </mark>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+      </span>
+    );
   };
 
   // ---------------------------------------------------------------------------
@@ -343,45 +721,39 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
     const query = searchTerm.toLowerCase().trim();
 
     const filtered = items.filter((item) => {
-      // 1. Live Instant Search (No. RM, Nama Pasien, Tanggal, Keterangan)
       if (query) {
         const matchNama = item.namaPasien?.toLowerCase().includes(query);
         const matchRm = item.noRm?.toLowerCase().includes(query) || normalizeNoRm(item.noRm).includes(normalizeNoRm(query));
         const matchKet = item.keterangan?.toLowerCase().includes(query);
         const matchTgl = item.tanggal?.toLowerCase().includes(query);
         const matchDiag = item.diagnosa?.toLowerCase().includes(query);
-
         if (!matchNama && !matchRm && !matchKet && !matchTgl && !matchDiag) {
           return false;
         }
       }
 
-      // 2. Quick Category Filter
       if (activeFilter === 'habis') {
-        const isHabis =
-          item.sisaPlafon <= 0 ||
-          item.statusPlafon === 'HABIS' ||
-          item.keterangan?.toUpperCase().includes('HABIS');
-        if (!isHabis) return false;
-      } else if (activeFilter === 'sisa') {
-        const hasSisa = item.sisaPlafon > 0 && !item.keterangan?.toUpperCase().includes('HABIS');
-        if (!hasSisa) return false;
-      } else if (activeFilter === 'ranap') {
-        if (!item.keterangan?.toUpperCase().includes('RANAP')) return false;
-      } else if (activeFilter === 'rujuk') {
-        if (!item.keterangan?.toUpperCase().includes('RUJUK')) return false;
+        return item.sisaPlafon <= 0 || item.statusPlafon === 'HABIS' || item.keterangan?.toUpperCase().includes('HABIS');
+      }
+      if (activeFilter === 'sisa') {
+        return item.sisaPlafon > 0 && item.statusPlafon !== 'HABIS';
+      }
+      if (activeFilter === 'ranap') {
+        return item.keterangan?.toUpperCase().includes('RANAP');
+      }
+      if (activeFilter === 'rujuk') {
+        return item.keterangan?.toUpperCase().includes('RUJUK');
       }
 
       return true;
     });
 
-    // Sort
     return filtered.sort((a, b) => {
       let comparison = 0;
       if (sortField === 'no') {
         comparison = (a.no || 0) - (b.no || 0);
       } else if (sortField === 'tanggal') {
-        comparison = (a.tanggal || '').localeCompare(b.tanggal || '');
+        comparison = new Date(a.tanggal || 0).getTime() - new Date(b.tanggal || 0).getTime();
       } else if (sortField === 'nama') {
         comparison = (a.namaPasien || '').localeCompare(b.namaPasien || '');
       } else if (sortField === 'terpakai') {
@@ -394,27 +766,86 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
     });
   }, [items, searchTerm, activeFilter, sortField, sortOrder]);
 
-  // ---------------------------------------------------------------------------
-  // Helper to Highlight Matching Search Text
-  // ---------------------------------------------------------------------------
-  const renderHighlightedText = (text: string, highlight: string) => {
-    if (!highlight.trim()) return text;
-    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = text.split(regex);
+  // Modal Handlers for Add / Edit
+  const handleOpenAddModal = () => {
+    setEditingItem(null);
+    setFormTanggal(new Date().toISOString().slice(0, 10));
+    setFormNoRm('');
+    setFormNamaPasien('');
+    setFormBiayaTerpakai(0);
+    setFormPlafonMaksimal(PLAFON_MAKSIMAL_DEFAULT);
+    setFormKeterangan('RANAP');
+    setFormDiagnosa('');
+    setFormCatatan('');
+    setIsAddModalOpen(true);
+  };
 
-    return (
-      <span>
-        {parts.map((part, i) =>
-          regex.test(part) ? (
-            <mark key={i} className="bg-amber-200 text-amber-950 font-bold px-0.5 rounded">
-              {part}
-            </mark>
-          ) : (
-            <span key={i}>{part}</span>
-          )
-        )}
-      </span>
-    );
+  const handleOpenEditModal = (item: JasaRaharjaItem) => {
+    setEditingItem(item);
+    setFormTanggal(item.tanggal || new Date().toISOString().slice(0, 10));
+    setFormNoRm(item.noRm);
+    setFormNamaPasien(item.namaPasien);
+    setFormBiayaTerpakai(item.biayaTerpakai);
+    setFormPlafonMaksimal(item.plafonMaksimal || PLAFON_MAKSIMAL_DEFAULT);
+    setFormKeterangan(item.keterangan || 'RANAP');
+    setFormDiagnosa(item.diagnosa || '');
+    setFormCatatan(item.catatan || '');
+    setIsAddModalOpen(true);
+  };
+
+  const handleSaveModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formNoRm.trim() || !formNamaPasien.trim()) {
+      showToast('No. RM dan Nama Pasien wajib diisi.', 'error');
+      return;
+    }
+
+    const plafonMax = formPlafonMaksimal || PLAFON_MAKSIMAL_DEFAULT;
+    const biaya = Number(formBiayaTerpakai) || 0;
+    const sisa = Math.max(0, plafonMax - biaya);
+    const statusPlafon = sisa <= 0 ? 'HABIS' : 'TERSEDIA';
+
+    if (editingItem) {
+      onUpdateItem({
+        ...editingItem,
+        tanggal: formTanggal,
+        noRm: formNoRm.trim(),
+        namaPasien: formNamaPasien.trim(),
+        biayaTerpakai: biaya,
+        sisaPlafon: sisa,
+        plafonMaksimal: plafonMax,
+        keterangan: formKeterangan.trim().toUpperCase(),
+        statusPlafon,
+        diagnosa: formDiagnosa.trim(),
+        catatan: formCatatan.trim()
+      });
+      showToast(`Data pasien ${formNamaPasien} berhasil diperbarui.`, 'success');
+    } else {
+      onAddItem({
+        no: items.length + 1,
+        tanggal: formTanggal,
+        noRm: formNoRm.trim(),
+        namaPasien: formNamaPasien.trim(),
+        biayaTerpakai: biaya,
+        sisaPlafon: sisa,
+        plafonMaksimal: plafonMax,
+        keterangan: formKeterangan.trim().toUpperCase(),
+        statusPlafon,
+        diagnosa: formDiagnosa.trim(),
+        catatan: formCatatan.trim()
+      });
+      showToast(`Pasien baru ${formNamaPasien} berhasil ditambahkan ke tabel.`, 'success');
+    }
+
+    setIsAddModalOpen(false);
+  };
+
+  const handleConfirmDelete = () => {
+    if (itemToDelete) {
+      onDeleteItem(itemToDelete.id);
+      showToast(`Data pasien ${itemToDelete.namaPasien} (No. RM ${itemToDelete.noRm}) berhasil dihapus.`, 'info');
+      setItemToDelete(null);
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -494,78 +925,6 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
     setIsAddModalOpen(true);
   };
 
-  const openAddModal = () => {
-    setEditingItem(null);
-    setFormTanggal(new Date().toISOString().slice(0, 10));
-    setFormNoRm('');
-    setFormNamaPasien('');
-    setFormBiayaTerpakai(0);
-    setFormPlafonMaksimal(PLAFON_MAKSIMAL_DEFAULT);
-    setFormKeterangan('RANAP');
-    setFormDiagnosa('');
-    setFormCatatan('');
-    setIsAddModalOpen(true);
-  };
-
-  const handleSaveModal = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formNamaPasien.trim()) {
-      showToast('Nama Pasien wajib diisi.', 'error');
-      return;
-    }
-    if (!formNoRm.trim()) {
-      showToast('No. RM wajib diisi.', 'error');
-      return;
-    }
-
-    const sisa = Math.max(0, formPlafonMaksimal - formBiayaTerpakai);
-    const statusPlafon = sisa <= 0 || formKeterangan.toUpperCase().includes('HABIS') ? 'HABIS' : 'TERSEDIA';
-
-    if (editingItem) {
-      const updated: JasaRaharjaItem = {
-        ...editingItem,
-        tanggal: formTanggal,
-        noRm: formNoRm.trim(),
-        namaPasien: formNamaPasien.trim(),
-        biayaTerpakai: formBiayaTerpakai,
-        plafonMaksimal: formPlafonMaksimal,
-        sisaPlafon: sisa,
-        keterangan: formKeterangan,
-        statusPlafon: statusPlafon,
-        diagnosa: formDiagnosa,
-        catatan: formCatatan
-      };
-      onUpdateItem(updated);
-      showToast(`Data pasien ${updated.namaPasien} berhasil diperbarui.`, 'success');
-    } else {
-      const newItem: Omit<JasaRaharjaItem, 'id'> = {
-        no: items.length + 1,
-        tanggal: formTanggal,
-        noRm: formNoRm.trim(),
-        namaPasien: formNamaPasien.trim(),
-        biayaTerpakai: formBiayaTerpakai,
-        plafonMaksimal: formPlafonMaksimal,
-        sisaPlafon: sisa,
-        keterangan: formKeterangan,
-        statusPlafon: statusPlafon,
-        diagnosa: formDiagnosa,
-        catatan: formCatatan
-      };
-      onAddItem(newItem);
-      showToast(`Pasien baru ${newItem.namaPasien} berhasil ditambahkan.`, 'success');
-    }
-
-    setIsAddModalOpen(false);
-  };
-
-  const handleConfirmDelete = () => {
-    if (!itemToDelete) return;
-    const targetName = itemToDelete.namaPasien;
-    onDeleteItem(itemToDelete.id);
-    setItemToDelete(null);
-    showToast(`Data pasien ${targetName} berhasil dihapus.`, 'success');
-  };
-
   return (
     <div id="jasa-raharja-module" className="flex flex-col gap-6 w-full max-w-7xl mx-auto">
       {/* -------------------------------------------------------------------------
@@ -593,7 +952,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={openAddModal}
+            onClick={handleOpenAddModal}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -603,7 +962,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <span className="text-xs font-medium text-slate-500">Total Pasien Terdata</span>
           <div className="mt-2 flex items-baseline justify-between">
@@ -642,7 +1001,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
       </div>
 
       {/* -------------------------------------------------------------------------
-          KOMPONEN UTAMA 1: AREA UPLOAD FOTO MULTI-FILE (LEMBAR 1-4)
+          KOMPONEN UTAMA 1: AREA UPLOAD DOKUMEN / TABEL MULTI-FORMAT (FOTO, PDF, EXCEL)
       -------------------------------------------------------------------------- */}
       <div
         id="multi-sheet-upload-zone"
@@ -659,10 +1018,10 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
         onDrop={handleDrop}
       >
         <input
-          ref={fileInputRef}
+          ref={genericInputRef}
           type="file"
           multiple
-          accept="image/*"
+          accept="image/*,.pdf,.xlsx,.xls,.csv"
           className="hidden"
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) {
@@ -678,14 +1037,13 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                1. Upload Foto Lembar Tabel Jasa Raharja
-                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                  Multi-File (1 - 4 Foto)
+                1. Upload Dokumen / Tabel Jasa Raharja
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  Multi-Format (Foto / PDF / Excel)
                 </span>
               </h2>
               <p className="text-xs text-slate-500 mt-1 max-w-xl">
-                Tarik & letakkan 1 sampai 4 foto sekaligus (Lembar 1 - Lembar 4). AI Gemini / OCR akan otomatis
-                mengekstrak teks tabel dan menggabungkan seluruh baris pasien ke tabel digital dengan auto-upsert No. RM.
+                Tarik & letakkan file (Foto, PDF, atau Excel .xlsx/.csv). Sistem akan mengekstrak/membaca data tabel dan menggabungkan seluruh baris pasien ke tabel digital secara otomatis.
               </p>
             </div>
           </div>
@@ -694,19 +1052,19 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
             <button
               type="button"
               disabled={isProcessingOcr}
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
+              onClick={() => genericInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50 cursor-pointer"
             >
               <Upload className="w-4 h-4" />
-              <span>{uploadedSheets.length > 0 ? 'Ganti / Tambah Foto' : 'Pilih 1 - 4 Foto Lembar'}</span>
+              <span>📤 Pilih File (Foto / PDF / Excel)</span>
             </button>
 
             {uploadedSheets.length > 0 && !isProcessingOcr && (
               <button
                 type="button"
                 onClick={() => runExtractionOnSheets(uploadedSheets)}
-                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
-                title="Ekstrak ulang foto yang telah diupload"
+                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                title="Ekstrak ulang berkas yang telah diupload"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-slate-600" />
                 <span>Ekstrak Ulang</span>
@@ -717,8 +1075,8 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
               <button
                 type="button"
                 onClick={handleClearAllSheets}
-                className="p-2.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                title="Hapus semua foto lembar yang dipilih"
+                className="p-2.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                title="Hapus semua berkas yang dipilih"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -758,7 +1116,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
             <button
               type="button"
               onClick={() => setLastUpsertSummary(null)}
-              className="text-emerald-600 hover:text-emerald-900 text-xs"
+              className="text-emerald-600 hover:text-emerald-900 text-xs cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -769,57 +1127,69 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
         {uploadedSheets.length > 0 && (
           <div className="mt-4 pt-4 border-t border-slate-100">
             <div className="text-xs font-semibold text-slate-700 mb-2 flex items-center justify-between">
-              <span>Pratinjau Foto Lembar ({uploadedSheets.length} file diunggah):</span>
+              <span>Pratinjau Berkas Dokumen ({uploadedSheets.length} file diunggah):</span>
               <span className="text-[11px] text-slate-400 font-normal">Tersambung ke Gemini AI OCR</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {uploadedSheets.map((sheet, idx) => (
-                <div
-                  key={sheet.id}
-                  className="relative group rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shadow-sm flex flex-col"
-                >
-                  <div className="relative h-24 sm:h-28 w-full bg-slate-900/5 overflow-hidden">
-                    <img
-                      src={sheet.previewUrl}
-                      alt={sheet.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                    />
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold">
-                      Lembar {idx + 1}
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={(e) => handleRemoveSheet(sheet.id, e)}
-                      className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 hover:bg-rose-600 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition-all"
-                      title="Hapus lembar ini"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="p-2 text-[11px] flex flex-col gap-0.5">
-                    <span className="font-semibold text-slate-800 truncate" title={sheet.name}>
-                      {sheet.name}
-                    </span>
-                    <div className="flex items-center justify-between text-[10px] text-slate-500">
-                      <span>{(sheet.size / 1024).toFixed(0)} KB</span>
-                      {sheet.status === 'done' ? (
-                        <span className="text-emerald-700 font-bold flex items-center gap-0.5">
-                          <Check className="w-3 h-3" /> Berhasil
-                        </span>
-                      ) : sheet.status === 'processing' ? (
-                        <span className="text-amber-600 font-medium">Mengekstrak...</span>
-                      ) : sheet.status === 'error' ? (
-                        <span className="text-rose-600 font-medium">Gagal</span>
+              {uploadedSheets.map((sheet, idx) => {
+                const isPdf = sheet.mimeType === 'application/pdf' || sheet.name.toLowerCase().endsWith('.pdf');
+                return (
+                  <div
+                    key={sheet.id}
+                    className="relative group rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shadow-sm flex flex-col"
+                  >
+                    <div className="relative h-24 sm:h-28 w-full bg-slate-900/5 overflow-hidden flex items-center justify-center">
+                      {isPdf ? (
+                        <div className="flex flex-col items-center justify-center gap-1.5 p-2 text-center">
+                          <FileText className="w-8 h-8 text-rose-500" />
+                          <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                            DOKUMEN PDF
+                          </span>
+                        </div>
                       ) : (
-                        <span>Siap</span>
+                        <img
+                          src={sheet.previewUrl}
+                          alt={sheet.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        />
                       )}
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold">
+                        Lembar {idx + 1}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemoveSheet(sheet.id, e)}
+                        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 hover:bg-rose-600 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition-all cursor-pointer"
+                        title="Hapus lembar ini"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="p-2 text-[11px] flex flex-col gap-0.5">
+                      <span className="font-semibold text-slate-800 truncate" title={sheet.name}>
+                        {sheet.name}
+                      </span>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500">
+                        <span>{(sheet.size / 1024).toFixed(0)} KB</span>
+                        {sheet.status === 'done' ? (
+                          <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                            <Check className="w-3 h-3" /> Berhasil
+                          </span>
+                        ) : sheet.status === 'processing' ? (
+                          <span className="text-amber-600 font-medium">Mengekstrak...</span>
+                        ) : sheet.status === 'error' ? (
+                          <span className="text-rose-600 font-medium">Gagal</span>
+                        ) : (
+                          <span>Siap</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -961,7 +1331,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
       -------------------------------------------------------------------------- */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+          <table className="w-full text-left text-xs border-collapse min-w-[720px]">
             <thead>
               <tr className="bg-slate-50/90 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
                 <th className="py-3.5 px-4 w-14 text-center">No</th>
@@ -1081,8 +1451,8 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
                         <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                           <button
                             type="button"
-                            onClick={() => openEditModal(item)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition-colors"
+                            onClick={() => handleOpenEditModal(item)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition-colors cursor-pointer"
                             title="Edit Data Pasien"
                           >
                             <Edit3 className="w-3.5 h-3.5" />

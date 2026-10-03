@@ -46,6 +46,8 @@ import { MedicalLetterItem } from './types/letterTypes';
 import { loadMedicalLetters, saveMedicalLetters } from './data/letterData';
 import { initAuth } from './services/googleAuthService';
 import { pullDataFromDrive, triggerSilentDriveSync } from './services/dualSyncStorage';
+import { pushDatabaseToSheets, isGasConnected } from './services/googleSheetsService';
+import { initDailyAutoSnapshot } from './services/historyAndBackupService';
 import {
   loadJasaRaharjaData,
   saveJasaRaharjaData,
@@ -89,28 +91,29 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const activeOnly = parsed.filter((s: any) => !s.is_deleted && !s.isDeleted);
           // Pastikan seluruh 4 hari jadwal praktik dr. Aulya Farra Rahmadany, Sp. A selalu termuat
           const aulyaInitial = initialSchedules.filter(
             (s) => s.dpjp && s.dpjp.toLowerCase().includes('aulya')
           );
           const existingAulyaDays = new Set(
-            parsed
+            activeOnly
               .filter((s: any) => s.dpjp && s.dpjp.toLowerCase().includes('aulya'))
               .map((s: any) => s.hari)
           );
           const missingAulya = aulyaInitial.filter((s) => !existingAulyaDays.has(s.hari));
           if (missingAulya.length > 0) {
-            const merged = [...parsed, ...missingAulya];
+            const merged = [...activeOnly, ...missingAulya];
             localStorage.setItem('medcentral_schedules_v5', JSON.stringify(merged));
             return merged;
           }
-          return parsed;
+          return activeOnly;
         }
       }
     } catch (e) {
       console.error('Error loading medcentral_schedules_v5:', e);
     }
-    return initialSchedules;
+    return initialSchedules.filter((s: any) => !s.is_deleted && !s.isDeleted);
   });
 
   const [doctorLeaves, setDoctorLeaves] = useState<DoctorLeaveAnnouncement[]>(() => {
@@ -119,13 +122,14 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return consolidateAndSortDoctorLeaves(parsed);
+          const activeOnly = parsed.filter((s: any) => !s.is_deleted && !s.isDeleted);
+          return consolidateAndSortDoctorLeaves(activeOnly);
         }
       }
     } catch (e) {
       console.error('Error loading medcentral_leaves_v5:', e);
     }
-    return consolidateAndSortDoctorLeaves(initialDoctorLeaves);
+    return consolidateAndSortDoctorLeaves(initialDoctorLeaves.filter((s: any) => !s.is_deleted && !s.isDeleted));
   });
 
   const [queueList, setQueueList] = useState<PatientQueueItem[]>(() => {
@@ -133,12 +137,14 @@ export default function App() {
       const saved = localStorage.getItem('medcentral_queue_v3');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((s: any) => !s.is_deleted && !s.isDeleted);
+        }
       }
     } catch (e) {
       console.error('Error loading medcentral_queue_v3:', e);
     }
-    return initialQueueList;
+    return initialQueueList.filter((s: any) => !s.is_deleted && !s.isDeleted);
   });
 
   const [surgeryList, setSurgeryList] = useState<ElectiveSurgerySchedule[]>(() => {
@@ -151,7 +157,8 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((item) => {
+          const activeOnly = parsed.filter((s: any) => !s.is_deleted && !s.isDeleted);
+          return activeOnly.map((item) => {
             let pelayanan = item.pelayanan;
             if ((pelayanan as string) === 'Dalam Persiapan' || (pelayanan as string) === 'Selesai') {
               pelayanan = 'Hadir';
@@ -219,6 +226,24 @@ export default function App() {
   // Navigation & Filter state
   const [activeTab, setActiveTab] = useState<ActiveNavTab>('dashboard');
   const [isOpenMobile, setIsOpenMobile] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('rsumb_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSidebarCollapse = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('rsumb_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPoli, setSelectedPoli] = useState('');
   const [selectedHari, setSelectedHari] = useState('');
@@ -255,13 +280,36 @@ export default function App() {
   const isInitialMountRef = useRef(true);
 
   useEffect(() => {
+    // Inisialisasi snapshot otomatis harian pada browser storage (rsumb_db_snapshot_daily)
+    initDailyAutoSnapshot();
+
     // Mark initial mount complete after slight delay
     const timer = setTimeout(() => {
       isInitialMountRef.current = false;
-      // Pastikan snapshot terbaru termasuk jadwal dokter baru tersinkronkan ke Google Drive
+      // Pastikan snapshot terbaru tersinkronkan ke Google Drive
       triggerSilentDriveSync(2000);
     }, 1500);
     return () => clearTimeout(timer);
+  }, []);
+
+  // Auto-backup pushDatabaseToSheets() secara otomatis setiap 20 menit (20 * 60 * 1000 = 1.200.000 ms)
+  useEffect(() => {
+    const TWENTY_MINUTES_MS = 20 * 60 * 1000;
+    const autoSyncInterval = setInterval(() => {
+      if (isGasConnected()) {
+        pushDatabaseToSheets(true)
+          .then((res) => {
+            if (res.success) {
+              console.log('[Auto-Sync 20m] Backup otomatis portal ke Google Sheets berhasil:', res.lastUpdated);
+            }
+          })
+          .catch((err) => {
+            console.warn('[Auto-Sync 20m] Notice auto-backup 20 menit:', err);
+          });
+      }
+    }, TWENTY_MINUTES_MS);
+
+    return () => clearInterval(autoSyncInterval);
   }, []);
 
   // Save to localStorage safely & trigger silent auto-save to Google Drive
@@ -1065,6 +1113,8 @@ export default function App() {
           setActiveTab={setActiveTab}
           isOpenMobile={isOpenMobile}
           setIsOpenMobile={setIsOpenMobile}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={handleToggleSidebarCollapse}
           onOpenEmergency={() => setIsEmergencyModalOpen(true)}
           onOpenHelp={() => setIsHelpModalOpen(true)}
           totalDoctorLeaves={doctorLeaves.length}
@@ -1072,7 +1122,11 @@ export default function App() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-grow md:ml-64 print:ml-0 flex flex-col w-full min-w-0 transition-all">
+      <div
+        className={`flex-grow ${
+          isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
+        } ml-0 print:ml-0 flex flex-col w-full min-w-0 transition-all duration-300 ease-in-out`}
+      >
         {/* Top Nav Bar */}
         <div className="print:hidden no-print">
           <Header
@@ -1104,7 +1158,7 @@ export default function App() {
         </div>
 
         {/* Main Body */}
-        <main className="flex-grow p-4 sm:p-6 lg:p-8 print:p-0 flex flex-col gap-6 sm:gap-8 w-full max-w-7xl print:max-w-none mx-auto pb-12 sm:pb-16">
+        <main className="flex-grow px-4 sm:px-6 py-4 sm:py-6 print:p-0 flex flex-col gap-6 sm:gap-8 w-full max-w-full print:max-w-none pb-12 sm:pb-16">
 
           {/* Page Title & Subtitle */}
           {activeTab !== 'khitan' && activeTab !== 'letters' && activeTab !== 'rooms' && activeTab !== 'contact_patients' && activeTab !== 'jasa_raharja' && activeTab !== 'incentive_calc' && activeTab !== 'patient_notes' && activeTab !== 'kupon_mohat' && (
@@ -1233,13 +1287,19 @@ export default function App() {
                 onHighlightDoctorLeave={handleHighlightDoctorLeave}
                 onOpenPosterModal={() => setIsPosterModalOpen(true)}
                 onOpenLeavePoster={handleOpenLeavePoster}
-                onAddNewSchedule={() => {
+                onAddNewDoctor={() => {
+                  setIsAddDoctorModalOpen(true);
+                }}
+                onAddOrEditSchedule={() => {
                   setEditingSchedule(null);
-                  setIsAddScheduleModalOpen(true);
+                  setIsAddEditScheduleModalOpen(true);
+                }}
+                onAddNewSchedule={() => {
+                  setIsAddDoctorModalOpen(true);
                 }}
                 onEditSchedule={(sch) => {
                   setEditingSchedule(sch);
-                  setIsAddScheduleModalOpen(true);
+                  setIsAddEditScheduleModalOpen(true);
                 }}
                 onDeleteSchedule={handleDeleteSchedule}
                 onBookPatient={(sch) => {
@@ -1378,6 +1438,36 @@ export default function App() {
       </div>
 
       {/* Modals */}
+      {/* BUTTON A: Modal Tambah Dokter Baru */}
+      <AddDoctorModal
+        isOpen={isAddDoctorModalOpen}
+        onClose={() => setIsAddDoctorModalOpen(false)}
+        onSave={(data) => {
+          handleSaveSchedule(data);
+          setIsAddDoctorModalOpen(false);
+        }}
+        poliOptions={poliOptions}
+        doctorOptions={doctorOptions}
+      />
+
+      {/* BUTTON B: Modal Tambah / Edit Jadwal Praktik */}
+      <AddOrEditScheduleModal
+        isOpen={isAddEditScheduleModalOpen}
+        onClose={() => {
+          setIsAddEditScheduleModalOpen(false);
+          setEditingSchedule(null);
+        }}
+        onSave={(data) => {
+          handleSaveSchedule(data);
+          setIsAddEditScheduleModalOpen(false);
+          setEditingSchedule(null);
+        }}
+        editingSchedule={editingSchedule}
+        existingSchedules={schedules}
+        doctorOptions={doctorOptions}
+        poliOptions={poliOptions}
+      />
+
       <AddScheduleModal
         isOpen={isAddScheduleModalOpen}
         onClose={() => setIsAddScheduleModalOpen(false)}
@@ -1398,6 +1488,7 @@ export default function App() {
         initialData={editingLeave}
         doctorOptions={doctorOptions}
         poliOptions={poliOptions}
+        schedules={schedules}
       />
 
       <BookPatientModal

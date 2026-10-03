@@ -126,11 +126,11 @@ export const StatisticsModal: React.FC<StatisticsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden"
+        className="relative z-[100000] bg-white rounded-2xl max-w-3xl w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-slate-200 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
@@ -161,7 +161,7 @@ export const StatisticsModal: React.FC<StatisticsModalProps> = ({
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-5 overflow-y-auto space-y-6">
+        <div className="flex-1 overflow-y-auto p-5 space-y-6 max-h-[calc(85vh-130px)]">
           {/* Section 1: Total Dokter Berpraktik vs Libur (Donut Chart & Stat Badges) */}
           <div className="bg-gradient-to-br from-slate-50 to-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
             <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">

@@ -57,7 +57,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
   return (
     <div className="bg-white/80 backdrop-blur-md p-5 sm:p-6 rounded-xl border border-slate-200/80 shadow-xs space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         {/* Search Input */}
         <div className="relative">
           <Search className="w-5 h-5 text-[#5c5f61] absolute left-3.5 top-1/2 -translate-y-1/2" />

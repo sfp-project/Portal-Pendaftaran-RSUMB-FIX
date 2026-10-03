@@ -13,18 +13,13 @@ import { StaffUser } from '../../types/headerTypes';
 import { getShiftTimeRange } from '../../data/headerData';
 import { GoogleDriveLogo } from '../google/GoogleDriveSyncBadge';
 import {
-  googleSignIn,
-  addAuthListener,
-  isGoogleDriveConnected,
-  getCachedUser
-} from '../../services/googleAuthService';
-import {
   getDualSyncState,
   addSyncStateListener,
   pushLocalDataToDrive,
   pullDataFromDrive,
   DualSyncState
 } from '../../services/dualSyncStorage';
+import { isGasConnected } from '../../services/googleSheetsGasService';
 
 interface UserProfileDropdownProps {
   isOpen: boolean;
@@ -50,22 +45,16 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
   showToast
 }) => {
   const [syncState, setSyncState] = useState<DualSyncState>(() => getDualSyncState());
-  const [currentUser, setCurrentUser] = useState(() => getCachedUser());
   const [isDriveExpanded, setIsDriveExpanded] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
 
-  // Subscribe to Google Auth & Sync listeners
+  // Subscribe to Sync listeners
   useEffect(() => {
-    const unsubAuth = addAuthListener((user) => {
-      setCurrentUser(user);
-    });
-
     const unsubSync = addSyncStateListener((state) => {
       setSyncState(state);
     });
 
     return () => {
-      unsubAuth();
       unsubSync();
     };
   }, []);
@@ -73,7 +62,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
   if (!isOpen) return null;
 
   const shiftTime = getShiftTimeRange(activeStaff.shift);
-  const isConnected = isGoogleDriveConnected();
+  const isConnected = isGasConnected();
   const isSyncing = syncState.status === 'syncing' || isManualSyncing;
   const isError = syncState.status === 'error';
 
@@ -99,16 +88,13 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
   // Handle manual sync button click inside profile dropdown
   const handleManualSync = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (!isGoogleDriveConnected()) {
-      try {
-        const user = await googleSignIn();
-        if (user) {
-          showToast?.('Google Drive terhubung! Memulai sinkronisasi cloud...', 'success');
-          await pullDataFromDrive(true);
-        }
-      } catch (err: any) {
-        showToast?.(`Gagal login Google: ${err?.message || 'Akses ditolak'}`, 'error');
-      }
+    if (!isGasConnected()) {
+      window.dispatchEvent(
+        new CustomEvent('rsumb_drive_not_connected_prompt', {
+          detail: { action: 'configure_gas' }
+        })
+      );
+      onClose();
       return;
     }
 
@@ -116,7 +102,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
     try {
       const res = await pushLocalDataToDrive(false);
       if (res.success) {
-        showToast?.('Data portal pendaftaran berhasil disimpan ke rsumb_database.json di Google Drive.', 'success');
+        showToast?.('Data portal pendaftaran berhasil disimpan ke Google Sheets.', 'success');
       }
     } catch (err: any) {
       showToast?.(`Gagal menyinkronkan: ${err?.message}`, 'error');
@@ -125,19 +111,14 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
     }
   };
 
-  const handleConnectOrSwitch = async (e?: React.MouseEvent) => {
+  const handleConnectOrSwitch = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    try {
-      const res = await googleSignIn();
-      if (res) {
-        showToast?.('Akun Google Drive berhasil dihubungkan.', 'success');
-        await pullDataFromDrive(true);
-      }
-    } catch (err: any) {
-      if (err?.code !== 'auth/popup-closed-by-user') {
-        showToast?.(`Gagal otentikasi Google: ${err?.message || 'Akses dibatalkan'}`, 'error');
-      }
-    }
+    window.dispatchEvent(
+      new CustomEvent('rsumb_drive_not_connected_prompt', {
+        detail: { action: 'configure_gas' }
+      })
+    );
+    onClose();
   };
 
   return (
@@ -274,12 +255,11 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
 
           {/* Dedicated Menu Action Item: Status Google Drive & Cloud Backup (Right above Pengaturan Aplikasi & HFIS) */}
           <div className="rounded-xl overflow-hidden transition-all border border-emerald-100 bg-emerald-50/20 hover:bg-emerald-50/50">
-            <button
-              type="button"
-              onClick={() => setIsDriveExpanded(!isDriveExpanded)}
-              className="w-full flex items-center justify-between p-2.5 text-slate-700 hover:text-emerald-950 transition-colors group cursor-pointer text-left"
-            >
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="w-full flex items-center justify-between p-2.5 text-slate-700 transition-colors group text-left">
+              <div
+                onClick={() => setIsDriveExpanded(!isDriveExpanded)}
+                className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+              >
                 <div className="w-8 h-8 rounded-xl bg-white border border-emerald-200/90 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-2xs relative">
                   <GoogleDriveLogo className="w-4 h-4" />
                   {/* Status Live Indicator Badge */}
@@ -293,19 +273,19 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-slate-900 group-hover:text-[#005d42] truncate">
-                    Status Google Drive & Cloud Backup
+                    Database Google Sheets (GAS)
                   </p>
                   <p className="text-[10.5px] text-slate-500 truncate flex items-center gap-1">
                     {isSyncing ? (
                       <span className="text-amber-700 font-medium">Menyinkronkan...</span>
                     ) : isConnected ? (
                       <>
-                        <span className="text-emerald-700 font-semibold">Tersinkron</span>
+                        <span className="text-emerald-700 font-semibold">🟢 Terhubung</span>
                         <span className="text-slate-400">•</span>
-                        <span>Terakhir {formattedTime || '14.51 WIB'}</span>
+                        <span>Terakhir {formattedTime || 'Baru saja'}</span>
                       </>
                     ) : (
-                      <span className="text-rose-600 font-medium">Offline • Klik untuk hubungkan</span>
+                      <span className="text-amber-700 font-medium">🟡 Mode Lokal • Klik untuk setel URL</span>
                     )}
                   </p>
                 </div>
@@ -321,29 +301,30 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-600' : 'text-[#005d42]'}`} />
                 </button>
-                <ChevronRight
-                  className={`w-4 h-4 text-slate-300 group-hover:text-[#005d42] transition-transform ${
-                    isDriveExpanded ? 'rotate-90 text-[#005d42]' : ''
-                  }`}
-                />
+                <button
+                  type="button"
+                  onClick={() => setIsDriveExpanded(!isDriveExpanded)}
+                  aria-label="Buka / Tutup Detail Drive"
+                  className="p-1 rounded-lg text-slate-400 hover:text-[#005d42] transition cursor-pointer"
+                >
+                  <ChevronRight
+                    className={`w-4 h-4 transition-transform ${
+                      isDriveExpanded ? 'rotate-90 text-[#005d42]' : ''
+                    }`}
+                  />
+                </button>
               </div>
-            </button>
+            </div>
 
-            {/* Small nested inline settings/quick actions (no giant modal overlay) */}
+            {/* Small nested inline settings/quick actions */}
             {isDriveExpanded && (
               <div className="px-3 pb-3 pt-1 border-t border-emerald-100/80 space-y-2 bg-emerald-50/60 text-[11px] animate-in fade-in duration-150">
                 <div className="flex items-center justify-between text-slate-600 pt-1">
-                  <span>Berkas Database:</span>
+                  <span>Backend:</span>
                   <code className="font-mono text-[10px] text-emerald-800 bg-white px-1.5 py-0.5 rounded border border-emerald-200">
-                    rsumb_database.json
+                    Google Sheets Web App
                   </code>
                 </div>
-                {isConnected && currentUser && (
-                  <div className="flex items-center justify-between text-slate-600">
-                    <span>Akun Google:</span>
-                    <span className="text-slate-800 font-medium truncate max-w-[150px]">{currentUser.email}</span>
-                  </div>
-                )}
                 <div className="flex items-center gap-1.5 pt-1">
                   <button
                     type="button"
@@ -360,7 +341,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                     onClick={handleConnectOrSwitch}
                     className="py-1.5 px-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-semibold transition cursor-pointer"
                   >
-                    {isConnected ? 'Ganti Akun' : 'Hubungkan'}
+                    {isConnected ? 'Ubah URL' : 'Setel URL'}
                   </button>
                 </div>
               </div>

@@ -3,6 +3,28 @@ import { loadActiveStaff } from './headerData';
 import { triggerSilentDriveSync } from '../services/dualSyncStorage';
 
 export const SYSTEM_AUDIT_LOGS_KEY = 'rsumb_system_audit_logs_v1';
+export const RETENTION_DAYS_LOGS = 30;
+
+/**
+ * Pembersihan Log Otomatis:
+ * Membatasi log aktivitas lokal agar hanya menyimpan data 30 hari terakhir
+ * guna menjaga ukuran payload JSON tetap ringan dan sinkronisasi cepat.
+ */
+export const pruneLogsOlderThan30Days = (
+  logs: SystemActivityLog[],
+  retentionDays: number = RETENTION_DAYS_LOGS
+): SystemActivityLog[] => {
+  const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  return logs.filter((log) => {
+    try {
+      const logTime = new Date(log.timestamp).getTime();
+      if (isNaN(logTime)) return true;
+      return logTime >= cutoffTime;
+    } catch {
+      return true;
+    }
+  });
+};
 
 /**
  * Format Date to RFC3339 string with precise local timezone offset
@@ -308,6 +330,7 @@ export const generateInitialAuditLogs = (): SystemActivityLog[] => {
 
 /**
  * Membaca daftar Activity Log dari LocalStorage
+ * Otomatis menyaring dan membatasi data agar hanya menyimpan 30 hari terakhir
  */
 export const loadSystemActivityLogs = (): SystemActivityLog[] => {
   try {
@@ -315,30 +338,59 @@ export const loadSystemActivityLogs = (): SystemActivityLog[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Otomatis bersihkan jika ada log lebih lama dari 30 hari
+        const pruned = pruneLogsOlderThan30Days(parsed, RETENTION_DAYS_LOGS);
+        if (pruned.length !== parsed.length) {
+          saveSystemActivityLogs(pruned);
+        }
+        return pruned;
       }
     }
   } catch (err) {
     console.warn('Gagal membaca log aktivitas sistem:', err);
   }
 
-  // Fallback ke seed data 1-3 bulan
-  const initial = generateInitialAuditLogs();
+  // Fallback ke seed data terfilter 30 hari
+  const initial = pruneLogsOlderThan30Days(generateInitialAuditLogs(), RETENTION_DAYS_LOGS);
   saveSystemActivityLogs(initial);
   return initial;
 };
 
 /**
  * Menyimpan daftar Activity Log ke LocalStorage dan memicu auto-sync
+ * Otomatis membatasi log 30 hari terakhir agar payload JSON tetap ringan
  */
 export const saveSystemActivityLogs = (logs: SystemActivityLog[]): void => {
   try {
-    // Pertahankan batas wajar (hingga 2,000 log) untuk performa cepat browser
-    const trimmed = logs.slice(0, 2000);
+    // 1. Pembersihan otomatis: hanya simpan log 30 hari terakhir
+    const pruned = pruneLogsOlderThan30Days(logs, RETENTION_DAYS_LOGS);
+    // 2. Batas aman kapasitas maksimal 1,000 log untuk performa tinggi
+    const trimmed = pruned.slice(0, 1000);
     localStorage.setItem(SYSTEM_AUDIT_LOGS_KEY, JSON.stringify(trimmed));
   } catch (err) {
     console.warn('Gagal menyimpan log aktivitas sistem:', err);
   }
+};
+
+/**
+ * Eksekusi pembersihan manual log aktivitas yang melebihi 30 hari
+ */
+export const pruneSystemActivityLogs = (): {
+  beforeCount: number;
+  afterCount: number;
+  prunedCount: number;
+} => {
+  const currentLogs = loadSystemActivityLogs();
+  const pruned = pruneLogsOlderThan30Days(currentLogs, RETENTION_DAYS_LOGS);
+  saveSystemActivityLogs(pruned);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rsumb_audit_logs_updated'));
+  }
+  return {
+    beforeCount: currentLogs.length,
+    afterCount: pruned.length,
+    prunedCount: Math.max(0, currentLogs.length - pruned.length)
+  };
 };
 
 /**

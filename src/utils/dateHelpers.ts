@@ -466,10 +466,21 @@ export function formatLeaveBadgeSummary(leave: DoctorLeaveAnnouncement): LeaveBa
 
   // Format MAJU dates (target destination date e.g. tglMasuk)
   if (majuItems.length > 0) {
-    const majuDates = majuItems.map((item) => item.tglMasuk || item.tglLibur).filter(Boolean);
-    const formatted = formatCompoundDates(majuDates);
-    if (formatted) {
-      parts.push(`Maju: ${formatted}`);
+    const majuSummaries = majuItems
+      .map((item) => {
+        const targetDate = item.tglMasuk || item.tglLibur;
+        const formattedDate = targetDate ? (formatCompoundDates([targetDate]) || targetDate) : '';
+        if (item.jamPraktikBaru) {
+          const timeClean = item.jamPraktikBaru.replace(' WIB', '');
+          const cetakClean = item.jamCetakBaru ? item.jamCetakBaru.replace(/^cetak\s*/i, '').replace(' WIB', '') : '';
+          const cetakSuffix = cetakClean ? ` [Cetak ${cetakClean}]` : '';
+          return formattedDate ? `Maju ${formattedDate} (${timeClean}${cetakSuffix})` : `Maju (${timeClean}${cetakSuffix})`;
+        }
+        return formattedDate ? `Maju: ${formattedDate}` : 'Jadwal Maju';
+      })
+      .filter(Boolean);
+    if (majuSummaries.length > 0) {
+      parts.push(majuSummaries.join(' • '));
     }
   }
 
@@ -521,6 +532,126 @@ export function formatLeaveBadgeSummary(leave: DoctorLeaveAnnouncement): LeaveBa
       hoverClass: 'hover:bg-amber-100/80 hover:border-amber-300'
     };
   }
+}
+
+/**
+ * Formats full descriptive banner text for JADWAL MAJU
+ * Example: "Jadwal Maju tgl 2 Oktober 2026 menjadi jam 07.00 - 10.00 WIB (Cetak tiket mulai 06.00 WIB)"
+ */
+export function formatMajuBannerText(item: DoctorLeaveItem): string {
+  const targetDate = item.tglMasuk || item.tglLibur || 'Tanggal Pengganti';
+  const jam = item.jamPraktikBaru || '07.00 - 10.00 WIB';
+  const cetak = item.jamCetakBaru || (item.jamHfisBaru ? getJamCetak(item.jamHfisBaru) : null) || '06.00 WIB';
+  const cleanCetak = typeof cetak === 'string' ? cetak.replace(/^cetak\s*/i, '').trim() : '06.00 WIB';
+  return `Jadwal Maju tgl ${targetDate} menjadi jam ${jam} (Cetak tiket mulai ${cleanCetak})`;
+}
+
+/**
+ * Resolves Indonesian day name ('Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu' | 'Minggu')
+ * from various Indonesian date formats (e.g. '2026-10-02', '02/10/2026', 'Jumat, 2 Oktober 2026').
+ */
+export function extractDayNameFromDate(dateStr: string): string | null {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const str = dateStr.trim();
+  if (!str) return null;
+
+  const lower = str.toLowerCase();
+
+  // 1. Direct day names in string
+  if (lower.includes('senin')) return 'Senin';
+  if (lower.includes('selasa')) return 'Selasa';
+  if (lower.includes('rabu')) return 'Rabu';
+  if (lower.includes('kamis')) return 'Kamis';
+  if (lower.includes('jumat') || lower.includes("jum'at")) return 'Jumat';
+  if (lower.includes('sabtu')) return 'Sabtu';
+  if (lower.includes('ahad') || lower.includes('minggu')) return 'Minggu';
+
+  const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+  // 2. Match ISO YYYY-MM-DD
+  const isoMatch = str.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    const date = new Date(y, m, d);
+    if (!isNaN(date.getTime())) {
+      return dayNames[date.getDay()];
+    }
+  }
+
+  // 3. Match DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = str.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = parseInt(dmyMatch[2], 10) - 1;
+    const y = parseInt(dmyMatch[3], 10);
+    const date = new Date(y, m, d);
+    if (!isNaN(date.getTime())) {
+      return dayNames[date.getDay()];
+    }
+  }
+
+  // 4. Match "2 Oktober 2026" or "2 Okt 2026"
+  const indonesianMatch = str.match(/(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?/);
+  if (indonesianMatch) {
+    const d = parseInt(indonesianMatch[1], 10);
+    const monthStr = indonesianMatch[2].toLowerCase();
+    const y = indonesianMatch[3] ? parseInt(indonesianMatch[3], 10) : new Date().getFullYear();
+    const m = MONTH_MAP[monthStr];
+    if (m !== undefined && m >= 0) {
+      const date = new Date(y, m, d);
+      if (!isNaN(date.getTime())) {
+        return dayNames[date.getDay()];
+      }
+    }
+  }
+
+  // 5. Fallback Date.parse
+  const parsed = Date.parse(str);
+  if (!isNaN(parsed)) {
+    const date = new Date(parsed);
+    return dayNames[date.getDay()];
+  }
+
+  return null;
+}
+
+/**
+ * Finds a doctor's standard schedule on a specific day of the week
+ */
+export function findDoctorScheduleForDay(
+  dpjpName: string,
+  dayName: string,
+  schedulesList: DoctorSchedule[]
+): DoctorSchedule | null {
+  if (!dpjpName || !dayName || !schedulesList || schedulesList.length === 0) return null;
+
+  const normTarget = normalizeDoctorName(dpjpName);
+  const normDay = dayName.toLowerCase().trim();
+
+  const found = schedulesList.find((sch) => {
+    if (!sch.dpjp || !sch.hari) return false;
+    const schNorm = normalizeDoctorName(sch.dpjp);
+    const schDay = sch.hari.toLowerCase().trim();
+    const isDocMatch =
+      schNorm === normTarget ||
+      schNorm.includes(normTarget) ||
+      normTarget.includes(schNorm);
+
+    const isDayMatch =
+      schDay === normDay ||
+      schDay.includes(normDay) ||
+      normDay.includes(schDay) ||
+      (normDay.includes('jumat') && schDay.includes("jum'at")) ||
+      (normDay.includes("jum'at") && schDay.includes('jumat')) ||
+      (normDay.includes('minggu') && schDay.includes('ahad')) ||
+      (normDay.includes('ahad') && schDay.includes('minggu'));
+
+    return isDocMatch && isDayMatch;
+  });
+
+  return found || null;
 }
 
 /**

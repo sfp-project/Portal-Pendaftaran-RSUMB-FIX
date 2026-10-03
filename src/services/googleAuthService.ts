@@ -135,6 +135,7 @@ export const saveAuthSession = (user: any, token: string, expiresInSec: number =
     // Save to localStorage
     localStorage.setItem(STORAGE_KEY_AUTH_SESSION, JSON.stringify(session));
     localStorage.setItem(STORAGE_KEY_CONNECTED_FLAG, 'true');
+    localStorage.setItem('drive_connected_flag', 'true');
 
     // Also persist in IndexedDB for reliable multi-session re-connection
     saveToIDB('session', session);
@@ -152,9 +153,16 @@ export const loadStoredAuthSession = (): StoredDriveSession | null => {
     const session: StoredDriveSession = JSON.parse(raw);
     if (!session || !session.accessToken) return null;
 
-    // Check expiration - allow grace period so connection persists across reloads
-    if (session.expiresAt && Date.now() > session.expiresAt + 86400000) {
-      console.info('Stored Google Drive auth session expired. Re-authentication needed.');
+    // Check expiration - do not clear immediately if auto-connect drive_connected_flag is true to avoid flashing
+    if (session.expiresAt && Date.now() >= session.expiresAt) {
+      if (localStorage.getItem('drive_connected_flag') === 'true') {
+        console.info('[GoogleAuth] Sesi Google Drive kedaluwarsa tapi ditahan karena flag drive_connected_flag=true.');
+        return session;
+      }
+      console.info('[GoogleAuth] Sesi Google Drive telah kedaluwarsa. Membersihkan sesi otomatis...');
+      clearStoredAuthSession();
+      cachedAccessToken = null;
+      cachedUser = null;
       return null;
     }
     return session;
@@ -168,6 +176,7 @@ export const clearStoredAuthSession = () => {
     localStorage.removeItem(STORAGE_KEY_AUTH_SESSION);
     localStorage.removeItem(STORAGE_KEY_AUTH_SESSION_LEGACY);
     localStorage.removeItem(STORAGE_KEY_CONNECTED_FLAG);
+    localStorage.removeItem('drive_connected_flag');
     clearFromIDB('session');
   } catch {}
 };
@@ -312,15 +321,33 @@ export const initAuth = (
   });
 };
 
+export const getOAuthClientId = (): string => {
+  return (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || 
+         (firebaseConfig as any).oAuthClientId || 
+         localStorage.getItem('rsumb_google_client_id') || 
+         '';
+};
+
+export const saveOAuthClientId = (id: string): void => {
+  localStorage.setItem('rsumb_google_client_id', id.trim());
+};
+
+export const renewTokenSilently = (): Promise<string | null> => {
+  // Silent popup (prompt: 'none') is blocked by browsers and iframes in Google Identity Services (GIS).
+  // Return stored token or null safely without triggering blocked popup windows.
+  const session = loadStoredAuthSession();
+  return Promise.resolve(session?.accessToken || null);
+};
+
 /**
  * Otentikasi menggunakan Google Identity Services (GIS) Token Client
  * Memungkinkan perolehan token OAuth 2.0 Google Drive langsung di browser
  */
 export const signInWithGoogleIdentityServices = (): Promise<{ user: any; accessToken: string }> => {
   return new Promise((resolve, reject) => {
-    const clientId = (firebaseConfig as any).oAuthClientId;
+    const clientId = getOAuthClientId();
     if (!clientId) {
-      return reject(new Error('Google OAuth Client ID belum terkonfigurasi di sistem.'));
+      return reject(new Error('CLIENT_ID_MISSING'));
     }
 
     if (typeof window === 'undefined' || !window.google?.accounts?.oauth2) {
@@ -387,6 +414,19 @@ export const signInWithGoogleIdentityServices = (): Promise<{ user: any; accessT
   });
 };
 
+/**
+ * Helper to identify if an error is a benign popup dismissal or user cancellation
+ */
+export const isPopupDismissError = (err: any): boolean => {
+  if (!err) return false;
+  if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return true;
+  if (err.type === 'popup_closed' || err.type === 'popup_blocked_by_browser') return true;
+  if (err.error === 'popup_closed_by_user') return true;
+  if (err.error_subtype === 'popup_closed') return true;
+  const msg = typeof err === 'string' ? err : err.message || err.error_description || '';
+  return /popup.*(close|cancel|block)/i.test(msg) || /closed by user/i.test(msg) || /user dismissed/i.test(msg);
+};
+
 // Must be called from a button click or user interaction
 export const googleSignIn = async (): Promise<{ user: any; accessToken: string } | null> => {
   try {
@@ -400,10 +440,11 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
           return gisResult;
         }
       } catch (gisError: any) {
-        console.info('GIS token client prompt dismissed or failed, attempting Firebase Auth fallback:', gisError?.message);
-        if (gisError?.message?.includes('closed') || gisError?.type === 'popup_closed') {
-          throw gisError;
+        if (isPopupDismissError(gisError)) {
+          console.info('[GoogleAuth] Jendela popup Google ditutup oleh pengguna.');
+          return null;
         }
+        console.info('GIS token client info/warning, mencoba Firebase Auth fallback:', gisError?.message || gisError);
       }
     }
 
@@ -412,9 +453,12 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
     try {
       result = await signInWithPopup(auth, provider);
     } catch (popupErr: any) {
+      if (isPopupDismissError(popupErr)) {
+        console.info('[GoogleAuth] Jendela popup Firebase ditutup oleh pengguna.');
+        return null;
+      }
       if (
         popupErr?.code === 'auth/popup-blocked' ||
-        popupErr?.code === 'auth/cancelled-popup-request' ||
         popupErr?.code === 'auth/operation-not-supported-in-this-environment' ||
         popupErr?.message?.toLowerCase().includes('popup')
       ) {
@@ -438,43 +482,57 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
     window.dispatchEvent(new CustomEvent('rsumb_drive_connected', { detail: { user: result.user } }));
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.error('Google Sign-in error:', error);
-    throw error;
+    if (isPopupDismissError(error)) {
+      console.info('[GoogleAuth] Sign-in popup dibatalkan atau ditutup.');
+      return null;
+    }
+    console.warn('Google Sign-in status notice:', error?.message || error);
+    throw new Error(error?.message || 'Gagal melakukan otentikasi akun Google.');
   } finally {
     isSigningIn = false;
   }
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (!cachedAccessToken) {
-    const session = loadStoredAuthSession();
-    if (session && session.accessToken) {
-      cachedAccessToken = session.accessToken;
-      cachedUser = session.user;
-    }
+  const session = loadStoredAuthSession();
+  if (session && session.accessToken) {
+    cachedAccessToken = session.accessToken;
+    cachedUser = session.user;
+    return cachedAccessToken;
   }
-  return cachedAccessToken;
+  cachedAccessToken = null;
+  cachedUser = null;
+  return null;
 };
 
 export const getCachedUser = (): any | null => {
-  if (!cachedUser) {
-    const session = loadStoredAuthSession();
-    if (session && session.user) {
-      cachedUser = session.user;
-    }
+  const session = loadStoredAuthSession();
+  if (session && session.user) {
+    cachedUser = session.user;
+  } else {
+    cachedUser = null;
   }
   return cachedUser;
 };
 
 export const isGoogleDriveConnected = (): boolean => {
-  if (!cachedAccessToken) {
-    const session = loadStoredAuthSession();
+  const hasFlag = localStorage.getItem('drive_connected_flag') === 'true';
+  const session = loadStoredAuthSession();
+  if (hasFlag) {
     if (session && session.accessToken) {
       cachedAccessToken = session.accessToken;
       cachedUser = session.user;
     }
+    return true;
   }
-  return !!cachedAccessToken;
+  if (!session || !session.accessToken) {
+    cachedAccessToken = null;
+    cachedUser = null;
+    return false;
+  }
+  cachedAccessToken = session.accessToken;
+  cachedUser = session.user;
+  return true;
 };
 
 export const logoutGoogleDrive = async () => {

@@ -98,7 +98,11 @@ export const PosterPreviewModal: React.FC<PosterPreviewModalProps> = ({
         <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 sm:px-6 flex flex-wrap items-center justify-between gap-2.5 text-xs shrink-0">
           <div className="flex flex-wrap items-center gap-2">
             {/* Status Badge */}
-            {isExpired ? (
+            {poster.isPermanent ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300">
+                📌 Informasi Permanen
+              </span>
+            ) : isExpired ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300">
                 <AlertCircle className="w-3.5 h-3.5" />
                 <span>Promo Kadaluarsa</span>
@@ -111,14 +115,21 @@ export const PosterPreviewModal: React.FC<PosterPreviewModalProps> = ({
             )}
 
             {/* Masa Berlaku */}
-            {(poster.tanggalMulai || poster.tanggalKadaluarsa) && (
-              <span className="inline-flex items-center gap-1 text-slate-600 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 font-medium">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>
-                  {poster.tanggalMulai ? formatIndoDate(poster.tanggalMulai) : 'Sekarang'} s/d{' '}
-                  {poster.tanggalKadaluarsa ? formatIndoDate(poster.tanggalKadaluarsa) : 'Seterusnya'}
-                </span>
+            {poster.isPermanent ? (
+              <span className="inline-flex items-center gap-1 text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-200 font-semibold">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                <span>Berlaku Seterusnya (Informasi Umum / Layanan Permanen)</span>
               </span>
+            ) : (
+              (poster.tanggalMulai || poster.tanggalKadaluarsa) && (
+                <span className="inline-flex items-center gap-1 text-slate-600 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 font-medium">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <span>
+                    {poster.tanggalMulai ? formatIndoDate(poster.tanggalMulai) : 'Sekarang'} s/d{' '}
+                    {poster.tanggalKadaluarsa ? formatIndoDate(poster.tanggalKadaluarsa) : 'Seterusnya'}
+                  </span>
+                </span>
+              )
             )}
 
             {/* Google Drive Status */}

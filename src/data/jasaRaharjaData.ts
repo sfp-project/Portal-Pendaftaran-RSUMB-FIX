@@ -170,19 +170,19 @@ export const initialJasaRaharjaData: JasaRaharjaItem[] = [
 const LOCAL_STORAGE_KEY = 'rsumb_jasa_raharja_v1';
 
 export function loadJasaRaharjaData(): JasaRaharjaItem[] {
-  if (typeof window === 'undefined') return initialJasaRaharjaData;
+  if (typeof window === 'undefined') return initialJasaRaharjaData.filter((i: any) => !i.is_deleted && !i.isDeleted);
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved !== null) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        return parsed;
+        return parsed.filter((i: any) => !i.is_deleted && !i.isDeleted);
       }
     }
   } catch (err) {
     console.error('Gagal membaca data Jasa Raharja dari storage:', err);
   }
-  return initialJasaRaharjaData;
+  return initialJasaRaharjaData.filter((i: any) => !i.is_deleted && !i.isDeleted);
 }
 
 export function saveJasaRaharjaData(data: JasaRaharjaItem[]): void {

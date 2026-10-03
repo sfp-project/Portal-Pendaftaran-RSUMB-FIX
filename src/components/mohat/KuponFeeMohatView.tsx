@@ -5,6 +5,10 @@ import {
   Search,
   Plus,
   Trash2,
+  Edit3,
+  Lock,
+  KeyRound,
+  Save,
   CheckCircle2,
   Clock,
   Coins,
@@ -29,6 +33,7 @@ import {
   KuponMohat,
   KategoriPerujuk,
   PenjaminKupon,
+  StatusKlaimKupon,
   MohatSuggestions,
   MohatAuditLog
 } from '../../types/mohatTypes';
@@ -55,6 +60,7 @@ import { logSystemActivity } from '../../data/auditLogData';
 import { MohatThermalReceiptModal } from './MohatThermalReceiptModal';
 import { MohatReportPdfModal } from './MohatReportPdfModal';
 import { MohatAuditTrailModal } from './MohatAuditTrailModal';
+import { requestAdminAction, getStoredAdminPin } from '../../services/adminAuthService';
 
 interface KuponFeeMohatViewProps {
   showToast: (msg: string) => void;
@@ -100,6 +106,29 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
 
   // Modal Konfirmasi Hapus Kupon
   const [kuponToDelete, setKuponToDelete] = useState<KuponMohat | null>(null);
+
+  // Auth PIN Protected Edit State
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [editPinInput, setEditPinInput] = useState<string>('');
+  const [authErrorMessage, setAuthErrorMessage] = useState<string>('');
+  const [selectedKuponToEdit, setSelectedKuponToEdit] = useState<KuponMohat | null>(null);
+
+  // Edit Kupon Data Modal State
+  const [isEditDataModalOpen, setIsEditDataModalOpen] = useState<boolean>(false);
+  const [editNomorKupon, setEditNomorKupon] = useState<string>('');
+  const [editNoSeri, setEditNoSeri] = useState<string>('');
+  const [editTanggalMasuk, setEditTanggalMasuk] = useState<string>('');
+  const [editNamaPasien, setEditNamaPasien] = useState<string>('');
+  const [editKategori, setEditKategori] = useState<KategoriPerujuk>('PKM');
+  const [editPenjamin, setEditPenjamin] = useState<PenjaminKupon>('UMUM');
+  const [editNamaPerujuk, setEditNamaPerujuk] = useState<string>('');
+  const [editNamaSopir, setEditNamaSopir] = useState<string>('');
+  const [editNoHpPengantar, setEditNoHpPengantar] = useState<string>('');
+  const [editFeeTotal, setEditFeeTotal] = useState<number>(0);
+  const [editFeePerujuk, setEditFeePerujuk] = useState<number>(0);
+  const [editFeeSopir, setEditFeeSopir] = useState<number>(0);
+  const [editStatus, setEditStatus] = useState<StatusKlaimKupon>('Menunggu Kasir');
+  const [editCatatan, setEditCatatan] = useState<string>('');
 
   // Audit Trail State (Maksimal 20 Kupon Terakhir yang Diterbitkan)
   const [auditTrail, setAuditTrail] = useState<MohatAuditLog[]>(() => loadMohatAuditTrail());
@@ -292,6 +321,108 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
 
     showToast(`Kupon ${deletedNo} telah berhasil dihapus.`);
     setKuponToDelete(null);
+  };
+
+  // ---------------------------------------------------------------------------
+  // AUTH PIN & EDIT KUPON HANDLERS
+  // ---------------------------------------------------------------------------
+  const handleOpenEditAuth = (kupon: KuponMohat) => {
+    setSelectedKuponToEdit(kupon);
+    setEditPinInput('');
+    setAuthErrorMessage('');
+    setIsAuthModalOpen(true);
+  };
+
+  const handleVerifyEditPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const configuredPin = getStoredAdminPin();
+
+    if (editPinInput.trim() === configuredPin || editPinInput.trim() === '1234') {
+      if (!selectedKuponToEdit) return;
+
+      // Populate edit form data
+      setEditNomorKupon(selectedKuponToEdit.nomorKupon);
+      setEditNoSeri(selectedKuponToEdit.noSeri || '');
+      setEditTanggalMasuk(selectedKuponToEdit.tanggalMasuk);
+      setEditNamaPasien(selectedKuponToEdit.namaPasien);
+      setEditKategori(selectedKuponToEdit.kategori);
+      setEditPenjamin(selectedKuponToEdit.penjamin);
+      setEditNamaPerujuk(selectedKuponToEdit.namaPerujuk || '');
+      setEditNamaSopir(selectedKuponToEdit.namaSopir || '');
+      setEditNoHpPengantar(selectedKuponToEdit.noHpPengantar || '');
+      setEditFeeTotal(selectedKuponToEdit.feeTotal);
+      setEditFeePerujuk(selectedKuponToEdit.feePerujuk);
+      setEditFeeSopir(selectedKuponToEdit.feeSopir);
+      setEditStatus(selectedKuponToEdit.status);
+      setEditCatatan(selectedKuponToEdit.catatan || '');
+
+      setIsAuthModalOpen(false);
+      setIsEditDataModalOpen(true);
+    } else {
+      const err = 'Kata Sandi Salah! Anda tidak memiliki otoritas untuk mengubah riwayat kupon fee.';
+      setAuthErrorMessage(err);
+      showToast(err);
+    }
+  };
+
+  const handleEditKategoriOrPenjaminChange = (newKategori: KategoriPerujuk, newPenjamin: PenjaminKupon) => {
+    setEditKategori(newKategori);
+    setEditPenjamin(newPenjamin);
+    const calc = calculateMohatFee(newKategori, newPenjamin);
+    setEditFeeTotal(calc.feeTotal);
+    setEditFeePerujuk(calc.feePerujuk);
+    setEditFeeSopir(calc.feeSopir);
+  };
+
+  const handleSaveEditKupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedKuponToEdit) return;
+
+    if (!editNamaPasien.trim()) {
+      showToast('Mohon masukkan nama pasien ranap.');
+      return;
+    }
+
+    const updatedItem: KuponMohat = {
+      ...selectedKuponToEdit,
+      tanggalMasuk: editTanggalMasuk || selectedKuponToEdit.tanggalMasuk,
+      namaPasien: editNamaPasien.trim(),
+      kategori: editKategori,
+      penjamin: editPenjamin,
+      namaPerujuk: editNamaPerujuk.trim(),
+      namaSopir: editKategori === 'PKM' ? editNamaSopir.trim() : undefined,
+      noHpPengantar: editKategori === 'MOHAT' ? editNoHpPengantar.trim() : undefined,
+      feeTotal: Number(editFeeTotal) || 0,
+      feePerujuk: Number(editFeePerujuk) || 0,
+      feeSopir: Number(editFeeSopir) || 0,
+      status: editStatus,
+      catatan: editCatatan.trim() || undefined
+    };
+
+    const updatedList = kuponList.map((k) => (k.id === updatedItem.id ? updatedItem : k));
+    setKuponList(updatedList);
+    saveKuponList(updatedList);
+
+    // Sync status in audit log
+    const updatedAudit = syncCouponStatusInAudit(updatedItem.id, updatedItem.status);
+    setAuditTrail(updatedAudit);
+
+    try {
+      const staffName = loadActiveStaff().name;
+      logSystemActivity(
+        'Pembaruan Data Kupon Mohat',
+        `Data kupon ${updatedItem.nomorKupon} (${updatedItem.namaPasien}) berhasil diperbarui melalui otorisasi supervisor.`,
+        staffName,
+        'KUPON_MOHAT',
+        'Kupon Fee Mohat'
+      );
+    } catch (e) {
+      console.warn('Notice logging coupon update:', e);
+    }
+
+    setIsEditDataModalOpen(false);
+    setSelectedKuponToEdit(null);
+    showToast('Data Riwayat Kupon Berhasil Diperbarui!');
   };
 
   // Filter Kupon List
@@ -501,7 +632,7 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
       </div>
 
       {/* 4 Summary Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Card 1 */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
           <div className="p-3 bg-teal-50 text-teal-700 rounded-xl shrink-0">
@@ -940,7 +1071,7 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
 
           {/* Tabel History */}
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full text-left border-collapse text-xs min-w-[700px]">
               <thead>
                 <tr className="bg-slate-100/80 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
                   <th className="p-2.5">No. Kupon / Tgl</th>
@@ -1038,7 +1169,11 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
                       <td className="p-2.5 text-center">
                         <button
                           type="button"
-                          onClick={() => handleToggleStatus(item.id)}
+                          onClick={() => {
+                            requestAdminAction(() => {
+                              handleToggleStatus(item.id);
+                            }, 'Ubah Status Klaim Kupon Mohat');
+                          }}
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${
                             item.status === 'Lunas'
                               ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
@@ -1050,9 +1185,19 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
                         </button>
                       </td>
 
-                      {/* AKSI: Cetak Ulang Struk & Hapus */}
+                      {/* AKSI: Edit, Cetak Ulang Struk & Hapus */}
                       <td className="p-2.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Tombol Edit Kupon (✏️ Terproteksi PIN) */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditAuth(item)}
+                            className="p-1.5 bg-amber-50 hover:bg-amber-600 text-amber-700 hover:text-white rounded-lg border border-amber-200 transition cursor-pointer shadow-2xs group"
+                            title="Edit Data Kupon (Verifikasi PIN Supervisor)"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                          </button>
+
                           {/* Tombol Cetak Struk (🖨️) */}
                           <button
                             type="button"
@@ -1066,7 +1211,11 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
                           {/* Tombol Hapus */}
                           <button
                             type="button"
-                            onClick={() => handleDeleteClick(item)}
+                            onClick={() => {
+                              requestAdminAction(() => {
+                                handleDeleteClick(item);
+                              }, 'Hapus Data Kupon Mohat');
+                            }}
                             className="p-1.5 bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer border border-transparent hover:border-rose-200"
                             title="Hapus Data Kupon"
                           >
@@ -1204,6 +1353,336 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
                 <span>Ya, Hapus Kupon</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. MODAL VERIFIKASI KEAMANAN PIN SUPERVISOR                                */}
+      {/* ========================================================================= */}
+      {isAuthModalOpen && selectedKuponToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 relative"
+            role="dialog"
+            aria-modal="true"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setIsAuthModalOpen(false);
+                setSelectedKuponToEdit(null);
+              }}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              title="Tutup dialog"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-start gap-3.5 mb-4">
+              <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 text-amber-700 mt-0.5 border border-amber-200">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div className="pr-6">
+                <h3 className="text-base font-bold text-slate-900">Verifikasi Keamanan Edit Data</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Masukkan PIN / Kata Sandi Supervisor untuk mengedit riwayat kupon fee perujuk.
+                </p>
+              </div>
+            </div>
+
+            {/* Target Kupon Info */}
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 mb-4 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Nomor Kupon:</span>
+                <span className="font-mono font-bold text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {selectedKuponToEdit.nomorKupon}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-slate-500">Pasien:</span>
+                <span className="font-bold text-slate-900">{selectedKuponToEdit.namaPasien}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleVerifyEditPin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  PIN / Kata Sandi Supervisor
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="password"
+                    autoFocus
+                    required
+                    value={editPinInput}
+                    onChange={(e) => {
+                      setEditPinInput(e.target.value);
+                      setAuthErrorMessage('');
+                    }}
+                    placeholder="Masukkan PIN otorisasi (default: 1234)"
+                    className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  />
+                </div>
+                {authErrorMessage ? (
+                  <p className="text-[11px] text-rose-600 font-semibold mt-1.5 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{authErrorMessage}</span>
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    * Gunakan PIN keamanan supervisor atau default <strong>1234</strong>.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAuthModalOpen(false);
+                    setSelectedKuponToEdit(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#005d42] hover:bg-[#004a35] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer active:scale-98"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Verifikasi PIN</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. MODAL FORM EDIT DATA KUPON FEE PERUJUK                                 */}
+      {/* ========================================================================= */}
+      {isEditDataModalOpen && selectedKuponToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+          <div
+            className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 relative my-8"
+            role="dialog"
+            aria-modal="true"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditDataModalOpen(false);
+                setSelectedKuponToEdit(null);
+              }}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              title="Tutup dialog"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-start gap-3.5 mb-4 pb-3 border-b border-slate-200">
+              <div className="w-11 h-11 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-700 mt-0.5 border border-emerald-200">
+                <Edit3 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <span>Edit Data Riwayat Kupon Fee</span>
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-900 border border-emerald-200">
+                    {editNomorKupon}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Ubah rincian pasien, kategori rujukan, nama perujuk, nominal fee, atau status klaim.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveEditKupon} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Tanggal Masuk */}
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Tanggal Masuk</label>
+                  <input
+                    type="date"
+                    required
+                    value={editTanggalMasuk}
+                    onChange={(e) => setEditTanggalMasuk(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  />
+                </div>
+
+                {/* Nama Pasien Ranap */}
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Nama Pasien Ranap *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editNamaPasien}
+                    onChange={(e) => setEditNamaPasien(e.target.value)}
+                    placeholder="Nama Lengkap Pasien"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  />
+                </div>
+              </div>
+
+              {/* Kategori & Penjamin */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Kategori Perujuk</label>
+                  <select
+                    value={editKategori}
+                    onChange={(e) => handleEditKategoriOrPenjaminChange(e.target.value as KategoriPerujuk, editPenjamin)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  >
+                    <option value="PKM">PKM / Puskesmas / Faskes 1</option>
+                    <option value="MOHAT">Mohat / Rujukan Desa Mandiri</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Penjamin / Asuransi</label>
+                  <select
+                    value={editPenjamin}
+                    onChange={(e) => handleEditKategoriOrPenjaminChange(editKategori, e.target.value as PenjaminKupon)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  >
+                    <option value="UMUM">Pasien UMUM</option>
+                    <option value="BPJS_JR_ASURANSI">BPJS / Jasa Raharja / Asuransi</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Perujuk & Sopir */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    {editKategori === 'PKM' ? 'Nama Perawat / Bidan' : 'Nama Sopir / Pengantar'} *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editNamaPerujuk}
+                    onChange={(e) => setEditNamaPerujuk(e.target.value)}
+                    placeholder={editKategori === 'PKM' ? 'Nama Bidan / Perawat' : 'Nama Pengantar Desa'}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  />
+                </div>
+
+                {editKategori === 'PKM' ? (
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Nama Sopir PKM</label>
+                    <input
+                      type="text"
+                      value={editNamaSopir}
+                      onChange={(e) => setEditNamaSopir(e.target.value)}
+                      placeholder="Nama Sopir Ambulance PKM"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">No. HP Pengantar Mohat</label>
+                    <input
+                      type="tel"
+                      value={editNoHpPengantar}
+                      onChange={(e) => setEditNoHpPengantar(e.target.value)}
+                      placeholder="Contoh: 081234567890"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Rincian Fee & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-emerald-50/60 p-3 rounded-xl border border-emerald-200">
+                <div>
+                  <label className="block text-emerald-950 font-bold mb-1">Total Fee (Rp)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    required
+                    value={editFeeTotal}
+                    onChange={(e) => setEditFeeTotal(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-emerald-300 rounded-xl bg-white font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-emerald-950 font-bold mb-1">Fee Perujuk (Rp)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={editFeePerujuk}
+                    onChange={(e) => setEditFeePerujuk(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-emerald-300 rounded-xl bg-white font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-emerald-950 font-bold mb-1">Fee Sopir (Rp)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={editFeeSopir}
+                    onChange={(e) => setEditFeeSopir(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-emerald-300 rounded-xl bg-white font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  />
+                </div>
+              </div>
+
+              {/* Status Klaim & Catatan */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Status Klaim Pembayaran</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as StatusKlaimKupon)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  >
+                    <option value="Menunggu Kasir">Menunggu Kasir</option>
+                    <option value="Lunas">Lunas</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Catatan Tambahan (Opsional)</label>
+                  <input
+                    type="text"
+                    value={editCatatan}
+                    onChange={(e) => setEditCatatan(e.target.value)}
+                    placeholder="Keterangan tambahan..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                  />
+                </div>
+              </div>
+
+              {/* Tombol Aksi Simpan */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditDataModalOpen(false);
+                    setSelectedKuponToEdit(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-[#005d42] hover:bg-[#004a35] text-white text-xs font-bold rounded-xl transition shadow-md cursor-pointer active:scale-98"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>💾 Simpan Perubahan</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

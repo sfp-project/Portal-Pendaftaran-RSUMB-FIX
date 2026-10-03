@@ -38,6 +38,7 @@ import {
   STANDARD_KHITAN_QUOTA
 } from '../data/khitanData';
 import { KhitanPostControlModal } from './khitan/KhitanPostControlModal';
+import { requestAdminAction } from '../services/adminAuthService';
 
 interface KhitanJumatViewProps {
   participants: KhitanParticipant[];
@@ -1082,7 +1083,7 @@ export const KhitanJumatView: React.FC<KhitanJumatViewProps> = ({
 
               {/* Tombol + Tambah Peserta Khitan */}
               <button
-                onClick={handleOpenCreateModal}
+                onClick={() => requestAdminAction(handleOpenCreateModal, 'Tambah Peserta Khitan')}
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#005d42] hover:bg-[#004a35] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-xs hover:shadow-md transition-all active:scale-98 cursor-pointer"
               >
                 <UserPlus className="w-4 h-4" />
@@ -1471,7 +1472,7 @@ export const KhitanJumatView: React.FC<KhitanJumatViewProps> = ({
                                   </button>
 
                                   <button
-                                    onClick={() => handleOpenEditModal(item)}
+                                    onClick={() => requestAdminAction(() => handleOpenEditModal(item), 'Edit Data Peserta Khitan')}
                                     title="Edit Data Peserta"
                                     className="p-1.5 text-slate-500 hover:text-[#005d42] hover:bg-slate-100 rounded-md transition cursor-pointer"
                                   >
@@ -1479,7 +1480,7 @@ export const KhitanJumatView: React.FC<KhitanJumatViewProps> = ({
                                   </button>
 
                                   <button
-                                    onClick={() => setDeletingId(item.id)}
+                                    onClick={() => requestAdminAction(() => setDeletingId(item.id), 'Hapus Data Peserta Khitan')}
                                     title="Hapus Data Peserta"
                                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
                                   >
@@ -1504,8 +1505,8 @@ export const KhitanJumatView: React.FC<KhitanJumatViewProps> = ({
       {/* 3. MODAL PRATINJAU & OPSI CETAK DOKUMEN (FAIL-SAFE & INTERACTIVE)         */}
       {/* ========================================================================= */}
       {isPrintModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-5 print:hidden no-print">
-          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[99999] flex items-center justify-center p-3 sm:p-5 print:hidden no-print overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-4xl w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -1743,8 +1744,8 @@ export const KhitanJumatView: React.FC<KhitanJumatViewProps> = ({
       {/* 4. MODAL INPUT DATA (+ TAMBAH & EDIT PESERTA KHITAN)                      */}
       {/* ========================================================================= */}
       {isFormModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 print:hidden no-print">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[99999] flex items-center justify-center p-4 print:hidden no-print overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-xl w-full max-h-[85vh] my-auto flex flex-col overflow-y-auto shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/70 rounded-t-2xl sticky top-0 z-10">
               <div className="flex items-center gap-2.5">
@@ -1994,8 +1995,8 @@ export const KhitanJumatView: React.FC<KhitanJumatViewProps> = ({
       {/* 4.5. MODAL PERINGATAN KONFIRMASI KUOTA TERPENUHI (PERSETUJUAN PJ)         */}
       {/* ========================================================================= */}
       {showPjConfirmDialog && (
-        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in no-print">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-[99999] bg-slate-900/70 backdrop-blur-md flex items-center justify-center p-4 overflow-hidden animate-in fade-in no-print">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150 my-auto">
             <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 mx-auto">
               <ShieldAlert className="w-6 h-6" />
             </div>
@@ -2046,8 +2047,8 @@ export const KhitanJumatView: React.FC<KhitanJumatViewProps> = ({
       {/* 5. MODAL KONFIRMASI HAPUS                                                 */}
       {/* ========================================================================= */}
       {deletingId && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 print:hidden no-print">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 text-center">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[99999] flex items-center justify-center p-4 print:hidden no-print overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 text-center my-auto">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
               <AlertCircle className="w-6 h-6" />
             </div>
@@ -2077,8 +2078,8 @@ export const KhitanJumatView: React.FC<KhitanJumatViewProps> = ({
       {/* 6. MODAL KARTU PESERTA KHITAN JUMAT BERKAH (ID CARD / A6 PRINTABLE)       */}
       {/* ========================================================================= */}
       {selectedCardParticipant && (
-        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 print:hidden no-print overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col my-auto">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[99999] flex items-center justify-center p-3 sm:p-4 print:hidden no-print overflow-hidden animate-in fade-in">
+          <div className="relative z-[100000] bg-white rounded-2xl max-w-md w-full max-h-[85vh] my-auto flex flex-col shadow-2xl border border-slate-200 overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Navigation Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50 shrink-0">
               <div className="flex items-center gap-2">

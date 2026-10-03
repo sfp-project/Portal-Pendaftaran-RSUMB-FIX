@@ -258,6 +258,13 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
                       const itemTimestamps = getAllScheduleItemTimestamps(item);
                       const isItemUpcoming = itemTimestamps.some((t) => t >= refTimestamp);
 
+                      const isMaju = item.tipe === 'MAJU';
+                      const cleanCetak = item.jamCetakBaru
+                        ? item.jamCetakBaru.replace(/^cetak\s*/i, '').trim()
+                        : item.jamHfisBaru
+                        ? item.jamHfisBaru.split('-')[0].trim()
+                        : '';
+
                       return (
                         <div
                           key={idx}
@@ -265,16 +272,23 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
                         >
                           <div className="space-y-1">
                             <div className="flex items-center justify-between gap-1">
-                              <span className={`px-2 py-1 rounded font-medium text-[11px] sm:text-xs leading-snug w-full block border break-words ${
-                                item.tipe === 'CUTI'
-                                  ? 'bg-purple-50 text-purple-700 border-purple-100/80'
-                                  : isItemUpcoming && idx === 0
-                                  ? 'bg-red-50 text-red-700 border-red-200/90 font-semibold'
-                                  : 'bg-red-50 text-red-700 border-red-100/80'
-                              }`}>
-                                {item.tipe === 'CUTI' ? 'Tgl Cuti' : 'Tgl Libur'}: {item.tglLibur}
+                              <span
+                                className={`px-2 py-1 rounded font-medium text-[11px] sm:text-xs leading-snug w-full block border break-words ${
+                                  item.tipe === 'CUTI'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-100/80'
+                                    : isItemUpcoming && idx === 0
+                                    ? 'bg-red-50 text-red-700 border-red-200/90 font-semibold'
+                                    : 'bg-red-50 text-red-700 border-red-100/80'
+                                }`}
+                              >
+                                {item.tipe === 'CUTI'
+                                  ? 'Tgl Cuti'
+                                  : isMaju
+                                  ? 'Tgl Semula'
+                                  : 'Tgl Libur'}
+                                : {item.tglLibur}
                               </span>
-                              {item.tipe === 'MAJU' && (
+                              {isMaju && (
                                 <span className="shrink-0 text-[9px] sm:text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
                                   MAJU
                                 </span>
@@ -285,9 +299,28 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1">
-                              <span className="bg-emerald-50 text-emerald-800 px-2 py-1 rounded font-medium text-[11px] sm:text-xs leading-snug w-full block border border-emerald-100/80 break-words">
-                                Masuk/Ganti: {item.tglMasuk}
+
+                            {/* Tanggal Masuk / Pengganti & Detail Jam Baru jika Jadwal Maju */}
+                            <div className="flex flex-col gap-1">
+                              <span
+                                className={`px-2 py-1 rounded font-medium text-[11px] sm:text-xs leading-snug w-full block border break-words ${
+                                  isMaju
+                                    ? 'bg-blue-50 text-blue-900 border-blue-200/80'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-100/80'
+                                }`}
+                              >
+                                {isMaju ? 'Jadwal Maju: ' : 'Masuk/Ganti: '}
+                                <strong>{item.tglMasuk}</strong>
+                                {isMaju && item.jamPraktikBaru && (
+                                  <span className="block mt-0.5 text-[10.5px] text-blue-800 font-semibold">
+                                    🕒 Jam Praktik: {item.jamPraktikBaru}
+                                  </span>
+                                )}
+                                {isMaju && cleanCetak && (
+                                  <span className="block mt-0.5 text-[10px] text-emerald-800 font-bold bg-emerald-100/80 px-1.5 py-0.5 rounded w-fit border border-emerald-300">
+                                    🎫 Cetak tiket mulai {cleanCetak}
+                                  </span>
+                                )}
                               </span>
                             </div>
                           </div>

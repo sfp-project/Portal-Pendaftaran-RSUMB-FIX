@@ -836,12 +836,44 @@ ${JSON.stringify(hospitalContext || {}, null, 2)}
     }
   });
 
-  // Jasa Raharja OCR Extraction Endpoint (Supports Single or Multi-Sheet Images 1-4)
+  // Google Apps Script (GAS) Web App Proxy Endpoint
+  app.post("/api/gas/proxy", async (req, res) => {
+    try {
+      const { targetUrl, method = "GET", payload } = req.body;
+      if (!targetUrl || typeof targetUrl !== "string" || !targetUrl.startsWith("https://script.google.com/macros/s/")) {
+        return res.status(400).json({ error: "Target URL Google Apps Script tidak valid." });
+      }
+
+      if (method === "GET") {
+        const gasRes = await fetch(targetUrl, {
+          method: "GET",
+          redirect: "follow",
+          headers: { Accept: "application/json, text/plain, */*" }
+        });
+        const data = await gasRes.json();
+        return res.json(data);
+      } else {
+        const gasRes = await fetch(targetUrl, {
+          method: "POST",
+          redirect: "follow",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload || {})
+        });
+        const data = await gasRes.json();
+        return res.json(data);
+      }
+    } catch (err: any) {
+      console.warn("GAS Proxy notice:", err?.message || err);
+      return res.status(500).json({ error: err?.message || "Gagal menghubungi Google Apps Script" });
+    }
+  });
+
+  // Jasa Raharja OCR Extraction Endpoint (Supports Multi-Format: Images & PDF 1-4 files)
   app.post("/api/jasaraharja/ocr", async (req, res) => {
     try {
       const { imageBase64, mimeType = "image/jpeg", images } = req.body;
 
-      // Normalisasikan daftar gambar yang dikirim (bisa single imageBase64 atau array images)
+      // Normalisasikan daftar berkas gambar/PDF yang dikirim
       const imageList: Array<{ data: string; mime: string; name?: string }> = [];
 
       if (Array.isArray(images) && images.length > 0) {

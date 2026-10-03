@@ -127,6 +127,9 @@ export function loadActiveStaff(): StaffUser {
 export function saveActiveStaff(staff: StaffUser): void {
   try {
     localStorage.setItem(STORAGE_KEY_ACTIVE_STAFF, JSON.stringify(staff));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rsumb_active_staff_changed'));
+    }
   } catch (e) {
     console.error('Failed to save active staff to storage:', e);
   }

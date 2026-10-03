@@ -623,7 +623,8 @@ export function loadMedicalLetters(): MedicalLetterItem[] {
       if (Array.isArray(parsed) && parsed.length > 0) {
         const seenIds = new Set<string>();
         let mutated = false;
-        const sanitized = parsed.map((item, index) => {
+        const activeOnly = parsed.filter((item: any) => !item.is_deleted && !item.isDeleted);
+        const sanitized = activeOnly.map((item, index) => {
           if (!item.id || item.id === 'preview-temp-id' || seenIds.has(item.id)) {
             mutated = true;
             const newId = `letter-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
@@ -642,7 +643,7 @@ export function loadMedicalLetters(): MedicalLetterItem[] {
   } catch (err) {
     console.error('Failed to load medical letters from localStorage:', err);
   }
-  return INITIAL_LETTERS;
+  return INITIAL_LETTERS.filter((item: any) => !item.is_deleted && !item.isDeleted);
 }
 
 export function saveMedicalLetters(letters: MedicalLetterItem[]): void {

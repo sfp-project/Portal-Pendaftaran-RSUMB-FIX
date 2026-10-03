@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Calendar,
@@ -19,15 +19,22 @@ import {
   Calculator,
   ClipboardList,
   Ticket,
-  Sliders
+  Sliders,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { ActiveNavTab } from '../types';
+import { getEffectiveHospitalLogo, DEFAULT_HOSPITAL_LOGO } from '../data/settingsData';
 
 interface SidebarProps {
   activeTab: ActiveNavTab;
   setActiveTab: (tab: ActiveNavTab) => void;
   isOpenMobile: boolean;
   setIsOpenMobile: (open: boolean) => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
   onOpenEmergency: () => void;
   onOpenHelp: () => void;
   totalDoctorLeaves: number;
@@ -38,10 +45,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   isOpenMobile,
   setIsOpenMobile,
+  isCollapsed = false,
+  onToggleCollapse,
   onOpenEmergency,
   onOpenHelp,
   totalDoctorLeaves
 }) => {
+  const [hospitalLogo, setHospitalLogo] = useState<string>(() => getEffectiveHospitalLogo());
+
+  // Listen to dynamic logo updates in real-time
+  useEffect(() => {
+    const handleLogoUpdated = (e: any) => {
+      if (e?.detail?.logo) {
+        setHospitalLogo(e.detail.logo);
+      } else {
+        setHospitalLogo(getEffectiveHospitalLogo());
+      }
+    };
+
+    const handleSettingsUpdated = () => {
+      setHospitalLogo(getEffectiveHospitalLogo());
+    };
+
+    window.addEventListener('rsumb_logo_updated', handleLogoUpdated);
+    window.addEventListener('rsumb_settings_updated', handleSettingsUpdated);
+    window.addEventListener('storage', handleSettingsUpdated);
+
+    return () => {
+      window.removeEventListener('rsumb_logo_updated', handleLogoUpdated);
+      window.removeEventListener('rsumb_settings_updated', handleSettingsUpdated);
+      window.removeEventListener('storage', handleSettingsUpdated);
+    };
+  }, []);
   // Navigasi Utama Tunggal (Single Navigation Source)
   const navItems = [
     {
@@ -132,10 +167,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Mobile Backdrop */}
+      {/* Mobile & Tablet Backdrop */}
       {isOpenMobile && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 md:hidden transition-opacity"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 lg:hidden transition-opacity"
           onClick={() => setIsOpenMobile(false)}
         />
       )}
@@ -143,8 +178,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Sidebar Container */}
       <aside
         id="main-sidebar"
-        className={`fixed top-0 left-0 bottom-0 z-50 w-64 bg-[#edf3fc] border-r border-[#d4e1f5] flex flex-col transition-transform duration-200 ease-in-out md:translate-x-0 ${
-          isOpenMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        className={`fixed top-0 left-0 bottom-0 z-50 ${
+          isCollapsed ? 'lg:w-20 w-72 sm:w-80' : 'w-72 sm:w-80 lg:w-64'
+        } bg-[#edf3fc] border-r border-[#d4e1f5] flex flex-col transition-all duration-300 ease-in-out lg:translate-x-0 ${
+          isOpenMobile ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'
         }`}
         style={{
           height: '100vh',
@@ -152,34 +189,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }}
       >
         {/* Brand Header: flex-shrink: 0 (fixed at top, does not scroll) */}
-        <div className="shrink-0 flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-[#d8e4f5] bg-[#edf3fc] z-10">
+        <div className={`shrink-0 flex items-center ${isCollapsed ? 'justify-center lg:px-2 px-4' : 'justify-between px-4'} pt-3.5 pb-3 border-b border-[#d8e4f5] bg-[#edf3fc] z-10 transition-all`}>
           <div className="flex items-center gap-3">
             <img
-              src="/logo-rsumb.png"
+              src={hospitalLogo || DEFAULT_HOSPITAL_LOGO}
               alt="Logo RSU Muhammadiyah Babat"
-              className="w-10 h-10 object-contain drop-shadow-2xs"
+              className="w-10 h-10 object-contain drop-shadow-sm rounded-full bg-white p-0.5 ring-2 ring-[#005d42]/30 shrink-0 hover:scale-105 transition-transform"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = DEFAULT_HOSPITAL_LOGO;
+              }}
               referrerPolicy="no-referrer"
             />
-            <div>
+            <div className={`${isCollapsed ? 'hidden' : 'block'}`}>
               <h1 className="font-bold text-lg text-[#0b1c30] tracking-tight leading-tight">RSUMB</h1>
               <p className="text-xs font-semibold text-slate-500 tracking-wider uppercase">PORTAL PENDAFTARAN</p>
             </div>
           </div>
 
-          {/* Mobile close button */}
+          {/* Desktop Sidebar Collapse Toggle Button */}
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className={`hidden lg:flex p-1.5 text-slate-500 hover:text-[#005d42] hover:bg-emerald-100/70 rounded-lg transition-colors cursor-pointer ${
+                isCollapsed ? 'hidden' : 'block'
+              }`}
+              title="Ciutkan Sidebar (Ikon Saja)"
+              aria-label="Ciutkan Sidebar"
+            >
+              <PanelLeftClose className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* Mobile & Tablet close button */}
           <button
             onClick={() => setIsOpenMobile(false)}
-            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg md:hidden cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg lg:hidden cursor-pointer"
             aria-label="Tutup Menu Navigasi"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        {/* Collapsed State Toggle Button under Brand (Desktop only) */}
+        {isCollapsed && onToggleCollapse && (
+          <div className="hidden lg:flex justify-center py-2 px-2 border-b border-[#d8e4f5]/60 bg-emerald-50/50">
+            <button
+              onClick={onToggleCollapse}
+              className="p-1.5 text-[#005d42] hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
+              title="Perluas Sidebar"
+              aria-label="Perluas Sidebar"
+            >
+              <PanelLeftOpen className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
         {/* Nav Links Container: flex-1; overflow-y: auto (scrolls internally when items exceed screen height) */}
         <div
           id="sidebar-nav-container"
-          className="flex-1 min-h-0 overflow-y-auto sidebar-scrollbar sidebar-nav-container px-3 pt-3"
+          className={`flex-1 min-h-0 overflow-y-auto sidebar-scrollbar sidebar-nav-container ${isCollapsed ? 'px-2 pt-2' : 'px-3 pt-3'}`}
           style={{
             overflowY: 'auto'
           }}
@@ -193,6 +261,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
+
+              if (isCollapsed) {
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setIsOpenMobile(false);
+                    }}
+                    title={`${item.label}${item.badge ? ` • ${item.badge}` : ''}`}
+                    className={`w-full flex items-center justify-center py-3 rounded-xl transition-all relative cursor-pointer group ${
+                      isActive
+                        ? 'bg-[#005d42] text-white shadow-sm ring-1 ring-[#005d42]/40'
+                        : 'text-[#3e4943] hover:bg-[#dce9ff]/70 hover:text-[#0b1c30]'
+                    }`}
+                  >
+                    <Icon
+                      className={`w-5 h-5 transition-transform group-hover:scale-110 ${
+                        isActive ? 'text-white' : 'text-[#5c5f61] group-hover:text-[#005d42]'
+                      }`}
+                    />
+                    {item.badge && (
+                      <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-[#edf3fc]" />
+                    )}
+                  </button>
+                );
+              }
+
               return (
                 <button
                   key={item.id}
@@ -243,24 +339,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Sidebar Footer Actions: flex-shrink: 0 (pinned at bottom, does not scroll) */}
-        <div className="shrink-0 flex flex-col gap-1.5 p-3 border-t border-[#d8e4f5] bg-[#edf3fc]">
+        <div className={`shrink-0 flex flex-col gap-1.5 ${isCollapsed ? 'p-2' : 'p-3'} border-t border-[#d8e4f5] bg-[#edf3fc]`}>
           {/* Emergency Alert Button */}
           <button
             onClick={onOpenEmergency}
-            className="w-full py-2 px-3 bg-[#ba1a1a] hover:bg-red-800 active:scale-[0.98] text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+            title="Peringatan Darurat"
+            className={`w-full ${isCollapsed ? 'py-2.5 px-0 justify-center' : 'py-2 px-3'} bg-[#ba1a1a] hover:bg-red-800 active:scale-[0.98] text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer`}
           >
             <AlertTriangle className="w-3.5 h-3.5 text-red-200 animate-pulse" />
-            <span>Peringatan Darurat</span>
+            <span className={`${isCollapsed ? 'hidden' : 'inline'}`}>Peringatan Darurat</span>
           </button>
 
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className={`${isCollapsed ? 'flex flex-col gap-1' : 'grid grid-cols-2 gap-1.5'}`}>
             {/* Help Center */}
             <button
               onClick={onOpenHelp}
+              title="Bantuan & Petunjuk Operasional"
               className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-[#3e4943] hover:bg-[#dce9ff]/70 hover:text-[#0b1c30] transition-colors cursor-pointer"
             >
               <HelpCircle className="w-3.5 h-3.5 text-[#5c5f61]" />
-              <span>Bantuan</span>
+              <span className={`${isCollapsed ? 'hidden' : 'inline'}`}>Bantuan</span>
             </button>
 
             {/* Logout */}
@@ -270,15 +368,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   window.location.reload();
                 }
               }}
+              title="Keluar Sesi"
               className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-[#3e4943] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5 text-[#5c5f61]" />
-              <span>Keluar</span>
+              <span className={`${isCollapsed ? 'hidden' : 'inline'}`}>Keluar</span>
             </button>
           </div>
 
           <div className="text-[10px] text-[#6e7a73] text-center font-medium">
-            SIMRS RSUMB • HFIS v2.4
+            {isCollapsed ? 'HFIS' : 'SIMRS RSUMB • HFIS v2.4'}
           </div>
         </div>
       </aside>

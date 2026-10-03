@@ -174,10 +174,10 @@ export const BulkEditScheduleModal: React.FC<BulkEditScheduleModalProps> = ({
     changeJamHfis;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md overflow-hidden animate-in fade-in duration-150">
       <div
         id="bulk-edit-schedule-modal"
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden my-8 transform transition-all"
+        className="relative z-[100000] w-full max-w-2xl max-h-[85vh] my-auto flex flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200"
       >
         {/* Header */}
         <div className="px-6 py-4 bg-gradient-to-r from-emerald-800 to-teal-800 text-white flex items-center justify-between">
@@ -231,7 +231,7 @@ export const BulkEditScheduleModal: React.FC<BulkEditScheduleModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[calc(85vh-130px)]">
           {/* Note Info */}
           <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 flex items-start gap-2.5 text-xs text-amber-900">
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -623,7 +623,7 @@ export const BulkEditScheduleModal: React.FC<BulkEditScheduleModalProps> = ({
         </form>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+        <div className="sticky bottom-0 z-10 shrink-0 bg-slate-50 border-t px-6 py-3 flex items-center justify-between w-full">
           <div className="text-xs text-slate-500">
             {hasAnyChange ? (
               <span className="text-emerald-700 font-semibold flex items-center gap-1">

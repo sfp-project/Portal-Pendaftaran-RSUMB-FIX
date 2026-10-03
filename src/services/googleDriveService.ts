@@ -322,6 +322,9 @@ export const fetchDatabaseFromGoogleDrive = async (): Promise<{
   fileId: string;
 } | null> => {
   try {
+    const token = await getAccessToken();
+    if (!token) return null;
+
     const folderId = await ensureDriveFolder(FOLDER_DATA);
     const file = await findFileInFolder(DB_FILE_NAME, folderId);
     if (!file) return null;
@@ -335,8 +338,13 @@ export const fetchDatabaseFromGoogleDrive = async (): Promise<{
       syncedBy: parsed.syncedBy || 'Google Drive',
       fileId: file.id
     };
-  } catch (err) {
-    console.error('Error fetching database from Google Drive:', err);
+  } catch (err: any) {
+    const msg = err?.message || '';
+    if (msg.includes('kedaluwarsa') || msg.includes('terhubung') || err?.status === 401) {
+      console.info('[GoogleDrive] Sesi Google Drive tidak aktif atau telah kedaluwarsa.');
+      return null;
+    }
+    console.warn('Notice fetching database from Google Drive:', err);
     throw err;
   }
 };

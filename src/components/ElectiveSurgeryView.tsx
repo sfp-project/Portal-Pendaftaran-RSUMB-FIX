@@ -28,6 +28,7 @@ import { ExportDropdown } from './ExportDropdown';
 import { PrintHeaderKop } from './PrintHeaderKop';
 import { PrintSignatureBlock } from './PrintSignatureBlock';
 import { exportToExcel, exportToPdf } from '../utils/exportHelpers';
+import { requestAdminAction } from '../services/adminAuthService';
 
 interface ElectiveSurgeryViewProps {
   surgeryList: ElectiveSurgerySchedule[];
@@ -1015,28 +1016,30 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              setEditingItem(null);
-              setFormData({
-                tglPoli: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-                noRm: `RM-${Math.floor(100000 + Math.random() * 900000)}`,
-                namaPasien: '',
-                poli: 'Bedah',
-                dokterOperator: 'dr. Rieski Widhanar, Sp. B',
-                dokterAnestesi: '',
-                spri: 'Sudah',
-                jenisBayar: 'BPJS Kesehatan',
-                rencanaOp: getDefaultIsoDatetime(),
-                tindakanBedah: '',
-                noHp: '08',
-                pendaftaran: 'Online',
-                hubungiPx: 'Belum Dihubungi',
-                pelayanan: 'Terjadwal',
-                instruksiPreOp: 'Puasa mulai 6 jam pre-op, sedia darah jika diperlukan',
-                kelas: 'Kelas 3',
-                rencanaKamarOk: 'OK 1 (Major)',
-                kamarRawatInap: ''
-              });
-              setIsAddModalOpen(true);
+              requestAdminAction(() => {
+                setEditingItem(null);
+                setFormData({
+                  tglPoli: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                  noRm: `RM-${Math.floor(100000 + Math.random() * 900000)}`,
+                  namaPasien: '',
+                  poli: 'Bedah',
+                  dokterOperator: 'dr. Rieski Widhanar, Sp. B',
+                  dokterAnestesi: '',
+                  spri: 'Sudah',
+                  jenisBayar: 'BPJS Kesehatan',
+                  rencanaOp: getDefaultIsoDatetime(),
+                  tindakanBedah: '',
+                  noHp: '08',
+                  pendaftaran: 'Online',
+                  hubungiPx: 'Belum Dihubungi',
+                  pelayanan: 'Terjadwal',
+                  instruksiPreOp: 'Puasa mulai 6 jam pre-op, sedia darah jika diperlukan',
+                  kelas: 'Kelas 3',
+                  rencanaKamarOk: 'OK 1 (Major)',
+                  kamarRawatInap: ''
+                });
+                setIsAddModalOpen(true);
+              }, 'Tambah Jadwal Operasi Elektif');
             }}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#005d42] hover:bg-[#004a35] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors"
           >
@@ -1277,38 +1280,38 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
                 {/* Group Header Pembatas Tanggal Operasi                     */}
                 {/* ========================================================= */}
                 <tr className="bg-emerald-50 border-y border-emerald-200 text-emerald-950 select-none">
-                  <td colSpan={6} className="px-4 py-2.5">
+                  <td colSpan={6} className="px-3 py-1.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       {/* Kiri: Ikon kalender dan Tanggal Operasi lengkap */}
-                      <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-emerald-950">
-                        <span className="text-base leading-none">📅</span>
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-950">
+                        <span className="text-sm leading-none">📅</span>
                         <span>Pelaksanaan: {formatIndonesianSurgeryDate(group.date)}</span>
                       </div>
 
                       {/* Kanan: Badge jumlah total pasien operasi pada hari tersebut & Tombol Aksi Cepat */}
-                      <div className="flex items-center flex-wrap gap-2 print:hidden no-print">
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
-                          <span className="text-xs leading-none">👥</span>
+                      <div className="flex items-center flex-wrap gap-1.5 print:hidden no-print">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
+                          <span className="text-[11px] leading-none">👥</span>
                           <span>Total: {group.items.length} Pasien</span>
                         </span>
 
                         <button
                           type="button"
                           onClick={() => handleDownloadDateGroupPdf(group.date, group.rawDate, group.items)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs transition-all active:scale-95 cursor-pointer"
                           title={`Unduh PDF Daftar Pasien Operasi ${formatIndonesianSurgeryDate(group.date)}`}
                         >
-                          <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                          <FileText className="w-3 h-3 text-emerald-700" />
                           <span>Unduh PDF List</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() => handleCopyDateGroupWa(group.date, group.rawDate, group.items)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-all active:scale-95 cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-all active:scale-95 cursor-pointer"
                           title={`Salin Format Broadcast WhatsApp Pasien ${formatIndonesianSurgeryDate(group.date)}`}
                         >
-                          <Copy className="w-3.5 h-3.5" />
+                          <Copy className="w-3 h-3" />
                           <span>Salin Teks WA</span>
                         </button>
                       </div>
@@ -1336,22 +1339,30 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
                       className={`transition-colors border-b border-slate-100 ${rowStyle}`}
                     >
                       {/* Kolom 1 (NO): Nomor urut antrean/pelaksanaan hari ini */}
-                      <td className="py-3.5 px-3 text-center text-xs font-semibold text-slate-400">
+                      <td className="py-2 px-3 text-center text-xs font-semibold text-slate-400">
                         {itemIdx + 1}
                       </td>
 
-                  {/* Kolom 2 (PASIEN): Nama Pasien (Bold, 14px) di baris atas, No RM & Kelas, dan baris sekunder Kamar Rawat Inap */}
-                  <td className="py-3.5 px-4">
-                    <div className="text-[14px] font-bold text-slate-900 leading-tight">
+                  {/* Kolom 2 (PASIEN): Nama Pasien (Bold, 13px) di baris atas, No RM • Kelas • Kamar • Status Hubungi di sub-row horizontal */}
+                  <td className="py-2 px-3">
+                    <div className="text-[13px] font-bold text-slate-900 leading-tight">
                       {item.namaPasien}
                     </div>
-                    <div className="text-[12px] font-normal font-mono text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <div className="text-xs font-normal font-mono text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap leading-tight">
                       <span>{item.noRm}</span>
                       <span className="text-slate-300">•</span>
                       <span className="text-slate-600 font-sans font-medium">{item.kelas}</span>
+                      {item.kamarRawatInap && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span className="font-semibold text-slate-700 bg-slate-100 px-1 py-0.2 rounded text-[11px]">
+                            {item.kamarRawatInap}
+                          </span>
+                        </>
+                      )}
                       <span className="text-slate-300">•</span>
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${getHubungiPxBadgeStyle(
+                        className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10.5px] font-bold ${getHubungiPxBadgeStyle(
                           item.hubungiPx
                         )}`}
                         title="Status Hubungi Pasien"
@@ -1359,24 +1370,14 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
                         {item.hubungiPx}
                       </span>
                     </div>
-                    {item.kamarRawatInap && (
-                      <div
-                        className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-emerald-50/90 border border-emerald-200/80 px-2 py-0.5 rounded-md"
-                        title="Rencana Kamar Rawat Inap Pasien"
-                      >
-                        <Building className="w-3 h-3 text-[#005d42] shrink-0" />
-                        <span className="font-semibold text-slate-700">Kamar:</span>
-                        <span>{item.kamarRawatInap}</span>
-                      </div>
-                    )}
                   </td>
 
                   {/* Kolom 3 (POLI & DOKTER): Nama Dokter Operator di baris atas, dan Poliklinik / Anestesi di baris bawah */}
-                  <td className="py-3.5 px-4">
-                    <div className="text-[13px] font-semibold text-slate-800 leading-tight">
+                  <td className="py-2 px-3">
+                    <div className="text-[12.5px] font-semibold text-slate-800 leading-tight">
                       {item.dokterOperator}
                     </div>
-                    <div className="text-[12px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                    <div className="text-[11.5px] text-slate-500 mt-0.5 flex items-center gap-1.5">
                       <span className="font-medium text-slate-600">{item.poli}</span>
                       {item.dokterAnestesi && (
                         <>
@@ -1390,21 +1391,21 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
                   </td>
 
                   {/* Kolom 4 (RENCANA OP): Tanggal & Jam OP di baris atas, dan Jenis Tindakan Bedah di baris bawah */}
-                  <td className="py-3.5 px-4">
-                    <div className="text-[13px] font-bold text-slate-900 flex items-center gap-1.5 leading-tight">
-                      <Clock className="w-3.5 h-3.5 text-[#005d42]" />
+                  <td className="py-2 px-3">
+                    <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1 leading-tight">
+                      <Clock className="w-3 h-3 text-[#005d42]" />
                       <span>{item.rencanaOp} WIB</span>
                     </div>
-                    <div className="text-[12px] font-medium text-[#005d42] mt-0.5 leading-tight">
+                    <div className="text-[11.5px] font-medium text-[#005d42] mt-0.5 leading-tight">
                       {item.tindakanBedah}
                     </div>
                   </td>
 
-                  {/* Kolom 5 (STATUS): Badge SPRI (Sudah/Belum) dan Badge Jenis Bayar (BPJS/Umum/Asuransi/Jasa Raharja) */}
-                  <td className="py-3.5 px-3 text-center">
-                    <div className="flex flex-col items-center justify-center gap-1">
+                  {/* Kolom 5 (STATUS): Badge SPRI & Jenis Bayar secara berdampingan (Horizontal Side-by-Side) */}
+                  <td className="py-2 px-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold tracking-tight ${
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium tracking-tight ${
                           item.spri === 'Sudah'
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                             : 'bg-rose-100 text-rose-800 border border-rose-200'
@@ -1413,7 +1414,7 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
                         SPRI: {item.spri}
                       </span>
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] ${getJenisBayarBadgeStyle(
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${getJenisBayarBadgeStyle(
                           item.jenisBayar
                         )}`}
                       >
@@ -1422,16 +1423,16 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
                     </div>
                   </td>
 
-                  {/* Kolom 6 (AKSI): Tombol aksi berupa ikon minimalis Detail dan Status Pelayanan */}
-                  <td className="py-3.5 px-4 text-right print:hidden no-print">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {/* Status Pelayanan Quick Selector (4 Status Pilihan Saja) */}
+                  {/* Kolom 6 (AKSI): Tombol aksi ringkas */}
+                  <td className="py-2 px-3 text-right print:hidden no-print">
+                    <div className="flex items-center justify-end gap-1">
+                      {/* Status Pelayanan Quick Selector */}
                       <select
                         value={item.pelayanan}
                         onChange={(e) =>
                           handleQuickStatusChange(item.id, e.target.value as ElectiveSurgerySchedule['pelayanan'])
                         }
-                        className={`text-[11px] font-bold py-1 px-2 rounded-lg border focus:outline-none cursor-pointer transition-colors ${
+                        className={`text-[11px] font-bold py-1 px-1.5 rounded-lg border focus:outline-none cursor-pointer transition-colors ${
                           item.pelayanan === 'Hadir'
                             ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                             : item.pelayanan === 'Reschedule'
@@ -1451,16 +1452,20 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
                       {/* Tombol Detail Minimalis */}
                       <button
                         onClick={() => setDetailItem(item)}
-                        className="p-1.5 rounded-lg text-slate-600 hover:text-[#005d42] hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-colors"
-                        title="Buka Detail Info Lengkap (No HP, Pre-Op, Kamar OK)"
+                        className="p-1.5 rounded-md text-slate-600 hover:text-[#005d42] hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-colors"
+                        title="Buka Detail Info Lengkap"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className="w-3.5 h-3.5" />
                       </button>
 
                       {/* Edit Button */}
                       <button
-                        onClick={() => openEditModal(item)}
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors"
+                        onClick={() => {
+                          requestAdminAction(() => {
+                            openEditModal(item);
+                          }, 'Edit Jadwal Operasi Elektif');
+                        }}
+                        className="p-1.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors"
                         title="Edit Data Jadwal"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -1471,9 +1476,11 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setItemToDelete(item);
+                          requestAdminAction(() => {
+                            setItemToDelete(item);
+                          }, 'Hapus Jadwal Operasi Elektif');
                         }}
-                        className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
+                        className="p-1.5 rounded-md text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
                         title="Hapus Jadwal Pasien"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1517,8 +1524,8 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
 
       {/* Modal Detail Info Lengkap (No HP, Puasa Pre-Op, Kamar OK, dll.) */}
       {detailItem && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 print:hidden no-print">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[99999] flex items-center justify-center p-4 print:hidden no-print overflow-hidden">
+          <div className="relative z-[100000] bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-xl max-h-[85vh] my-auto flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -1909,8 +1916,8 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
 
       {/* Modal Tambah / Edit Jadwal OP */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 print:hidden no-print">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[99999] flex items-center justify-center p-4 print:hidden no-print overflow-hidden">
+          <div className="relative z-[100000] bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-2xl max-h-[85vh] my-auto flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
               <div>
@@ -2170,8 +2177,8 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
 
       {/* Modal Konfirmasi Hapus Jadwal */}
       {itemToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 print:hidden no-print">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[99999] flex items-center justify-center p-4 print:hidden no-print overflow-hidden">
+          <div className="relative z-[100000] bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md my-auto overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="p-6 text-center">
               <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4 shadow-2xs">
                 <Trash2 className="w-6 h-6" />

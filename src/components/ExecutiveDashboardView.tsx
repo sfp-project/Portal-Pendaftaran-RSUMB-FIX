@@ -20,7 +20,9 @@ import {
   ClipboardList,
   Scissors,
   Share2,
-  FileCheck2
+  FileCheck2,
+  Printer,
+  QrCode
 } from 'lucide-react';
 import { DoctorSchedule, DoctorLeaveAnnouncement } from '../types';
 import { ElectiveSurgerySchedule, initialSurgerySchedules } from '../data/surgeryData';
@@ -30,6 +32,8 @@ import {
   loadKllRecords
 } from '../data/patientNotesData';
 import { DailyHuddleReportModal } from './dashboard/DailyHuddleReportModal';
+import { DoctorScheduleThermalSlipModal } from './dashboard/DoctorScheduleThermalSlipModal';
+import { RSUMB_LOGO_BASE64 } from '../assets/logoRsumbBase64';
 import {
   isDoctorLeaveActiveOnDate,
   formatDoctorScheduleTime,
@@ -66,6 +70,8 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
 }) => {
   // Modal State for Daily Huddle Report
   const [isDailyHuddleOpen, setIsDailyHuddleOpen] = useState(false);
+  // Modal State for Thermal Slip Jadwal Dokter
+  const [isThermalSlipModalOpen, setIsThermalSlipModalOpen] = useState(false);
 
   // 1. Current Date Context (Simulated / Real: local container date)
   const now = new Date();
@@ -329,20 +335,27 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
         <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-emerald-300/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs font-semibold tracking-wide">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Executive Dashboard SIMRS • RSU Muhammadiyah Babat</span>
+          <div className="flex items-start gap-4 max-w-2xl">
+            <img
+              src={RSUMB_LOGO_BASE64}
+              alt="Logo RSUMB"
+              className="w-14 h-14 sm:w-16 sm:h-16 object-contain rounded-full bg-white p-1 ring-4 ring-emerald-400/40 shadow-lg shrink-0 hidden sm:block hover:scale-105 transition-transform"
+            />
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs font-semibold tracking-wide">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Executive Dashboard SIMRS • RSU Muhammadiyah Babat</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
+                Ringkasan Operasional & Ketersediaan Dokter
+              </h2>
+              <p className="text-sm sm:text-base text-emerald-100/90 leading-relaxed">
+                Pantau kesiapan poliklinik rawat jalan, kehadiran DPJP spesialis, dan utilisasi kuota pendaftaran pasien BPJS secara real-time pada hari{' '}
+                <span className="font-semibold text-white underline decoration-emerald-400/60 underline-offset-4">
+                  {currentDayName}, {formatYMDToIndonesian(todayYMD, false)}
+                </span>.
+              </p>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
-              Ringkasan Operasional & Ketersediaan Dokter
-            </h2>
-            <p className="text-sm sm:text-base text-emerald-100/90 leading-relaxed">
-              Pantau kesiapan poliklinik rawat jalan, kehadiran DPJP spesialis, dan utilisasi kuota pendaftaran pasien BPJS secara real-time pada hari{' '}
-              <span className="font-semibold text-white underline decoration-emerald-400/60 underline-offset-4">
-                {currentDayName}, {formatYMDToIndonesian(todayYMD, false)}
-              </span>.
-            </p>
           </div>
 
           {/* Quick Action Buttons */}
@@ -881,7 +894,49 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
         </div>
       </div>
 
-      {/* 5. QUICK NAVIGATION & INFORMATIONAL FOOTER BANNER */}
+      {/* 5. CARD WIDGET KHUSUS: CETAK SLIP / KARTU INFORMASI JADWAL DOKTER */}
+      <div className="bg-gradient-to-br from-emerald-900 via-[#005d42] to-teal-950 rounded-2xl p-5 sm:p-6 text-white shadow-lg border border-emerald-700/50 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+        <div className="relative z-10 flex items-start gap-4 min-w-0">
+          <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner shrink-0 text-emerald-300">
+            <Printer className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base sm:text-lg font-black tracking-wide">
+                Cetak Slip / Kartu Informasi Jadwal
+              </h3>
+              <span className="text-[10px] font-bold uppercase bg-emerald-400/30 text-emerald-200 px-2.5 py-0.5 rounded-full border border-emerald-400/40">
+                Printer Thermal POS 58mm / 80mm
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-emerald-100/90 font-medium mt-1 max-w-2xl leading-relaxed">
+              Cetak struk informasi pendaftaran & QR Code jadwal dokter / info libur real-time untuk diberikan langsung kepada pasien atau keluarga yang mendaftar di admisi.
+            </p>
+            <div className="flex items-center gap-3 sm:gap-4 mt-2.5 text-[11px] text-emerald-200/90 flex-wrap">
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> Format Rapi Tanpa Logo</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> QR Code Publik SIMRS</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> Info Telp & Alamat Lengkap</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-center gap-2.5">
+          <button
+            type="button"
+            id="btn-beranda-open-thermal-slip"
+            onClick={() => setIsThermalSlipModalOpen(true)}
+            className="w-full sm:w-auto px-5 py-3 bg-white hover:bg-emerald-50 text-[#005d42] active:bg-emerald-100 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-md hover:shadow-xl active:scale-95 transition-all cursor-pointer border border-white/80 group"
+          >
+            <Printer className="w-4 h-4 text-[#005d42] group-hover:scale-110 transition-transform" />
+            <span>🖨️ Cetak Slip Thermal</span>
+          </button>
+        </div>
+
+        {/* Subtle decorative glow */}
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
+      </div>
+
+      {/* 6. QUICK NAVIGATION & INFORMATIONAL FOOTER BANNER */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div
           onClick={() => onNavigateToSchedules()}
@@ -943,6 +998,15 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
         doctorLeaves={doctorLeaves}
         surgeryList={actualSurgeries}
         onNavigateToModule={onNavigateToModule}
+        showToast={showToast}
+      />
+
+      {/* Doctor Schedule Thermal Slip Modal */}
+      <DoctorScheduleThermalSlipModal
+        isOpen={isThermalSlipModalOpen}
+        onClose={() => setIsThermalSlipModalOpen(false)}
+        schedules={schedules}
+        doctorLeaves={doctorLeaves}
         showToast={showToast}
       />
     </div>
