@@ -148,7 +148,7 @@ export const GeminiSidebar: React.FC<GeminiSidebarProps> = ({
         <style>
           @page { size: auto; margin: 0; }
           body {
-            font-family: 'Courier New', monospace;
+            font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 11px;
             color: #000;
             background: #fff;
@@ -975,9 +975,44 @@ export const GeminiSidebar: React.FC<GeminiSidebarProps> = ({
       }
     }
 
-    // 13. JADWAL PRAKTIK POLIKLINIK UMUM & KUOTA BPJS
-    if (lower.includes('jadwal') || lower.includes('praktik') || lower.includes('kuota')) {
-      return `📅 **Jadwal Praktik Dokter & Kuota BPJS RSUMB:**\n\n• Jam pelayanan poliklinik pagi dimulai pukul **07.00 / 07.30 WIB** dan sore mulai **13.00 / 14.00 WIB**.\n• Kuota pendaftaran BPJS Kesehatan terintegrasi langsung dengan Mobile JKN dan VClaim.\n• Anda dapat memeriksa sisa kuota atau nama DPJP pada menu terkait.\n\n🔗 [Buka Jadwal Dokter](action:tab:schedules) • [Cek Kuota BPJS](action:tab:quotas)`;
+    // 13. PERSYARATAN BERKAS PENDAFTARAN & CHECKLIST SLIP
+    if (
+      lower.includes('syarat') ||
+      lower.includes('berkas') ||
+      lower.includes('persyaratan') ||
+      lower.includes('menyusul') ||
+      lower.includes('checklist') ||
+      lower.includes('skdp') ||
+      lower.includes('sep')
+    ) {
+      return `📋 **Persyaratan Berkas Pendaftaran & Aturan Berkas Menyusul RSUMB:**\n\n1. **BPJS Kesehatan / BPJS Ketenagakerjaan**:\n   • **Surat Eligibilitas Peserta (SEP)** (diterbitkan via loket VClaim / Fingerprint).\n   • **Surat Kontrol / SKDP Asli** DPJP dokter spesialis yang masih aktif (maks. 30 hari).\n   • **Rujukan FKTP Puskesmas/Klinik** aktif (masa berlaku **90 hari** sejak tanggal terbit).\n   • **e-KTP / Kartu Keluarga (KK)** & Kartu BPJS / KIS Digital (Mobile JKN).\n   • **Batas Waktu Berkas Menyusul**: Maksimal **3 x 24 Jam Kerja** sejak pasien berobat.\n\n2. **Pasien Umum & Asuransi Swasta**:\n   • Identitas resmi (KTP/SIM/Paspor), Kartu Asuransi Rekanan (Cashless), Guarantee Letter (GL).\n\n3. **Cetak Slip Kekurangan Berkas (Thermal 80mm)**:\n   • Petugas dapat mencentang dokumen yang belum lengkap dan mencetak struk thermal 80mm sebagai lembar pengingat resmi pasien.\n\n🔗 [Buka Persyaratan & Checklist](action:tab:requirements)`;
+    }
+
+    // 14. PROSEDUR KECELAKAAN LALU LINTAS & LP JASA RAHARJA
+    if (
+      lower.includes('jasa raharja') ||
+      lower.includes('laporan polisi') ||
+      lower.includes('prosedur lp') ||
+      lower.includes('kll') ||
+      lower.includes('kecelakaan')
+    ) {
+      return `🚔 **Prosedur Laporan Polisi (LP) & Penjaminan Jasa Raharja RSUMB:**\n\n1. **Plafon Penjaminan**: Maksimal **Rp 20.000.000** (Dua Puluh Juta Rupiah) per pasien korban luka-luka KLL.\n2. **Syarat Berkas Utama**:\n   • **Laporan Polisi (LP) Asli** dari Satlantas Polres (wajib diurus dalam **2 x 24 jam**).\n   • **Surat Jaminan (Guarantee Letter)** dari PT Jasa Raharja.\n   • **Formulir Kronologi Kejadian** bermaterai Rp 10.000 dan ditandatangani saksi/keluarga.\n   • KTP korban, KTP pelapor/saksi, SIM pengendara, dan STNK kendaraan.\n3. **Penjamin Kedua (Secondary Payer)**:\n   • Jika total biaya perawatan RSUMB melampaui Rp 20 juta, sisa selisih biaya dapat dialihkan ke **BPJS Kesehatan** setelah verifikasi terbit.\n\n🔗 [Buka Plafon Jasa Raharja](action:tab:jasa_raharja) • [Persyaratan Berkas](action:tab:requirements)`;
+    }
+
+    // 15. CARA BACKUP & RESTORE DATA LOKAL
+    if (
+      lower.includes('backup') ||
+      lower.includes('restore') ||
+      lower.includes('cadangan') ||
+      lower.includes('data lokal') ||
+      lower.includes('offline')
+    ) {
+      return `💾 **Panduan Backup & Restore Data Lokal SIMRS RSUMB:**\n\nJika koneksi Google Sheets (GAS) sedang offline atau bermasalah, seluruh data tetap aman di browser (LocalStorage):\n\n1. **Cara Unduh Backup (.JSON / .XLSX)**:\n   • Masuk ke menu **Pengaturan** (ikon roda gigi) > pilih sub-tab **"Backup & Data Drive"**.\n   • Klik tombol **"Unduh Backup Data Lokal (.JSON)"** atau **"Ekspor Rekap Pelayanan (.XLSX)"**.\n   • Simpan berkas ke komputer/laptop sebagai cadangan arsip resmi.\n\n2. **Cara Pulihkan (Restore) Data**:\n   • Di halaman yang sama, klik tombol **"Pulihkan Data"** (Restore).\n   • Pilih berkas JSON cadangan yang telah diunduh sebelumnya.\n   • Sistem akan otomatis memvalidasi dan memuat ulang seluruh data (jadwal dokter, kupon fee, catatan pasien).\n\n3. **Tes Koneksi (Ping)**:\n   • Klik ikon **Ping** di sebelah status Cloud di header untuk menguji koneksi realtime ke server GAS.\n\n🔗 [Buka Pengaturan Sistem & Backup](action:tab:settings)`;
+    }
+
+    // 16. JADWAL PRAKTIK POLIKLINIK UMUM & KUOTA BPJS
+    if (lower.includes('jadwal') || lower.includes('praktik') || lower.includes('kuota') || lower.includes('hari ini')) {
+      return `📅 **Jadwal Praktik DPJP & Kuota BPJS Hari Ini di RSUMB:**\n\n• Jam pelayanan poliklinik pagi dimulai pukul **07.00 / 07.30 WIB** dan sore mulai **13.00 / 14.00 WIB**.\n• Kuota pendaftaran BPJS Kesehatan terintegrasi langsung dengan Mobile JKN dan VClaim.\n• Anda dapat memeriksa ketersediaan dokter, cuti, atau sisa kuota poli pada modul terkait.\n\n🔗 [Buka Jadwal Dokter](action:tab:schedules) • [Cek Kuota BPJS](action:tab:quotas)`;
     }
 
     return null;
@@ -1497,6 +1532,53 @@ export const GeminiSidebar: React.FC<GeminiSidebarProps> = ({
               </button>
             </div>
           )}
+
+          {/* Quick Prompt Buttons (Tombol Pertanyaan Cepat di atas Input Chat) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none no-scrollbar">
+            <button
+              type="button"
+              onClick={() => {
+                setInputText('Syarat BPJS Menyusul?');
+                handleSendMessage('Syarat BPJS Menyusul?');
+              }}
+              className="shrink-0 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-[#005d42] border border-emerald-300 rounded-full text-[10.5px] font-bold shadow-2xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+            >
+              <span>📋 Syarat BPJS Menyusul?</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setInputText('Jadwal DPJP Hari Ini');
+                handleSendMessage('Jadwal DPJP Hari Ini');
+              }}
+              className="shrink-0 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-full text-[10.5px] font-bold shadow-2xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+            >
+              <span>📅 Jadwal DPJP Hari Ini</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setInputText('Prosedur LP Jasa Raharja');
+                handleSendMessage('Prosedur LP Jasa Raharja');
+              }}
+              className="shrink-0 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[10.5px] font-bold shadow-2xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+            >
+              <span>🚔 Prosedur LP Jasa Raharja</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setInputText('Cara Backup Data Lokal');
+                handleSendMessage('Cara Backup Data Lokal');
+              }}
+              className="shrink-0 px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-300 rounded-full text-[10.5px] font-bold shadow-2xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+            >
+              <span>💾 Cara Backup Data Lokal</span>
+            </button>
+          </div>
 
           {/* Input Bar */}
           <div className="flex items-center gap-1.5 bg-slate-50 rounded-xl border border-slate-200 p-1.5 focus-within:border-emerald-500 focus-within:bg-white transition-all shadow-2xs">

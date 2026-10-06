@@ -94,7 +94,7 @@ export function getShiftTimeRange(shift: StaffShiftType): string {
 }
 
 const STORAGE_KEY_ACTIVE_STAFF = 'rsumb_active_staff_user_v1';
-const STORAGE_KEY_NOTIFICATIONS = 'rsumb_header_notifications_v1';
+export const STORAGE_KEY_NOTIFICATIONS = 'rsumb_header_notifications_v1';
 
 export function loadActiveStaff(): StaffUser {
   try {

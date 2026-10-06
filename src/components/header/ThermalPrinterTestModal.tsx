@@ -65,7 +65,7 @@ export const ThermalPrinterTestModal: React.FC<ThermalPrinterTestModalProps> = (
 ==========================================
     UJI CETAK PRINTER THERMAL ADMISI
 ==========================================
-Tanggal   : ${dateStr} ${timeStr} WIB
+Tanggal   : ${dateStr} ${timeStr.replace(/\s*WIB/gi, '')} WIB
 Petugas   : ${activeStaff.name.toUpperCase()} (${activeStaff.role})
 Shift     : ${activeStaff.shift.toUpperCase()}
 Printer   : EPSON TM-T82X / POS THERMAL ${paperWidth}
@@ -151,7 +151,7 @@ BARCODE CODE128: ||| | |||| || |||| ||| |
           <div className="flex justify-center">
             <div
               id="thermal-test-slip-container"
-              className={`bg-amber-50/40 border border-slate-300 rounded-lg p-4 font-mono text-[11px] leading-tight text-slate-900 shadow-inner ${
+              className={`bg-amber-50/40 border border-slate-300 rounded-lg p-4 font-sans font-['Inter',sans-serif] text-[11px] leading-tight text-slate-900 shadow-inner ${
                 paperWidth === '80mm' ? 'w-full max-w-[340px]' : 'w-full max-w-[280px]'
               }`}
             >

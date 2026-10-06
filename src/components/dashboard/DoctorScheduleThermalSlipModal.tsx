@@ -176,21 +176,24 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
 
     let todayClinicsHtml = '';
     if (slipMode === 'today_clinics') {
-      const listHtml = todaySchedules
-        .slice(0, 6)
-        .map(
-          (s) =>
-            `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-weight:bold; border-bottom: 1px dotted #888; padding-bottom: 2px;">
-              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:145px;">${s.dpjp}</span>
-              <span style="font-size: 9px;">${formatDoctorScheduleTime(s)}</span>
-            </div>`
-        )
-        .join('');
+      const listHtml = todaySchedules.length > 0
+        ? todaySchedules
+            .map(
+              (s, index) =>
+                `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-weight:bold; ${
+                  index < todaySchedules.length - 1 ? 'border-bottom: 1px dotted #888; padding-bottom: 2px;' : 'padding-bottom: 1px;'
+                }">
+                  <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">${s.dpjp}</span>
+                  <span style="font-size: 9px; text-align: right; shrink-0;">${formatDoctorScheduleTime(s)}</span>
+                </div>`
+            )
+            .join('')
+        : '<div style="text-align: center; font-style: italic; font-size: 9px; padding: 4px 0;">Tidak ada dokter yang praktik hari ini</div>';
 
       todayClinicsHtml = `
         <div style="padding: 6px 0; border-bottom: 2px dashed #000;">
-          <div style="font-size: 9px; font-weight: bold; text-transform: uppercase;">PRAKTIK HARI INI (${currentDayName.toUpperCase()}):</div>
-          <div style="margin-top: 4px;">
+          <div style="font-size: 9px; font-weight: bold; text-transform: uppercase; margin-bottom: 4px;">PRAKTIK HARI INI (${currentDayName.toUpperCase()}):</div>
+          <div>
             ${listHtml}
           </div>
         </div>
@@ -217,7 +220,7 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
       max-width: ${widthPx};
       margin: 0 auto;
       padding: 2.5mm 2mm;
-      font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       font-weight: 600;
       font-size: ${fontSize};
       line-height: 1.25;
@@ -263,6 +266,8 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
     .sub-header .title {
       font-size: 11px;
       font-weight: 900;
+      margin-bottom: 2px;
+      letter-spacing: 0.3px;
     }
     .meta-row {
       display: flex;
@@ -331,8 +336,8 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
     </div>
   </div>
 
-  <div class="sub-header">
-    <div class="title">KARTU INFORMASI JADWAL DOKTER</div>
+  <div class="sub-header" style="${slipMode === 'general' ? 'padding: 4px 0;' : 'padding: 5px 0;'}">
+    ${slipMode !== 'general' ? '<div class="title">INFORMASI JADWAL DOKTER</div>' : ''}
     <div class="meta-row">
       <span>Tgl: ${currentDateFormatted}</span>
       <span>${cleanTimeStr}</span>
@@ -416,7 +421,7 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
     try {
       const is58 = paperWidth === '58mm';
       const widthMm = is58 ? 58 : 80;
-      const heightMm = is58 ? 165 : 185;
+      const heightMm = (is58 ? 165 : 185) + (slipMode === 'today_clinics' ? Math.max(0, todaySchedules.length - 4) * 4 : 0);
 
       const doc = new jsPDF({
         orientation: 'portrait',
@@ -449,17 +454,21 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
       doc.line(3, 23.5, widthMm - 3, 23.5);
 
       // Title & Meta
-      doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(is58 ? 7.5 : 8.5);
-      doc.text('KARTU INFORMASI JADWAL DOKTER', widthMm / 2, 27.5, { align: 'center' });
+      let currY = 27.5;
+      if (slipMode !== 'general') {
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(is58 ? 7.5 : 8.5);
+        doc.text('INFORMASI JADWAL DOKTER', widthMm / 2, currY, { align: 'center' });
+        currY += 4;
+      }
 
       doc.setFont('Helvetica', 'normal');
       doc.setFontSize(is58 ? 6.5 : 7.5);
-      doc.text(`Tgl: ${currentDateFormatted}   ${cleanTimeStr}`, widthMm / 2, 31.5, { align: 'center' });
+      doc.text(`Tgl: ${currentDateFormatted}   ${cleanTimeStr}`, widthMm / 2, currY, { align: 'center' });
+      currY += 3;
+      doc.line(3, currY, widthMm - 3, currY);
+      currY += 4;
 
-      doc.line(3, 34.5, widthMm - 3, 34.5);
-
-      let currY = 38.5;
       if (slipMode === 'specific_doctor' && selectedDoctor) {
         doc.setFont('Helvetica', 'bold');
         doc.setFontSize(is58 ? 7 : 8);
@@ -470,6 +479,19 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
         selectedDoctorSchedules.forEach((s) => {
           doc.text(`• ${s.hari}: ${formatDoctorScheduleTime(s) || '-'} (Poli ${s.poli || '-'})`, 4, currY);
           currY += 3.2;
+        });
+        doc.line(3, currY, widthMm - 3, currY);
+        currY += 4;
+      } else if (slipMode === 'today_clinics') {
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(is58 ? 7 : 8);
+        doc.text(`PRAKTIK HARI INI (${currentDayName.toUpperCase()}):`, 4, currY);
+        currY += 3.5;
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(is58 ? 5.5 : 6.5);
+        todaySchedules.forEach((s) => {
+          doc.text(`• ${s.dpjp}: ${formatDoctorScheduleTime(s) || '-'}`, 4, currY);
+          currY += 3;
         });
         doc.line(3, currY, widthMm - 3, currY);
         currY += 4;
@@ -542,7 +564,10 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
     text += ` Medsos & Web: @rsumbabat\n`;
     text += `     rsumuhammadiyahbabat.com\n`;
     text += `${divider}\n`;
-    text += `KARTU INFORMASI JADWAL PRAKTIK DOKTER\n`;
+
+    if (slipMode !== 'general') {
+      text += `INFORMASI JADWAL DOKTER\n`;
+    }
     text += `Tgl Cetak: ${currentDateFormatted}   ${cleanTimeStr}\n`;
     text += `${divider}\n`;
 
@@ -550,6 +575,12 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
       text += `DOKTER: ${selectedDoctor}\n`;
       selectedDoctorSchedules.forEach((s) => {
         text += `• ${s.hari}: ${formatDoctorScheduleTime(s) || '-'} (Poli ${s.poli || '-'})\n`;
+      });
+      text += `${divider}\n`;
+    } else if (slipMode === 'today_clinics') {
+      text += `PRAKTIK HARI INI (${currentDayName.toUpperCase()}):\n`;
+      todaySchedules.forEach((s) => {
+        text += `• ${s.dpjp}: ${formatDoctorScheduleTime(s) || '-'}\n`;
       });
       text += `${divider}\n`;
     }
@@ -726,12 +757,14 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
               </div>
             </div>
 
-            {/* Sub-Header Judul Slip */}
-            <div className="py-2.5 border-b-2 border-dashed border-black text-center">
-              <p className="font-extrabold text-xs uppercase tracking-wide text-black">
-                KARTU INFORMASI JADWAL DOKTER
-              </p>
-              <div className="flex items-center justify-between text-[10.5px] sm:text-[11.5px] mt-1.5 font-bold text-black">
+            {/* Sub-Header Judul & Waktu Slip */}
+            <div className={`border-b-2 border-dashed border-black text-center ${slipMode === 'general' ? 'py-1.5' : 'py-2'}`}>
+              {slipMode !== 'general' && (
+                <p className="font-extrabold text-xs uppercase tracking-wide text-black mb-1">
+                  INFORMASI JADWAL DOKTER
+                </p>
+              )}
+              <div className="flex items-center justify-between text-[10.5px] sm:text-[11.5px] font-bold text-black">
                 <span>Tgl: {currentDateFormatted}</span>
                 <span>{cleanTimeStr}</span>
               </div>
@@ -757,22 +790,28 @@ export const DoctorScheduleThermalSlipModal: React.FC<DoctorScheduleThermalSlipM
               </div>
             )}
 
-            {/* Optional Today Clinics Summary */}
+            {/* Optional Today Clinics Summary - Tampilkan SEMUA dokter praktik hari ini */}
             {slipMode === 'today_clinics' && (
               <div className="py-2.5 border-b-2 border-dashed border-black">
-                <p className="text-[10px] uppercase font-bold text-black">
+                <p className="text-[10px] uppercase font-bold text-black mb-1">
                   PRAKTIK HARI INI ({currentDayName.toUpperCase()}):
                 </p>
-                <div className="mt-1.5 space-y-1 text-[10.5px]">
-                  {todaySchedules.slice(0, 6).map((sch, i) => (
-                    <div key={i} className="flex items-baseline justify-between border-b border-dotted border-black/30 pb-0.5 font-bold">
-                      <span className="truncate max-w-[150px]">{sch.dpjp}</span>
-                      <span className="text-[10px] text-right shrink-0">{formatDoctorScheduleTime(sch)}</span>
-                    </div>
-                  ))}
-                  {todaySchedules.length > 6 && (
-                    <p className="text-[9.5px] text-center italic font-semibold text-black mt-1">
-                      + {todaySchedules.length - 6} dokter lainnya (cek via QR)
+                <div className="space-y-1 text-[10.5px]">
+                  {todaySchedules.length > 0 ? (
+                    todaySchedules.map((sch, i) => (
+                      <div
+                        key={i}
+                        className={`flex items-baseline justify-between font-bold ${
+                          i < todaySchedules.length - 1 ? 'border-b border-dotted border-black/30 pb-0.5' : 'pb-0'
+                        }`}
+                      >
+                        <span className="truncate max-w-[155px]">{sch.dpjp}</span>
+                        <span className="text-[10px] text-right shrink-0">{formatDoctorScheduleTime(sch)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-[9.5px] text-center italic text-black/70 py-1">
+                      Tidak ada dokter yang praktik hari ini
                     </p>
                   )}
                 </div>

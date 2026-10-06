@@ -225,35 +225,44 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
   <meta charset="utf-8">
   <title>Stiker Buku Ranap - ${stickerPatient.namaPasien || 'Pasien'}</title>
   <style>
+    @page {
+      size: 150mm 80mm landscape;
+      margin: 0 !important;
+    }
+
     @media print {
       @page {
-        size: 150mm 80mm landscape !important; /* Force 15cm width x 8cm height landscape */
-        margin: 0mm !important;
+        size: 150mm 80mm landscape;
+        margin: 0 !important;
       }
       
       html, body {
         width: 150mm !important;
         height: 80mm !important;
+        max-height: 80mm !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #fff !important;
+        overflow: hidden !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
 
       .print-container {
         width: 150mm !important;
+        max-width: 150mm !important;
+        height: 80mm !important;
+        max-height: 80mm !important;
         box-sizing: border-box !important;
-        padding: 5mm 8mm !important;
+        padding: 4mm 6mm 0 6mm !important;
         margin: 0 auto !important;
         text-align: center !important;
+        overflow: hidden !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
     }
 
-    @page {
-      size: 150mm 80mm landscape !important;
-      margin: 0mm !important;
-    }
     * {
       box-sizing: border-box;
       margin: 0;
@@ -262,62 +271,76 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     html, body {
       width: 150mm !important;
       height: 80mm !important;
+      max-height: 80mm !important;
       margin: 0 auto !important;
       padding: 0 !important;
       background: #fff !important;
       color: #000 !important;
+      overflow: hidden !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
     body, .print-container {
       width: 150mm !important;
       max-width: 150mm !important;
+      height: 80mm !important;
+      max-height: 80mm !important;
       box-sizing: border-box !important;
-      padding: 5mm 8mm !important;
+      padding: 4mm 6mm 0 6mm !important;
       margin: 0 auto !important;
       text-align: center !important;
+      overflow: hidden !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
       font-family: 'Courier New', monospace, sans-serif !important;
     }
     .header {
-      font-size: 18pt;
+      font-size: 16pt;
       font-weight: 800;
-      letter-spacing: 1px;
+      letter-spacing: 0.8px;
       text-transform: uppercase;
-      line-height: 1.2;
+      line-height: 1.15;
+      margin: 0;
+      padding: 0;
     }
     .subheader {
-      font-size: 14pt;
+      font-size: 12.5pt;
       font-weight: 700;
       font-style: italic;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      line-height: 1.2;
-      margin-top: 1mm;
+      line-height: 1.15;
+      margin-top: 0.8mm;
+      padding: 0;
     }
     .divider {
       width: 100%;
       border-bottom: 2px dashed #000;
-      margin: 3mm 0;
+      margin: 2mm 0;
     }
     .box {
-      border: 3px solid #000;
-      padding: 10mm 6mm;
-      margin: 4mm 0;
+      border: 2.5px solid #000;
+      padding: 5mm 4mm;
+      margin: 2mm 0;
       border-radius: 4px;
-      font-size: 22pt !important;
+      font-size: 20pt !important;
       font-weight: 900 !important;
-      line-height: 1.3;
+      line-height: 1.25;
       text-transform: uppercase;
       word-break: break-word;
       overflow-wrap: break-word;
       text-align: center;
+      box-sizing: border-box;
     }
     .kelas-footer {
       text-align: center;
       font-weight: 900;
-      font-size: 18pt;
-      margin-top: 6px;
+      font-size: 16pt;
+      margin-top: 2mm;
+      margin-bottom: 0 !important;
+      padding-bottom: 0 !important;
       letter-spacing: 1px;
+      line-height: 1.1;
     }
   </style>
 </head>
@@ -327,7 +350,7 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     <div class="subheader">INFORMASI BUKU RANAP</div>
     <div class="divider"></div>
     <div class="box">${mainText}</div>
-    <div style="text-align: center; font-weight: 900; font-size: 18pt; margin-top: 6px; letter-spacing: 1px;">
+    <div class="kelas-footer" style="text-align: center; font-weight: 900; font-size: 16pt; margin-top: 2mm; margin-bottom: 0 !important; padding-bottom: 0 !important; letter-spacing: 1px; line-height: 1.1;">
       KELAS = ${kelasVal ? kelasVal : '.....'}
     </div>
   </div>
@@ -406,35 +429,44 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
           <meta charset="utf-8">
           <title>Cetak Note Ranap - 15cm Landscape</title>
           <style>
+            @page {
+              size: 150mm 80mm landscape;
+              margin: 0 !important;
+            }
+
             @media print {
               @page {
-                size: 150mm 80mm landscape !important; /* Force 15cm width x 8cm height landscape */
-                margin: 0mm !important;
+                size: 150mm 80mm landscape;
+                margin: 0 !important;
               }
               
               html, body {
                 width: 150mm !important;
                 height: 80mm !important;
+                max-height: 80mm !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #fff !important;
+                overflow: hidden !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
 
               .print-container {
                 width: 150mm !important;
+                max-width: 150mm !important;
+                height: 80mm !important;
+                max-height: 80mm !important;
                 box-sizing: border-box !important;
-                padding: 5mm 8mm !important;
+                padding: 4mm 6mm 0 6mm !important;
                 margin: 0 auto !important;
                 text-align: center !important;
+                overflow: hidden !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
               }
             }
 
-            @page {
-              size: 150mm 80mm landscape !important;
-              margin: 0mm !important;
-            }
             * {
               box-sizing: border-box;
               margin: 0;
@@ -443,62 +475,76 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
             html, body {
               width: 150mm !important;
               height: 80mm !important;
+              max-height: 80mm !important;
               margin: 0 auto !important;
               padding: 0 !important;
               background: #fff !important;
               color: #000 !important;
+              overflow: hidden !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
             body, .print-container {
               width: 150mm !important;
               max-width: 150mm !important;
+              height: 80mm !important;
+              max-height: 80mm !important;
               box-sizing: border-box !important;
-              padding: 5mm 8mm !important;
+              padding: 4mm 6mm 0 6mm !important;
               margin: 0 auto !important;
               text-align: center !important;
+              overflow: hidden !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
               font-family: 'Courier New', monospace, sans-serif !important;
             }
             .header {
-              font-size: 18pt;
+              font-size: 16pt;
               font-weight: 800;
-              letter-spacing: 1px;
+              letter-spacing: 0.8px;
               text-transform: uppercase;
-              line-height: 1.2;
+              line-height: 1.15;
+              margin: 0;
+              padding: 0;
             }
             .subheader {
-              font-size: 14pt;
+              font-size: 12.5pt;
               font-weight: 700;
               font-style: italic;
               text-transform: uppercase;
               letter-spacing: 0.5px;
-              line-height: 1.2;
-              margin-top: 1mm;
+              line-height: 1.15;
+              margin-top: 0.8mm;
+              padding: 0;
             }
             .divider {
               width: 100%;
               border-bottom: 2px dashed #000;
-              margin: 3mm 0;
+              margin: 2mm 0;
             }
             .box {
-              border: 3px solid #000;
-              padding: 10mm 6mm;
-              margin: 4mm 0;
+              border: 2.5px solid #000;
+              padding: 5mm 4mm;
+              margin: 2mm 0;
               border-radius: 4px;
-              font-size: 22pt !important;
+              font-size: 20pt !important;
               font-weight: 900 !important;
-              line-height: 1.3;
+              line-height: 1.25;
               text-transform: uppercase;
               word-break: break-word;
               overflow-wrap: break-word;
               text-align: center;
+              box-sizing: border-box;
             }
             .kelas-footer {
               text-align: center;
               font-weight: 900;
-              font-size: 18pt;
-              margin-top: 6px;
+              font-size: 16pt;
+              margin-top: 2mm;
+              margin-bottom: 0 !important;
+              padding-bottom: 0 !important;
               letter-spacing: 1px;
+              line-height: 1.1;
             }
           </style>
         </head>
@@ -508,7 +554,7 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
             <div class="subheader">INFORMASI BUKU RANAP</div>
             <div class="divider"></div>
             <div class="box">${mainText}</div>
-            <div style="text-align: center; font-weight: 900; font-size: 18pt; margin-top: 6px; letter-spacing: 1px;">
+            <div class="kelas-footer" style="text-align: center; font-weight: 900; font-size: 16pt; margin-top: 2mm; margin-bottom: 0 !important; padding-bottom: 0 !important; letter-spacing: 1px; line-height: 1.1;">
               KELAS = ${kelasVal ? kelasVal : '.....'}
             </div>
           </div>
@@ -2638,7 +2684,26 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
           className="hidden print:block text-black bg-white text-center leading-tight"
         >
           <style>{`
+            @page {
+              size: 150mm 80mm landscape;
+              margin: 0 !important;
+            }
             @media print {
+              @page {
+                size: 150mm 80mm landscape;
+                margin: 0 !important;
+              }
+              html, body {
+                width: 150mm !important;
+                height: 80mm !important;
+                max-height: 80mm !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+                overflow: hidden !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
               /* Hide everything on the page EXCEPT the thermal print area */
               body * {
                 visibility: hidden !important;
@@ -2647,16 +2712,21 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
                 visibility: visible !important;
               }
               #thermal-print-area {
-                position: absolute !important;
+                position: fixed !important;
                 left: 0 !important;
                 top: 0 !important;
                 width: 150mm !important;
                 max-width: 150mm !important;
+                height: 80mm !important;
+                max-height: 80mm !important;
+                overflow: hidden !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
                 box-sizing: border-box !important;
-                padding: 5mm 8mm !important;
-                margin: 0 auto !important;
+                padding: 4mm 6mm 0 6mm !important;
+                margin: 0 !important;
                 text-align: center !important;
-                font-family: 'Courier New', monospace, sans-serif !important;
+                font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif !important;
                 color: #000 !important;
                 background: #fff !important;
                 word-break: break-word !important;
@@ -2664,50 +2734,63 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
-              @page {
-                size: 150mm 80mm landscape !important;
-                margin: 0mm !important;
-              }
-              html, body {
-                width: 150mm !important;
-                height: 80mm !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #fff !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
             }
           `}</style>
 
-          <div style={{ width: '150mm', maxWidth: '150mm', margin: '0 auto', textAlign: 'center', boxSizing: 'border-box' }}>
-            <div style={{ fontSize: '18pt', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', lineHeight: 1.2, textAlign: 'center' }}>
+          <div
+            style={{
+              width: '150mm',
+              maxWidth: '150mm',
+              height: '80mm',
+              maxHeight: '80mm',
+              margin: '0 auto',
+              textAlign: 'center',
+              boxSizing: 'border-box',
+              padding: '4mm 6mm 0 6mm',
+              overflow: 'hidden',
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid'
+            }}
+          >
+            <div style={{ fontSize: '16pt', fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase', lineHeight: 1.15, textAlign: 'center', margin: 0, padding: 0 }}>
               RSU MUHAMMADIYAH BABAT
             </div>
-            <div style={{ fontSize: '14pt', fontWeight: 700, fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '1mm', lineHeight: 1.2, textAlign: 'center' }}>
+            <div style={{ fontSize: '12.5pt', fontWeight: 700, fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '0.8mm', lineHeight: 1.15, textAlign: 'center', margin: 0, padding: 0 }}>
               INFORMASI BUKU RANAP
             </div>
-            <div style={{ width: '100%', borderBottom: '2px dashed #000', margin: '3mm 0' }} />
+            <div style={{ width: '100%', borderBottom: '2px dashed #000', margin: '2mm 0' }} />
 
             <div
               style={{
-                border: '3px solid #000',
-                padding: '10mm 6mm',
-                margin: '4mm 0',
+                border: '2.5px solid #000',
+                padding: '5mm 4mm',
+                margin: '2mm 0',
                 borderRadius: '4px',
-                fontSize: '22pt',
+                fontSize: '20pt',
                 fontWeight: 900,
-                lineHeight: 1.3,
+                lineHeight: 1.25,
                 textTransform: 'uppercase',
                 textAlign: 'center',
                 wordBreak: 'break-word',
-                overflowWrap: 'break-word'
+                overflowWrap: 'break-word',
+                boxSizing: 'border-box'
               }}
             >
               {getStickerMainText(stickerTemplate, customStickerText)}
             </div>
 
-            <div style={{ textAlign: 'center', fontWeight: 900, fontSize: '18pt', marginTop: '6px', letterSpacing: '1px' }}>
+            <div
+              style={{
+                textAlign: 'center',
+                fontWeight: 900,
+                fontSize: '16pt',
+                marginTop: '2mm',
+                marginBottom: 0,
+                paddingBottom: 0,
+                letterSpacing: '1px',
+                lineHeight: 1.1
+              }}
+            >
               KELAS = {getCleanKelas(stickerPatient) || '.....'}
             </div>
           </div>

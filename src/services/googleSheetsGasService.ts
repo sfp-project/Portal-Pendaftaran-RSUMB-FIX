@@ -6,29 +6,51 @@
  * dengan Web App Google Apps Script berbasis HTTPS fetch standard.
  */
 
-const STORAGE_KEY_GAS_URL = 'rsumb_gas_web_app_url';
-const STORAGE_KEY_LAST_SYNC = 'rsumb_gas_last_sync_time';
+import {
+  DEFAULT_GAS_URL,
+  STORAGE_KEY_GAS_URL,
+  STORAGE_KEY_LAST_SYNC
+} from '../config/gasConfig';
+
+export { DEFAULT_GAS_URL, STORAGE_KEY_GAS_URL, STORAGE_KEY_LAST_SYNC };
 
 // In-memory cache
 let cachedGasUrl: string | null = null;
 
 /**
+ * Memeriksa apakah URL merupakan placeholder default yang belum dikonfigurasi
+ */
+export const isPlaceholderGasUrl = (url?: string | null): boolean => {
+  if (!url) return true;
+  const clean = url.trim();
+  return clean === '' || clean === 'MASUKKAN_URL_GAS_ANDA_DI_SINI' || clean.includes('MASUKKAN_URL_GAS_ANDA_DI_SINI');
+};
+
+/**
  * Mendapatkan URL Google Apps Script Web App yang tersimpan
+ * Jika localStorage di browser PC user kosong, otomatis gunakan DEFAULT_GAS_URL.
  */
 export const getGasWebAppUrl = (): string => {
   if (cachedGasUrl) return cachedGasUrl;
   try {
     const stored = localStorage.getItem(STORAGE_KEY_GAS_URL);
-    if (stored && stored.trim()) {
+    if (stored && stored.trim() && stored.trim() !== 'MASUKKAN_URL_GAS_ANDA_DI_SINI') {
       cachedGasUrl = stored.trim();
       return cachedGasUrl;
     }
     const envUrl = (import.meta as any).env?.VITE_GAS_WEB_APP_URL || (import.meta as any).env?.VITE_DATABASE_WEB_APP_URL;
-    if (envUrl && typeof envUrl === 'string') {
+    if (envUrl && typeof envUrl === 'string' && envUrl.trim() && envUrl.trim() !== 'MASUKKAN_URL_GAS_ANDA_DI_SINI') {
       cachedGasUrl = envUrl.trim();
       return cachedGasUrl;
     }
   } catch {}
+
+  // Fallback utama: Jika localStorage kosong, otomatis gunakan DEFAULT_GAS_URL
+  if (DEFAULT_GAS_URL && typeof DEFAULT_GAS_URL === 'string') {
+    cachedGasUrl = DEFAULT_GAS_URL.trim();
+    return cachedGasUrl;
+  }
+
   return '';
 };
 
@@ -58,7 +80,10 @@ export const setGasWebAppUrl = (url: string): void => {
  */
 export const isGasConnected = (): boolean => {
   const url = getGasWebAppUrl();
-  return !!(url && url.startsWith('https://script.google.com/macros/s/'));
+  return !!(
+    url &&
+    (url.startsWith('https://script.google.com/macros/s/') || url.startsWith('https://'))
+  );
 };
 
 /**

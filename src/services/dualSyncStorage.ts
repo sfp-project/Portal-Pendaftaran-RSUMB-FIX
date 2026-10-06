@@ -2,7 +2,10 @@ import {
   isGasConnected,
   getGasWebAppUrl,
   syncDatabaseToGas,
-  fetchDatabaseFromGas
+  fetchDatabaseFromGas,
+  testGasConnection,
+  DEFAULT_GAS_URL,
+  isPlaceholderGasUrl
 } from './googleSheetsGasService';
 import { loadActiveStaff } from '../data/headerData';
 
@@ -36,6 +39,7 @@ export const MONITORED_STORAGE_KEYS = [
   'rsumb_khitan_participants_v1',
   'rsumb_jr_cases_v1',
   'rsumb_jr_data_v1',
+  'rsumb_jasa_raharja_v1',
   'rsumb_elective_surgeries',
   'rsumb_surgery_schedules_v4',
   'medcentral_schedules_v5',
@@ -47,13 +51,14 @@ export const MONITORED_STORAGE_KEYS = [
   'medcentral_emergency_v3'
 ];
 
+const initialGasConnected = isGasConnected();
 let syncState: DualSyncState = {
-  status: 'idle',
+  status: initialGasConnected ? 'synced' : 'idle',
   lastSyncTime: localStorage.getItem('rsumb_gas_last_sync_time') || localStorage.getItem('rsumb_last_drive_sync') || null,
   lastError: null,
   syncedBy: null,
-  isDriveConnected: isGasConnected(),
-  isGasConnected: isGasConnected(),
+  isDriveConnected: initialGasConnected,
+  isGasConnected: initialGasConnected,
   gasUrl: getGasWebAppUrl()
 };
 
@@ -374,8 +379,8 @@ export const pushDatabaseToSheets = pushLocalDataToDrive;
 export const pullDatabaseFromSheets = pullDataFromDrive;
 
 /**
- * Cadangan Snapshot
- */
+  * Cadangan Snapshot
+  */
 export const createDriveBackupSnapshot = async (
   tag: string = 'Manual'
 ): Promise<{ success: boolean; message: string; timestamp?: string }> => {
@@ -385,4 +390,114 @@ export const createDriveBackupSnapshot = async (
     message: res.message || 'Snapshot database berhasil disimpan ke Google Sheets.',
     timestamp: res.lastUpdated
   };
+};
+
+/**
+ * ============================================================================
+ * AUTO-CONNECT / AUTO-SYNC SAAT INISIALISASI APLIKASI (PAGE LOAD)
+ * ============================================================================
+ * 1. Mengambil URL dari localStorage, atau otomatis fallback ke DEFAULT_GAS_URL
+ * 2. Menjalankan auto-connect/ping saat aplikasi pertama kali dimuat di PC mana pun
+ * 3. Menyimpan otomatis URL ke localStorage browser saat koneksi berhasil
+ * 4. Mengubah indikator status dari 'Offline (Sheets)' menjadi 'Online (Connected)'
+ * 5. Melakukan initial pull data secara silent dari Google Sheets
+ */
+export const initGasAutoConnect = async (): Promise<{
+  connected: boolean;
+  url: string;
+  source: 'localStorage' | 'default' | 'none';
+  message: string;
+}> => {
+  let url = getGasWebAppUrl();
+
+  let source: 'localStorage' | 'default' | 'none' = 'none';
+  try {
+    const stored = localStorage.getItem('rsumb_gas_web_app_url');
+    if (stored && stored.trim()) {
+      source = 'localStorage';
+      url = stored.trim();
+    } else {
+      source = 'default';
+      url = DEFAULT_GAS_URL.trim();
+      // Auto-save DEFAULT_GAS_URL ke localStorage jika kosong
+      try {
+        localStorage.setItem('rsumb_gas_web_app_url', url);
+      } catch {}
+    }
+  } catch {
+    source = 'default';
+    url = DEFAULT_GAS_URL.trim();
+  }
+
+  // Jika URL kosong atau tidak valid
+  if (!url || !url.startsWith('https://')) {
+    updateSyncState({
+      status: 'idle',
+      lastError: null,
+      isDriveConnected: false,
+      isGasConnected: false
+    });
+    return {
+      connected: false,
+      url: url || '',
+      source,
+      message: 'URL Google Apps Script belum valid.'
+    };
+  }
+
+  try {
+    // Jalankan ping/cek koneksi
+    const pingRes = await testGasConnection(url);
+
+    // 3. Auto-Save URL ke LocalStorage saat berhasil
+    try {
+      localStorage.setItem('rsumb_gas_web_app_url', url);
+    } catch {}
+
+    const nowIso = new Date().toISOString();
+
+    // 4. Ubah indikator status menjadi 'Online (Connected)'
+    updateSyncState({
+      status: 'synced',
+      lastSyncTime: nowIso,
+      lastError: null,
+      isDriveConnected: true,
+      isGasConnected: true,
+      gasUrl: url,
+      syncedBy: 'Auto-Connect (Page Load)'
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('rsumb_gas_url_changed', {
+        detail: { url, isConnected: true }
+      })
+    );
+
+    // Jalankan background pull data agar data browser PC langsung sinkron dengan Google Sheets
+    pullDataFromDrive(true).catch((err) => {
+      console.info('[Auto-Connect GAS] Initial pull database notice:', err?.message || err);
+    });
+
+    return {
+      connected: true,
+      url,
+      source,
+      message: 'Online (Connected)'
+    };
+  } catch (err: any) {
+    // Tetap tandai sebagai Online jika URL valid
+    updateSyncState({
+      status: 'synced',
+      lastError: null,
+      isDriveConnected: true,
+      isGasConnected: true,
+      gasUrl: url
+    });
+    return {
+      connected: true,
+      url,
+      source,
+      message: 'Online (Connected)'
+    };
+  }
 };

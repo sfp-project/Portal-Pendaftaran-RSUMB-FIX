@@ -10,6 +10,7 @@ import { ElectiveSurgeryView } from './components/ElectiveSurgeryView';
 import { KhitanJumatView } from './components/KhitanJumatView';
 import { JasaRaharjaView } from './components/JasaRaharjaView';
 import { MedicalLettersView } from './components/MedicalLettersView';
+import { RequirementsChecklistView } from './components/requirements/RequirementsChecklistView';
 import { ContactPatientsView } from './components/ContactPatientsView';
 import { IncentiveCalculatorView } from './components/IncentiveCalculatorView';
 import { KuponFeeMohatView } from './components/mohat/KuponFeeMohatView';
@@ -45,9 +46,10 @@ import { KhitanParticipant, loadKhitanParticipants, saveKhitanParticipants, calc
 import { MedicalLetterItem } from './types/letterTypes';
 import { loadMedicalLetters, saveMedicalLetters } from './data/letterData';
 import { initAuth } from './services/googleAuthService';
-import { pullDataFromDrive, triggerSilentDriveSync } from './services/dualSyncStorage';
+import { pullDataFromDrive, triggerSilentDriveSync, initGasAutoConnect } from './services/dualSyncStorage';
 import { pushDatabaseToSheets, isGasConnected } from './services/googleSheetsService';
 import { initDailyAutoSnapshot } from './services/historyAndBackupService';
+import { runAutoCacheCleanup } from './utils/autoCacheCleanup';
 import {
   loadJasaRaharjaData,
   saveJasaRaharjaData,
@@ -219,8 +221,14 @@ export default function App() {
   });
 
   const [emergencyAlert, setEmergencyAlert] = useState<EmergencyAlertData>(() => {
-    const saved = localStorage.getItem('medcentral_emergency_v3');
-    return saved ? JSON.parse(saved) : { active: false, code: '', message: '', issuedAt: '', issuedBy: '' };
+    try {
+      const saved = localStorage.getItem('medcentral_emergency_v3');
+      if (saved && saved.trim() !== '' && saved !== 'undefined' && saved !== 'null') {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    return { active: false, code: '', message: '', issuedAt: '', issuedBy: '' };
   });
 
   // Navigation & Filter state
@@ -280,8 +288,16 @@ export default function App() {
   const isInitialMountRef = useRef(true);
 
   useEffect(() => {
+    // Jalankan pembersihan cache otomatis (hapus log aktivitas & snapshot data usang > 30 hari pada app mount)
+    runAutoCacheCleanup();
+
     // Inisialisasi snapshot otomatis harian pada browser storage (rsumb_db_snapshot_daily)
     initDailyAutoSnapshot();
+
+    // Auto-Connect / Auto-Sync ke backend Google Sheets (GAS) dengan fallback DEFAULT_GAS_URL
+    initGasAutoConnect().catch((err) => {
+      console.info('[Auto-Connect GAS] Initial check notice:', err?.message || err);
+    });
 
     // Mark initial mount complete after slight delay
     const timer = setTimeout(() => {
@@ -396,29 +412,37 @@ export default function App() {
         setJasaRaharjaList(loadJasaRaharjaData());
 
         const savedSchedules = localStorage.getItem('medcentral_schedules_v5');
-        if (savedSchedules) {
-          const parsed = JSON.parse(savedSchedules);
-          if (Array.isArray(parsed) && parsed.length > 0) setSchedules(parsed);
+        if (savedSchedules && savedSchedules.trim() !== '' && savedSchedules !== 'undefined' && savedSchedules !== 'null') {
+          try {
+            const parsed = JSON.parse(savedSchedules);
+            if (Array.isArray(parsed) && parsed.length > 0) setSchedules(parsed);
+          } catch {}
         }
 
         const savedLeaves = localStorage.getItem('medcentral_leaves_v5');
-        if (savedLeaves) {
-          const parsed = JSON.parse(savedLeaves);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setDoctorLeaves(consolidateAndSortDoctorLeaves(parsed));
-          }
+        if (savedLeaves && savedLeaves.trim() !== '' && savedLeaves !== 'undefined' && savedLeaves !== 'null') {
+          try {
+            const parsed = JSON.parse(savedLeaves);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setDoctorLeaves(consolidateAndSortDoctorLeaves(parsed));
+            }
+          } catch {}
         }
 
         const savedSurgeries = localStorage.getItem('rsumb_surgery_schedules_v4');
-        if (savedSurgeries) {
-          const parsed = JSON.parse(savedSurgeries);
-          if (Array.isArray(parsed) && parsed.length > 0) setSurgeryList(parsed);
+        if (savedSurgeries && savedSurgeries.trim() !== '' && savedSurgeries !== 'undefined' && savedSurgeries !== 'null') {
+          try {
+            const parsed = JSON.parse(savedSurgeries);
+            if (Array.isArray(parsed) && parsed.length > 0) setSurgeryList(parsed);
+          } catch {}
         }
 
         const savedQueue = localStorage.getItem('medcentral_queue_v3');
-        if (savedQueue) {
-          const parsed = JSON.parse(savedQueue);
-          if (Array.isArray(parsed) && parsed.length > 0) setQueueList(parsed);
+        if (savedQueue && savedQueue.trim() !== '' && savedQueue !== 'undefined' && savedQueue !== 'null') {
+          try {
+            const parsed = JSON.parse(savedQueue);
+            if (Array.isArray(parsed) && parsed.length > 0) setQueueList(parsed);
+          } catch {}
         }
       } catch (err) {
         console.warn('Notice rehydrating state after cloud sync:', err);
@@ -1161,7 +1185,7 @@ export default function App() {
         <main className="flex-grow px-4 sm:px-6 py-4 sm:py-6 print:p-0 flex flex-col gap-6 sm:gap-8 w-full max-w-full print:max-w-none pb-12 sm:pb-16">
 
           {/* Page Title & Subtitle */}
-          {activeTab !== 'khitan' && activeTab !== 'letters' && activeTab !== 'rooms' && activeTab !== 'contact_patients' && activeTab !== 'jasa_raharja' && activeTab !== 'incentive_calc' && activeTab !== 'patient_notes' && activeTab !== 'kupon_mohat' && (
+          {activeTab !== 'khitan' && activeTab !== 'letters' && activeTab !== 'rooms' && activeTab !== 'contact_patients' && activeTab !== 'jasa_raharja' && activeTab !== 'incentive_calc' && activeTab !== 'patient_notes' && activeTab !== 'kupon_mohat' && activeTab !== 'requirements' && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden no-print">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-[#0b1c30] tracking-tight">
@@ -1387,6 +1411,10 @@ export default function App() {
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
             />
+          )}
+
+          {activeTab === 'requirements' && (
+            <RequirementsChecklistView showToast={showToast} />
           )}
 
           {activeTab === 'patient_notes' && (

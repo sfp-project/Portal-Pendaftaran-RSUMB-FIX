@@ -75,6 +75,7 @@ export type ActiveNavTab =
   | 'khitan'
   | 'jasa_raharja'
   | 'letters'
+  | 'requirements'
   | 'patient_notes'
   | 'contact_patients'
   | 'kupon_mohat'

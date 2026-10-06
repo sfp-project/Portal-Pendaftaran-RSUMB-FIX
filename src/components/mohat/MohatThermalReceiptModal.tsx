@@ -43,6 +43,16 @@ const formatDateIndo = (tglStr: string) => {
   return tglStr;
 };
 
+/**
+ * Format string jam agar tidak terjadi teks "WIB" ganda
+ * Contoh: "09:15 WIB" -> "09:15 WIB", "09:15" -> "09:15 WIB"
+ */
+export const formatJamWibClean = (jam: string | undefined | null): string => {
+  if (!jam) return 'WIB';
+  const clean = jam.replace(/\s*wib\b/gi, '').trim();
+  return clean ? `${clean} WIB` : 'WIB';
+};
+
 export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> = ({
   isOpen,
   onClose,
@@ -158,7 +168,7 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
       padding: 0;
       background: #ffffff !important;
       color: #000000 !important;
-      font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+      font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
       width: 100%;
     }
     #receipt-outer {
@@ -169,7 +179,7 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
       font-size: ${paperWidth === '58mm' ? '11px' : '12px'};
       line-height: ${paperWidth === '58mm' ? '1.25' : '1.3'};
       color: #000000 !important;
-      font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+      font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     }
     .text-center { text-align: center; }
     .text-right { text-align: right; }
@@ -388,7 +398,7 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
     body {
       margin: 0;
       padding: 2mm;
-      font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+      font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif !important;
       width: 100%;
       font-size: ${paperWidth === '58mm' ? '11px' : '12px'};
       line-height: ${paperWidth === '58mm' ? '1.25' : '1.3'};
@@ -506,7 +516,7 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
       `==========================================\n` +
       `No. Kupon    : ${kupon.nomorKupon}\n` +
       `No. Seri (SN): ${kupon.noSeri || '-'}\n` +
-      `Tgl Masuk    : ${formattedTgl} (${kupon.jamDibuat} WIB)\n` +
+      `Tgl Masuk    : ${formattedTgl} (${formatJamWibClean(kupon.jamDibuat)})\n` +
       `Nama Pasien  : ${kupon.namaPasien}\n` +
       `Penjamin     : ${penjaminLabel}\n` +
       `Kategori     : ${kategoriLabel}\n` +
@@ -667,7 +677,7 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
               paperWidth === '58mm' ? 'w-[320px] text-[11px]' : 'w-[400px] text-[12px]'
             }`}
             style={{
-              fontFamily: "'Courier New', 'Lucida Console', monospace, sans-serif",
+              fontFamily: "'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
               color: '#000000',
               lineHeight: paperWidth === '58mm' ? 1.25 : 1.3
             }}
@@ -713,7 +723,7 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
                 <div className="flex justify-between items-start" style={{ border: 'none', background: 'transparent' }}>
                   <span className="shrink-0 font-semibold text-black">Tgl Masuk</span>
                   <span className="text-right text-black font-bold">
-                    {formatDateIndo(kupon.tanggalMasuk)} ({kupon.jamDibuat || 'WIB'})
+                    {formatDateIndo(kupon.tanggalMasuk)} ({formatJamWibClean(kupon.jamDibuat)})
                   </span>
                 </div>
                 <div className="flex justify-between items-start" style={{ border: 'none', background: 'transparent' }}>
@@ -831,7 +841,7 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
                 </div>
 
                 <div className="text-[8px] text-black mt-0.5 font-mono">
-                  Otentikasi Sistem • {formatDateIndo(kupon.tanggalMasuk)} {kupon.jamDibuat || 'WIB'}
+                  Otentikasi Sistem • {formatDateIndo(kupon.tanggalMasuk)} {formatJamWibClean(kupon.jamDibuat)}
                 </div>
               </div>
 

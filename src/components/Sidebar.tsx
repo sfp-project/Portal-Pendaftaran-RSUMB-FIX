@@ -20,6 +20,7 @@ import {
   ClipboardList,
   Ticket,
   Sliders,
+  FileCheck,
   PanelLeftClose,
   PanelLeftOpen,
   ChevronLeft,
@@ -126,6 +127,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Dokumen Master',
       icon: FolderArchive,
       badge: undefined
+    },
+    {
+      id: 'requirements' as ActiveNavTab,
+      label: 'Persyaratan & Checklist',
+      icon: FileCheck,
+      badge: 'Slip Berkas'
     },
     {
       id: 'patient_notes' as ActiveNavTab,

@@ -4,15 +4,19 @@ import {
   Cloud,
   CloudOff,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Activity,
+  Radio,
+  Wifi
 } from 'lucide-react';
 import {
   getDualSyncState,
   addSyncStateListener,
   pushDatabaseToSheets,
+  initGasAutoConnect,
   DualSyncState
 } from '../../services/dualSyncStorage';
-import { isGasConnected } from '../../services/googleSheetsGasService';
+import { isGasConnected, testGasConnection } from '../../services/googleSheetsGasService';
 
 interface GoogleDriveSyncBadgeProps {
   onOpenSettings?: () => void;
@@ -37,6 +41,7 @@ export const GoogleDriveSyncBadge: React.FC<GoogleDriveSyncBadgeProps> = ({
 }) => {
   const [syncState, setSyncState] = useState<DualSyncState>(() => getDualSyncState());
   const [isSyncingAction, setIsSyncingAction] = useState(false);
+  const [isPinging, setIsPinging] = useState(false);
 
   // Subscribe to sync state changes & URL changes
   useEffect(() => {
@@ -81,8 +86,8 @@ export const GoogleDriveSyncBadge: React.FC<GoogleDriveSyncBadgeProps> = ({
   const tooltipText = isSyncing
     ? 'Sedang menyinkronkan data ke Google Sheets...'
     : isConnected && !isError
-    ? `Google Sheets: 🟢 Terhubung & Tersinkron (Terakhir: ${formattedTimeOnly || 'Baru saja'}) • Klik untuk sync manual`
-    : 'Google Sheets: 🔴 Offline / Belum Terhubung • Klik untuk menghubungkan URL Web App';
+    ? `Google Sheets: 🟢 Online / Connected (Sheets) • Terhubung & Tersinkron (Terakhir: ${formattedTimeOnly || 'Baru saja'}) • Klik untuk sync manual`
+    : 'Google Sheets: 🔴 Offline (Sheets) • Belum Terhubung • Klik untuk menghubungkan URL Web App';
 
   // Handling badge click
   const handleBadgeClick = async () => {
@@ -113,6 +118,33 @@ export const GoogleDriveSyncBadge: React.FC<GoogleDriveSyncBadgeProps> = ({
     }
   };
 
+  // Manual ping test to GAS Web App backend
+  const handleManualPing = async () => {
+    setIsPinging(true);
+    const startMs = Date.now();
+    try {
+      const pingResult = await testGasConnection();
+      const durationMs = Date.now() - startMs;
+
+      if (pingResult.success) {
+        showToast?.(`🟢 Ping Berhasil: Google Sheets Web App terhubung (${durationMs} ms)`, 'success');
+        setSyncState(getDualSyncState());
+      } else {
+        // Attempt auto-reconnect
+        const reconnect = await initGasAutoConnect();
+        if (reconnect.connected) {
+          showToast?.(`🟢 Terhubung Kembali: Google Sheets Online (${durationMs} ms)`, 'success');
+        } else {
+          showToast?.(`🔴 Ping Gagal: ${pingResult.message || 'Tidak dapat menjangkau server GAS'}`, 'error');
+        }
+      }
+    } catch (err: any) {
+      showToast?.(`🔴 Ping Gagal: ${err?.message || 'Koneksi terputus'}`, 'error');
+    } finally {
+      setIsPinging(false);
+    }
+  };
+
   // Dinamika UI: Hijau (Sukses), Kuning (Syncing), Merah (Error/Offline)
   const getBadgeStyle = () => {
     if (isSyncing) {
@@ -125,75 +157,52 @@ export const GoogleDriveSyncBadge: React.FC<GoogleDriveSyncBadgeProps> = ({
   };
 
   return (
-    <button
-      type="button"
-      onClick={handleBadgeClick}
-      disabled={isSyncing}
-      className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer shadow-xs group shrink-0 ${getBadgeStyle()}`}
-      title={tooltipText}
-      aria-label="Status Sinkronisasi Google Sheets"
-    >
-      {/* Dynamic Cloud Icon */}
-      {isSyncing ? (
-        <div className="relative flex items-center justify-center">
-          <Cloud className="w-4 h-4 text-amber-600 animate-pulse shrink-0" />
-          <RefreshCw className="w-2.5 h-2.5 text-amber-800 animate-spin absolute" />
-        </div>
-      ) : !isConnected || isError ? (
-        <CloudOff className="w-4 h-4 text-rose-600 group-hover:scale-110 transition-transform shrink-0" />
-      ) : (
-        <Cloud className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
-      )}
-
-      {/* Label & Status Dot */}
-      <div className="flex items-center gap-1.5 min-w-0">
+    <div className="flex items-center gap-1.5 shrink-0">
+      {/* Main Status & Sync Badge Button - Ultra Compact Badge */}
+      <button
+        type="button"
+        onClick={handleBadgeClick}
+        disabled={isSyncing}
+        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full font-medium border transition-all cursor-pointer shadow-2xs shrink-0 ${
+          isSyncing
+            ? 'bg-amber-50 text-amber-800 border-amber-300'
+            : !isConnected || isError
+            ? 'bg-rose-50 text-rose-800 border-rose-300'
+            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200'
+        }`}
+        title={tooltipText}
+        aria-label="Status Sinkronisasi Google Sheets"
+      >
         {isSyncing ? (
           <>
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-            </span>
-            <span className="hidden sm:inline font-bold text-[11px] truncate">
-              🟡 Syncing...
-            </span>
-            <span className="inline sm:hidden font-bold text-[11px]">
-              🟡 Sync
-            </span>
+            <span className="w-2 h-2 bg-amber-500 rounded-full animate-spin"></span>
+            <span>Syncing</span>
           </>
         ) : !isConnected || isError ? (
           <>
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
-            </span>
-            <span className="hidden sm:inline font-bold text-[11px] truncate">
-              🔴 Offline (Sheets)
-            </span>
-            <span className="inline sm:hidden font-bold text-[11px]">
-              🔴 Offline
-            </span>
+            <span className="w-2 h-2 bg-rose-500 rounded-full"></span>
+            <span>Offline</span>
           </>
         ) : (
           <>
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            <span className="hidden sm:inline font-bold text-[11px] truncate">
-              🟢 Sheets Sukses
-            </span>
-            <span className="inline sm:hidden font-bold text-[11px]">
-              🟢 Terhubung
-            </span>
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            <span>Online</span>
           </>
         )}
+      </button>
 
-        {/* Timestamp */}
-        {formattedTimeOnly && isConnected && !isSyncing && !isError && (
-          <span className="text-[10px] text-emerald-800 font-mono hidden xl:inline">
-            ({formattedTimeOnly})
-          </span>
-        )}
-      </div>
-    </button>
+      {/* Compact Ping Test Button (Hanya tampil di layar monitor sangat lebar) */}
+      <button
+        type="button"
+        onClick={handleManualPing}
+        disabled={isPinging || isSyncing}
+        className="hidden xl:flex h-7 px-2 rounded-full bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-300 shadow-2xs transition-all active:scale-95 cursor-pointer items-center gap-1 disabled:opacity-50 shrink-0 text-xs font-medium"
+        title="Tes respon koneksi server Google Sheets (Ping)"
+        aria-label="Tes Koneksi (Ping)"
+      >
+        <Radio className={`w-3 h-3 ${isPinging ? 'text-emerald-600 animate-spin' : 'text-emerald-700'}`} />
+        <span className="text-[10.5px]">Ping</span>
+      </button>
+    </div>
   );
 };

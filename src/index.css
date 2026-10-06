@@ -179,33 +179,60 @@
   /* =========================================================================
      THERMAL RECEIPT PRINTING OPTIMIZATION (#print-area & #thermal-print-area)
      Optimized for 58mm / 80mm thermal receipt printers (Epson, Panda, Xprinter, POS)
+     Using clean sans-serif typography (Inter / Roboto) and strict area isolation.
      ========================================================================= */
   body:has(#print-area),
-  body:has(#thermal-print-area) {
+  body:has(#thermal-print-area),
+  body:has(#thermal-test-slip-container),
+  body:has(.thermal-slip) {
     background: #ffffff !important;
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
     color: #000000 !important;
+    font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  /* Completely hide all outer application elements when printing thermal receipts */
+  body:has(#print-area) > *:not(:has(#print-area)),
+  body:has(#thermal-print-area) > *:not(:has(#thermal-print-area)),
+  body:has(#thermal-test-slip-container) > *:not(:has(#thermal-test-slip-container)),
+  body:has(.thermal-slip) > *:not(:has(.thermal-slip)) {
+    display: none !important;
   }
 
   body:has(#print-area) aside,
   body:has(#print-area) header,
   body:has(#print-area) nav,
+  body:has(#print-area) main,
+  body:has(#print-area) footer,
   body:has(#print-area) .no-print,
   body:has(#print-area) .thermal-modal-controls,
+  body:has(#print-area) button,
   body:has(#thermal-print-area) aside,
   body:has(#thermal-print-area) header,
   body:has(#thermal-print-area) nav,
-  body:has(#thermal-print-area) .no-print {
+  body:has(#thermal-print-area) main,
+  body:has(#thermal-print-area) footer,
+  body:has(#thermal-print-area) .no-print,
+  body:has(#thermal-print-area) .thermal-modal-controls,
+  body:has(#thermal-print-area) button,
+  body:has(#thermal-test-slip-container) aside,
+  body:has(#thermal-test-slip-container) header,
+  body:has(#thermal-test-slip-container) nav,
+  body:has(#thermal-test-slip-container) main,
+  body:has(#thermal-test-slip-container) footer,
+  body:has(#thermal-test-slip-container) .no-print,
+  body:has(#thermal-test-slip-container) button {
     display: none !important;
   }
 
   /* Keep thermal backdrop unconstrained on print */
   body:has(#print-area) .thermal-modal-backdrop,
-  body:has(#thermal-print-area) .thermal-modal-backdrop {
+  body:has(#thermal-print-area) .thermal-modal-backdrop,
+  body:has(#thermal-test-slip-container) .thermal-modal-backdrop {
     position: static !important;
     background: transparent !important;
     padding: 0 !important;
@@ -214,13 +241,23 @@
     overflow: visible !important;
   }
 
-  body:has(#print-area) * {
+  body:has(#print-area) *,
+  body:has(#thermal-print-area) *,
+  body:has(#thermal-test-slip-container) * {
     visibility: hidden;
   }
 
   body:has(#print-area) #print-area,
-  body:has(#print-area) #print-area * {
+  body:has(#print-area) #print-area *,
+  body:has(#thermal-print-area) #thermal-print-area,
+  body:has(#thermal-print-area) #thermal-print-area *,
+  body:has(#thermal-test-slip-container) #thermal-test-slip-container,
+  body:has(#thermal-test-slip-container) #thermal-test-slip-container *,
+  .thermal-slip,
+  .thermal-slip * {
     visibility: visible !important;
+    color: #000000 !important;
+    font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
   }
 
   body:has(#print-area) #print-area {
@@ -234,7 +271,7 @@
     box-shadow: none !important;
     background: #ffffff !important;
     color: #000000 !important;
-    font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+    font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     page-break-after: avoid !important;
@@ -244,7 +281,7 @@
 
   body:has(#print-area) #print-area * {
     color: #000000 !important;
-    font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+    font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -263,15 +300,6 @@
     line-height: 1.3 !important;
   }
 
-  body:has(#thermal-print-area) * {
-    visibility: hidden;
-  }
-
-  body:has(#thermal-print-area) #thermal-print-area,
-  body:has(#thermal-print-area) #thermal-print-area * {
-    visibility: visible !important;
-  }
-
   body:has(#thermal-print-area) #thermal-print-area {
     position: absolute !important;
     left: 0 !important;
@@ -285,7 +313,7 @@
     box-shadow: none !important;
     background: #ffffff !important;
     color: #000000 !important;
-    font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+    font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     font-size: 12px !important;
     line-height: 1.3 !important;
     -webkit-print-color-adjust: exact !important;
@@ -305,18 +333,32 @@
     max-width: 80mm !important;
   }
 
+  body:has(#thermal-print-area[data-orientation="landscape"]) {
+    width: 150mm !important;
+    height: 80mm !important;
+    max-height: 80mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
   body:has(#thermal-print-area[data-orientation="landscape"]) #thermal-print-area[data-orientation="landscape"] {
     width: 150mm !important;
     max-width: 150mm !important;
+    height: 80mm !important;
+    max-height: 80mm !important;
     box-sizing: border-box !important;
-    padding: 5mm 8mm !important;
+    padding: 4mm 6mm 0 6mm !important;
     margin: 0 auto !important;
     text-align: center !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   body:has(#thermal-print-area) #thermal-print-area * {
     color: #000000 !important;
-    font-family: 'Courier New', 'Lucida Console', monospace, sans-serif !important;
+    font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

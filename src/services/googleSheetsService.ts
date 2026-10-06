@@ -18,6 +18,9 @@ import {
 } from './dualSyncStorage';
 import { loadActiveStaff } from '../data/headerData';
 
+export { DEFAULT_GAS_URL, isPlaceholderGasUrl } from './googleSheetsGasService';
+import { DEFAULT_GAS_URL, isPlaceholderGasUrl } from './googleSheetsGasService';
+
 const STORAGE_KEY_GAS_URL = 'rsumb_gas_web_app_url';
 const STORAGE_KEY_LAST_SYNC = 'rsumb_gas_last_sync_time';
 
@@ -25,6 +28,7 @@ let cachedGasUrl: string | null = null;
 
 /**
  * Mendapatkan URL Google Apps Script Web App yang tersimpan
+ * Jika localStorage di browser PC user kosong, otomatis gunakan DEFAULT_GAS_URL.
  */
 export const getGasWebAppUrl = (): string => {
   if (cachedGasUrl) return cachedGasUrl;
@@ -37,11 +41,18 @@ export const getGasWebAppUrl = (): string => {
     const envUrl =
       (import.meta as any).env?.VITE_GAS_WEB_APP_URL ||
       (import.meta as any).env?.VITE_DATABASE_WEB_APP_URL;
-    if (envUrl && typeof envUrl === 'string') {
+    if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
       cachedGasUrl = envUrl.trim();
       return cachedGasUrl;
     }
   } catch {}
+
+  // Fallback: Jika localStorage kosong, otomatis gunakan DEFAULT_GAS_URL
+  if (DEFAULT_GAS_URL && typeof DEFAULT_GAS_URL === 'string') {
+    cachedGasUrl = DEFAULT_GAS_URL.trim();
+    return cachedGasUrl;
+  }
+
   return '';
 };
 
@@ -71,7 +82,10 @@ export const setGasWebAppUrl = (url: string): void => {
  */
 export const isGasConnected = (): boolean => {
   const url = getGasWebAppUrl();
-  return !!(url && url.startsWith('https://script.google.com/macros/s/'));
+  return !!(
+    url &&
+    (url.startsWith('https://script.google.com/macros/s/') || url.startsWith('https://'))
+  );
 };
 
 /**

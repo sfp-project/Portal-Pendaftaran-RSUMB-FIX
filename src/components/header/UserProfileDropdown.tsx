@@ -125,14 +125,15 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
     <>
       {/* Invisible backdrop to dismiss dropdown on outside click */}
       <div
-        className="fixed inset-0 z-40 bg-black/15 transition-opacity"
+        className="fixed inset-0 z-[9998] bg-black/15 transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Floating Popover Card / Dropdown Menu positioned at top-right with high z-index (z-50) */}
+      {/* Floating Popover Card / Dropdown Menu positioned with explicit leftward offset (30-40px away from screen edge) */}
       <div
-        className="absolute right-0 top-full mt-2 w-80 sm:w-88 bg-white rounded-3xl shadow-2xl border border-slate-200/90 z-50 p-3 animate-in fade-in slide-in-from-top-2 duration-150 overflow-hidden text-left"
+        className="absolute right-8 md:right-12 top-full mt-2 w-72 max-w-[280px] bg-white rounded-2xl shadow-2xl z-[9999] border border-gray-100 mr-4 p-3 animate-in fade-in slide-in-from-top-2 duration-150 text-left"
+        style={{ right: '2rem', transform: 'translateX(-10px)' }}
         role="menu"
         aria-orientation="vertical"
       >
@@ -167,10 +168,10 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
 
               {/* Shift pill badge */}
               <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-[#005d42] text-[11px] font-bold border border-emerald-300 shadow-2xs">
-                <Clock className="w-3 h-3 text-[#005d42]" />
-                <span>{activeStaff.shift}</span>
+                <Clock className="w-3 h-3 text-[#005d42] shrink-0" />
+                <span className="truncate">{activeStaff.shift}</span>
                 <span className="text-slate-400">•</span>
-                <span className="text-[10px] font-medium text-emerald-800">{shiftTime}</span>
+                <span className="text-[10px] font-medium text-emerald-800 shrink-0">{shiftTime}</span>
               </div>
             </div>
           </div>

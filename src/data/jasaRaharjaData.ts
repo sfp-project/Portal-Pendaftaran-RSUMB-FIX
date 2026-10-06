@@ -168,29 +168,52 @@ export const initialJasaRaharjaData: JasaRaharjaItem[] = [
 ];
 
 const LOCAL_STORAGE_KEY = 'rsumb_jasa_raharja_v1';
+const FALLBACK_STORAGE_KEYS = ['rsumb_jr_data_v1', 'rsumb_jr_cases_v1'];
 
 export function loadJasaRaharjaData(): JasaRaharjaItem[] {
-  if (typeof window === 'undefined') return initialJasaRaharjaData.filter((i: any) => !i.is_deleted && !i.isDeleted);
-  try {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (saved !== null) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        return parsed.filter((i: any) => !i.is_deleted && !i.isDeleted);
+  const getInitialActive = () => initialJasaRaharjaData.filter((i: any) => !i.is_deleted && !i.isDeleted);
+  if (typeof window === 'undefined') return getInitialActive();
+
+  const allKeys = [LOCAL_STORAGE_KEY, ...FALLBACK_STORAGE_KEYS];
+
+  for (const key of allKeys) {
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved && typeof saved === 'string') {
+        const trimmed = saved.trim();
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const activeOnly = parsed.filter((i: any) => i && typeof i === 'object' && !i.is_deleted && !i.isDeleted);
+            if (activeOnly.length > 0) {
+              return activeOnly;
+            }
+          }
+        }
       }
+    } catch (err) {
+      // Auto-heal corrupted key by removing it safely
+      try {
+        localStorage.removeItem(key);
+      } catch {}
     }
-  } catch (err) {
-    console.error('Gagal membaca data Jasa Raharja dari storage:', err);
   }
-  return initialJasaRaharjaData.filter((i: any) => !i.is_deleted && !i.isDeleted);
+
+  // Auto-heal by writing initial clean data to primary key
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initialJasaRaharjaData));
+  } catch {}
+
+  return getInitialActive();
 }
 
 export function saveJasaRaharjaData(data: JasaRaharjaItem[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+    const validData = Array.isArray(data) ? data : [];
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(validData));
   } catch (err) {
-    console.error('Gagal menyimpan data Jasa Raharja ke storage:', err);
+    console.warn('Peringatan: Gagal menyimpan data Jasa Raharja ke storage:', err);
   }
 }
 
@@ -265,17 +288,73 @@ export function normalizeNoRm(val?: string | null): string {
 }
 
 /**
- * Parsing teks nominal rupiah menjadi angka integer murni
- * Contoh: "11.738.348", "Rp 11.738.348", "20.000.000", "0 (HABIS)" -> 11738348
+ * Helper function untuk membersihkan/parsing nilai angka nominal rupiah dari Excel / OCR
+ * Contoh: "11.738.348", "Rp 11.738.348", "20.000.000", "0 (HABIS)", "5.240.000,00" -> 11738348
  */
-export function parseNominal(val: any): number {
+export function parseNumericValue(val: any): number {
   if (typeof val === 'number') return isNaN(val) ? 0 : Math.round(val);
-  if (!val) return 0;
+  if (val === undefined || val === null || val === '') return 0;
+
   const str = String(val).trim();
+  if (!str) return 0;
   if (str.toUpperCase().includes('HABIS')) return 0;
-  const cleaned = str.replace(/[^0-9]/g, '');
-  return parseInt(cleaned, 10) || 0;
+
+  // Hapus 'Rp', 'Rp.', 'IDR', spasi, dan karakter non-numerik yang tidak perlu
+  let cleaned = str
+    .replace(/Rp\.?/gi, '')
+    .replace(/IDR/gi, '')
+    .replace(/\s+/g, '')
+    .trim();
+
+  if (!cleaned) return 0;
+
+  // Hapus desimal nol di belakang koma/titik seperti ",00" atau ".00"
+  if (cleaned.endsWith(',00') || cleaned.endsWith('.00')) {
+    cleaned = cleaned.slice(0, -3);
+  }
+
+  // Jika format rupiah Indonesia dengan titik ribuan (misal: "11.738.348" atau "5.240.000")
+  if (cleaned.includes('.') && !cleaned.includes(',')) {
+    const dotCount = (cleaned.match(/\./g) || []).length;
+    if (dotCount > 1) {
+      cleaned = cleaned.replace(/\./g, '');
+    } else {
+      const parts = cleaned.split('.');
+      if (parts[1] && parts[1].length === 3) {
+        cleaned = cleaned.replace(/\./g, '');
+      }
+    }
+  } else if (cleaned.includes(',') && !cleaned.includes('.')) {
+    // Jika format koma ribuan (misal: "11,738,348")
+    const commaCount = (cleaned.match(/,/g) || []).length;
+    if (commaCount > 1) {
+      cleaned = cleaned.replace(/,/g, '');
+    } else {
+      const parts = cleaned.split(',');
+      if (parts[1] && parts[1].length === 3) {
+        cleaned = cleaned.replace(/,/g, '');
+      } else {
+        cleaned = cleaned.replace(/,/g, '.');
+      }
+    }
+  } else if (cleaned.includes('.') && cleaned.includes(',')) {
+    // Format campuran (misal: "11.738.348,50" atau "11,738,348.50")
+    if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
+      // Format Indo: 11.738.348,50
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      // Format US: 11,738,348.50
+      cleaned = cleaned.replace(/,/g, '');
+    }
+  }
+
+  // Hapus karakter apa pun yang bukan angka atau minus
+  const sanitized = cleaned.replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(sanitized);
+  return isNaN(parsed) ? 0 : Math.round(parsed);
 }
+
+export const parseNominal = parseNumericValue;
 
 export interface UpsertResult {
   updatedList: JasaRaharjaItem[];
@@ -330,14 +409,19 @@ export function upsertJasaRaharjaItems(
       continue; // Lewati jika tidak ada No RM sama sekali
     }
 
-    const biayaNum = parseNominal(raw.biaya_terpakai ?? raw.biayaTerpakai);
-    let sisaNum = parseNominal(raw.sisa_plafon ?? raw.sisaPlafon);
+    const rawSisaVal = raw.sisa_plafon ?? raw.sisaPlafon;
+    const hasExplicitSisa = rawSisaVal !== undefined && rawSisaVal !== null && String(rawSisaVal).trim() !== '';
 
-    // Jika keterangan habis atau sisa tertera 0
-    if (rawKeterangan.toUpperCase().includes('HABIS') || sisaNum <= 0) {
+    const biayaNum = parseNumericValue(raw.biaya_terpakai ?? raw.biayaTerpakai);
+    let sisaNum = hasExplicitSisa
+      ? parseNumericValue(rawSisaVal)
+      : Math.max(0, PLAFON_MAKSIMAL_DEFAULT - biayaNum);
+
+    // Jika keterangan HABIS atau biaya melampaui plafon
+    if (rawKeterangan.toUpperCase().includes('HABIS')) {
       sisaNum = 0;
-    } else if (sisaNum === 0 && biayaNum > 0 && biayaNum < PLAFON_MAKSIMAL_DEFAULT) {
-      sisaNum = Math.max(0, PLAFON_MAKSIMAL_DEFAULT - biayaNum);
+    } else if (!hasExplicitSisa && biayaNum >= PLAFON_MAKSIMAL_DEFAULT) {
+      sisaNum = 0;
     }
 
     const isHabis = sisaNum <= 0 || rawKeterangan.toUpperCase().includes('HABIS');
@@ -350,19 +434,22 @@ export function upsertJasaRaharjaItems(
     );
 
     if (existingIndex >= 0) {
-      // b & c. SUDAH ADA: Timpa/update nilai tanggal, biaya_terpakai, sisa_plafon, dan status_keterangan
+      // b & c. SUDAH ADA: Timpa/update nilai biaya_terpakai dan sisa_plafon dengan menjaga integritas data pasien
       const existing = resultList[existingIndex];
       const oldBiaya = existing.biayaTerpakai;
       const oldSisa = existing.sisaPlafon;
 
+      const updatedNama = rawNama && rawNama !== 'Pasien Tanpa Nama' ? rawNama : existing.namaPasien;
+      const updatedTanggal = rawTanggal && rawTanggal !== new Date().toISOString().slice(0, 10) ? rawTanggal : existing.tanggal;
+
       resultList[existingIndex] = {
         ...existing,
-        tanggal: rawTanggal,
-        namaPasien: rawNama && rawNama !== 'Pasien Tanpa Nama' ? rawNama : existing.namaPasien,
-        biayaTerpakai: biayaNum,
-        sisaPlafon: sisaNum,
-        keterangan: finalKeterangan,
-        statusPlafon,
+        tanggal: updatedTanggal,
+        namaPasien: updatedNama,
+        biayaTerpakai: biayaNum > 0 ? biayaNum : existing.biayaTerpakai,
+        sisaPlafon: (hasExplicitSisa || biayaNum > 0) ? sisaNum : existing.sisaPlafon,
+        keterangan: rawKeterangan ? finalKeterangan : existing.keterangan,
+        statusPlafon: (hasExplicitSisa || biayaNum > 0) ? statusPlafon : existing.statusPlafon,
         sheetNumber: raw.sheetNumber ?? existing.sheetNumber,
         sheetName: raw.sheetName ?? existing.sheetName,
         box_2d: raw.box_2d ?? existing.box_2d,

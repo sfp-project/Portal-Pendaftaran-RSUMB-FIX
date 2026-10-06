@@ -23,7 +23,9 @@ import {
   setGasWebAppUrl,
   isGasConnected,
   testGasConnection,
-  getGasScriptTemplate
+  getGasScriptTemplate,
+  DEFAULT_GAS_URL,
+  isPlaceholderGasUrl
 } from '../../services/googleSheetsGasService';
 import {
   pushDatabaseToSheets,
@@ -339,6 +341,19 @@ export const GoogleDriveAuthModal: React.FC<GoogleDriveAuthModalProps> = ({
                       <span>Simpan</span>
                     </button>
                   </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-1.5 pt-0.5">
+                  <span>URL tersimpan permanen di LocalStorage browser PC pengguna.</span>
+                  {!isPlaceholderGasUrl(DEFAULT_GAS_URL) && (
+                    <button
+                      type="button"
+                      onClick={() => setGasUrlInput(DEFAULT_GAS_URL)}
+                      className="text-emerald-700 hover:text-emerald-900 font-bold hover:underline cursor-pointer"
+                    >
+                      Gunakan Default GAS
+                    </button>
+                  )}
                 </div>
 
                 {testResult && (

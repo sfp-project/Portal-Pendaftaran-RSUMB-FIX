@@ -263,6 +263,7 @@ export const getGlobalRecycleBinItems = (): SoftDeletedItem[] => {
     rsumb_khitan_participants_v1: 'Khitan Jumat & Massal',
     rsumb_jr_cases_v1: 'Plafon Jasa Raharja',
     rsumb_jr_data_v1: 'Plafon Jasa Raharja',
+    rsumb_jasa_raharja_v1: 'Plafon Jasa Raharja',
     rsumb_master_posters: 'Poster Promo & Dokter Libur',
     master_posters_data: 'Poster Promo & Dokter Libur',
     rsumb_letters_v1: 'Surat Kontrol & Bebas Narkoba',
@@ -285,8 +286,13 @@ export const getGlobalRecycleBinItems = (): SoftDeletedItem[] => {
     ) {
       try {
         const raw = localStorage.getItem(key);
-        if (!raw) continue;
-        const parsed = JSON.parse(raw);
+        if (!raw || typeof raw !== 'string' || raw.trim().length <= 1 || raw === 'undefined' || raw === 'null') continue;
+        let parsed: any;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          continue;
+        }
 
         // Sub-Arrays check (such as patient notes object with sub-arrays)
         if (typeof parsed === 'object' && !Array.isArray(parsed) && parsed !== null) {
@@ -363,8 +369,13 @@ export const restoreSoftDeletedItem = async (
     if (collectionKey.includes(':::')) {
       const [mainKey, subKey] = collectionKey.split(':::');
       const raw = localStorage.getItem(mainKey);
-      if (!raw) return false;
-      const obj = JSON.parse(raw);
+      if (!raw || typeof raw !== 'string' || raw.trim().length <= 1 || raw === 'undefined' || raw === 'null') return false;
+      let obj: any;
+      try {
+        obj = JSON.parse(raw);
+      } catch {
+        return false;
+      }
 
       if (obj && Array.isArray(obj[subKey])) {
         obj[subKey] = obj[subKey].map((item: any) => {
@@ -386,8 +397,13 @@ export const restoreSoftDeletedItem = async (
       }
     } else {
       const raw = localStorage.getItem(collectionKey);
-      if (!raw) return false;
-      const list = JSON.parse(raw);
+      if (!raw || typeof raw !== 'string' || raw.trim().length <= 1 || raw === 'undefined' || raw === 'null') return false;
+      let list: any;
+      try {
+        list = JSON.parse(raw);
+      } catch {
+        return false;
+      }
 
       if (Array.isArray(list)) {
         const updated = list.map((item: any) => {

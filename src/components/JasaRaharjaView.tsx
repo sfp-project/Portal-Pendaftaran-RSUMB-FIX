@@ -161,23 +161,38 @@ function parseExcelJasaRaharja(dataBuffer: ArrayBuffer): JasaRaharjaOcrItem[] {
     const keys = Object.keys(row);
 
     const getVal = (possibleCols: string[]): any => {
+      // 1. Akses langsung kueri kunci eksak
       for (const col of possibleCols) {
-        const targetClean = col.replace(/[^a-z0-9]/g, '');
+        if (row[col] !== undefined && row[col] !== null && String(row[col]).trim() !== '') {
+          return row[col];
+        }
+      }
+      // 2. Akses pencocokan kunci yang dinormalisasi (abaikan spasi, simbol, besar-kecil huruf)
+      for (const col of possibleCols) {
+        const targetClean = col.toLowerCase().replace(/[^a-z0-9]/g, '');
         const foundKey = keys.find((k) => k.toLowerCase().trim().replace(/[^a-z0-9]/g, '') === targetClean);
-        if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
+        if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && String(row[foundKey]).trim() !== '') {
+          return row[foundKey];
+        }
+      }
+      // 3. Akses pencocokan parsial (contains)
+      for (const col of possibleCols) {
+        const targetClean = col.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (targetClean.length < 3) continue;
+        const foundKey = keys.find((k) => k.toLowerCase().trim().replace(/[^a-z0-9]/g, '').includes(targetClean));
+        if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && String(row[foundKey]).trim() !== '') {
           return row[foundKey];
         }
       }
       return '';
     };
 
-    const rawNoRm = String(getVal(['no rm', 'norm', 'no. rm', 'no_rm', 'rekam medis', 'no rekam medis', 'no. rekam medis', 'rm', 'id pasien']) || '').trim();
-    const rawNama = String(getVal(['nama pasien', 'nama', 'nama lengkap', 'pasien', 'nama_pasien']) || '').trim();
-    const rawTanggal = String(getVal(['tanggal', 'tgl', 'tanggal kunjungan', 'tgl kunjungan', 'tgl masuk', 'tanggal masuk', 'tgl laka', 'tanggal laka', 'tgl_masuk']) || '').trim();
-    const rawBiaya = getVal(['biaya', 'biaya terpakai', 'pemakaian', 'tagihan', 'total biaya', 'terpakai', 'klaim', 'nominal klaim', 'nominal terpakai', 'jumlah', 'biaya_terpakai']);
-    const rawSisa = getVal(['sisa', 'sisa plafon', 'sisa_plafon', 'sisa dana', 'saldo']);
-    const rawKet = String(getVal(['keterangan', 'ket', 'status', 'status rawat', 'jenis rawat', 'ranap', 'poli', 'rujuk', 'status_keterangan']) || '').trim();
-    const rawDiagnosa = String(getVal(['diagnosa', 'diagnosis', 'dx', 'keterangan medis', 'diagnosa utama']) || '').trim();
+    const rawNoRm = String(getVal(['Plafon', 'No RM', 'No. RM', 'No_RM', 'Norm', 'Rekam Medis', 'No Rekam Medis', 'RM', 'ID Pasien', 'No RM Pasien']) || '').trim();
+    const rawNama = String(getVal(['Nama Pasien', 'Nama', 'Nama Lengkap', 'Pasien', 'Nama_Pasien', 'Nama Korban', 'Korban']) || '').trim();
+    const rawTanggal = String(getVal(['Tanggal', 'Tgl', 'Tanggal Kunjungan', 'Tgl Masuk', 'Tanggal Masuk', 'Tgl Laka', 'Tanggal Laka', 'Tgl_Masuk', 'Tgl Kejadian']) || '').trim();
+    const rawBiaya = getVal(['Plafon Terpakai', 'Plafon Terpakai (Rp)', 'Biaya Terpakai', 'Terpakai', 'Biaya', 'Pemakaian', 'Tagihan', 'Total Biaya', 'Total Biaya Terpakai', 'Klaim', 'Nominal Klaim', 'Nominal Terpakai', 'Jumlah', 'Klaim Jasa Raharja', 'Biaya Terpakai (Rp)']);
+    const rawSisa = getVal(['Sisa Plafon', 'Sisa Plafon (Rp)', 'Sisa', 'Sisa_Plafon', 'Sisa Dana', 'Saldo', 'Sisa Plafon Rp']);
+    const rawKet = String(getVal(['Keterangan', 'Ket', 'Status', 'Status Rawat', 'Jenis Rawat', 'Ranap', 'Poli', 'Rujuk', 'Status_Keterangan', 'Status Plafon']) || '').trim();
 
     // Skip empty filler lines
     if (!rawNoRm && !rawNama) continue;
@@ -199,7 +214,8 @@ function parseExcelJasaRaharja(dataBuffer: ArrayBuffer): JasaRaharjaOcrItem[] {
     }
 
     const itemBiaya = parseNominal(rawBiaya);
-    const itemSisa = rawSisa !== '' ? parseNominal(rawSisa) : Math.max(0, 20000000 - itemBiaya);
+    const hasExplicitSisa = rawSisa !== '' && rawSisa !== null && rawSisa !== undefined;
+    const itemSisa = hasExplicitSisa ? parseNominal(rawSisa) : Math.max(0, 20000000 - itemBiaya);
 
     items.push({
       noRm: rawNoRm || `JR-${Date.now()}-${i + 1}`,
@@ -207,7 +223,7 @@ function parseExcelJasaRaharja(dataBuffer: ArrayBuffer): JasaRaharjaOcrItem[] {
       tanggal: cleanTanggal || new Date().toISOString().slice(0, 10),
       biayaTerpakai: itemBiaya,
       sisaPlafon: itemSisa,
-      keterangan: rawKet ? rawKet.toUpperCase() : (itemBiaya >= 20000000 ? 'HABIS' : 'RANAP')
+      keterangan: rawKet ? rawKet.toUpperCase() : (itemSisa <= 0 ? 'HABIS' : 'RANAP')
     });
   }
 
@@ -358,9 +374,13 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
     try {
       items = JSON.parse(cleanText);
     } catch {
-      const match = cleanText.match(/\[\s*\{[\s\S]*\}\s*\]/);
-      if (match) {
-        items = JSON.parse(match[0]);
+      try {
+        const match = cleanText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (match) {
+          items = JSON.parse(match[0]);
+        }
+      } catch {
+        items = [];
       }
     }
 

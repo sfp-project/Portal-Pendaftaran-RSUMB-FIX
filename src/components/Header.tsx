@@ -434,7 +434,7 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="bg-[#f8f9ff]/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#d8e4f5] shadow-xs px-4 sm:px-6 h-16 flex items-center justify-between gap-4 transition-all w-full">
+    <header className="bg-[#f8f9ff]/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#d8e4f5] shadow-xs px-3 sm:px-5 lg:px-6 h-16 flex items-center justify-between gap-2 sm:gap-3 lg:gap-4 transition-all w-full">
       {/* Left side: Hamburger (Mobile & Tablet) & App Title */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <button
@@ -467,7 +467,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Center: Search Bar Global with Live Real-time Results Dropdown */}
-      <div className="flex-1 max-w-lg mx-2 sm:mx-4" ref={searchContainerRef}>
+      <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-1 sm:mx-3" ref={searchContainerRef}>
         <div className="relative w-full">
           <Search className="w-4 h-4 text-[#5c5f61] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
@@ -686,71 +686,13 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right side: Tombol Asisten AI, Google Drive Sync Badge, Notifikasi, dan Menu Profil Pengguna */}
-      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-        {/* Tombol Asisten AI */}
-        {onToggleGemini && (
-          <button
-            onClick={onToggleGemini}
-            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-emerald-600 to-[#005d42] hover:from-emerald-700 hover:to-[#004a35] text-white rounded-full font-semibold text-xs sm:text-sm border border-emerald-400/40 shadow-xs hover:shadow-md transition-all hover:scale-102 active:scale-95 cursor-pointer"
-            aria-label="Buka Asisten AI"
-            title="Buka Asisten AI"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse shrink-0" />
-            <span className="hidden sm:inline font-medium">Asisten AI</span>
-          </button>
-        )}
-
-        {/* Indikator Status Otorisasi RBAC: Mode Baca / Mode Admin */}
-        <button
-          onClick={() => {
-            if (isAdminUnlocked) {
-              lockAdmin();
-              showToast('Mode Admin dikunci kembali. Portal dalam Mode Baca (Read-Only).');
-            } else {
-              setIsAdminPinModalOpen(true);
-            }
-          }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-xs border shadow-xs transition-all hover:scale-102 active:scale-95 cursor-pointer ${
-            isAdminUnlocked
-              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400/80 shadow-emerald-600/20'
-              : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 border-amber-300'
-          }`}
-          title={
-            isAdminUnlocked
-              ? 'Mode Admin Terbuka (Akses Pengeditan Aktif). Klik untuk mengunci kembali.'
-              : 'Mode Baca / Terkunci (Read-Only). Klik dan masukkan PIN untuk membuka Mode Admin.'
-          }
-        >
-          {isAdminUnlocked ? (
-            <>
-              <Unlock className="w-3.5 h-3.5 text-white animate-pulse shrink-0" />
-              <span className="hidden sm:inline font-extrabold">Mode Admin (Terbuka)</span>
-            </>
-          ) : (
-            <>
-              <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-              <span className="hidden sm:inline font-bold">Mode Baca (Terlock)</span>
-            </>
-          )}
-        </button>
-
-        {/* Tombol Pusat Database & Backup SIMRS */}
-        <button
-          onClick={() => setIsBackupModalOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white rounded-full font-bold text-xs border border-slate-700 shadow-xs hover:shadow-md transition-all hover:scale-102 active:scale-95 cursor-pointer"
-          aria-label="Pusat Database & Backup SIMRS"
-          title="Pusat Database & Backup (Unduh JSON, Restore, Sync Drive, & Audit Log)"
-        >
-          <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <span className="hidden lg:inline font-bold">Pusat Database</span>
-        </button>
-
-        {/* Google Drive Real-time Sync Status Badge / Button */}
+      {/* Right side: Badge Status Online, Notifikasi, dan Menu Profil Pengguna (Syafik) */}
+      <div className="flex items-center gap-2 flex-nowrap shrink-0 ml-auto">
+        {/* 1. Badge Status Online (Google Drive Real-time Sync) */}
         <GoogleDriveSyncBadge onOpenSettings={onOpenSettings} showToast={showToast} />
 
-        {/* Notifikasi Popover dengan Lonceng & Dropdown Interaktif */}
-        <div className="relative">
+        {/* 2. Tombol Notifikasi (Lonceng & Dropdown Interaktif) */}
+        <div className="relative shrink-0">
           <button
             onClick={() => {
               setShowNotifications(!showNotifications);
@@ -779,14 +721,14 @@ export const Header: React.FC<HeaderProps> = ({
           />
         </div>
 
-        {/* User Profile Button / Avatar in Top Right Navbar */}
-        <div className="relative">
+        {/* 3. Profile User Syafik (Menu Profil Petugas) */}
+        <div className="flex items-center gap-2 shrink-0 pr-2 sm:pr-4 relative">
           <button
             onClick={() => {
               setShowProfileMenu(!showProfileMenu);
               setShowNotifications(false);
             }}
-            className="flex items-center gap-2.5 p-1 sm:px-3 sm:py-1.5 rounded-2xl hover:bg-emerald-50/90 active:bg-emerald-100/80 transition-all cursor-pointer border border-slate-200/90 hover:border-emerald-300 shadow-2xs group bg-white/70 backdrop-blur-xs"
+            className="flex items-center gap-2 p-1 sm:px-3 sm:py-1.5 rounded-2xl hover:bg-emerald-50/90 active:bg-emerald-100/80 transition-all cursor-pointer border border-slate-200/90 hover:border-emerald-300 shadow-2xs group bg-white/90 backdrop-blur-xs shrink-0"
             aria-label="Menu Profil Petugas"
             title={`Petugas Aktif: ${activeStaff.name} (${activeStaff.role}) - ${activeStaff.shift}`}
           >
@@ -796,10 +738,10 @@ export const Header: React.FC<HeaderProps> = ({
                   src={activeStaff.avatarUrl}
                   alt={activeStaff.name}
                   referrerPolicy="no-referrer"
-                  className="w-9 h-9 rounded-full border-2 border-emerald-600/40 object-cover shadow-2xs ring-2 ring-emerald-500/20 group-hover:scale-105 transition-transform"
+                  className="w-9 h-9 rounded-full border-2 border-emerald-600/40 object-cover shadow-2xs ring-2 ring-emerald-500/20 group-hover:scale-105 transition-transform shrink-0"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-[#005d42] text-white text-xs font-extrabold flex items-center justify-center border border-emerald-800 shadow-2xs group-hover:scale-105 transition-transform">
+                <div className="w-9 h-9 rounded-full bg-[#005d42] text-white text-xs font-extrabold flex items-center justify-center border border-emerald-800 shadow-2xs group-hover:scale-105 transition-transform shrink-0">
                   {activeStaff.name.slice(0, 2).toUpperCase()}
                 </div>
               )}
@@ -808,14 +750,14 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div className="hidden sm:flex flex-col text-left">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-extrabold text-slate-900 group-hover:text-[#005d42] transition-colors leading-none">
+                <span className="text-xs font-extrabold text-slate-900 group-hover:text-[#005d42] transition-colors leading-none whitespace-nowrap">
                   {activeStaff.name}
                 </span>
-                <span className="text-[10px] font-bold text-[#005d42] bg-emerald-100/90 px-1.5 py-0.5 rounded-md border border-emerald-200/80">
+                <span className="text-[10px] font-bold text-[#005d42] bg-emerald-100/90 px-1.5 py-0.5 rounded-md border border-emerald-200/80 whitespace-nowrap">
                   {activeStaff.shift}
                 </span>
               </div>
-              <div className="flex items-center gap-1 mt-0.5">
+              <div className="flex items-center gap-1 mt-0.5 whitespace-nowrap">
                 <span className="text-[10px] font-medium text-slate-500">{activeStaff.role}</span>
                 <span className="text-slate-300 hidden md:inline">•</span>
                 <span className="text-[10px] text-emerald-700 font-mono hidden md:inline">{shiftTime}</span>

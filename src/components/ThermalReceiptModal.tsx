@@ -148,7 +148,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             ref={receiptRef}
             className="bg-white p-5 rounded-lg shadow-md border border-slate-300 w-full max-w-[360px] text-black text-[12px] leading-snug select-text"
             style={{
-              fontFamily: "'Courier New', 'Lucida Console', monospace, sans-serif",
+              fontFamily: "'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
               color: '#000000'
             }}
           >

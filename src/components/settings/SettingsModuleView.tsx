@@ -41,6 +41,7 @@ import {
   pushDatabaseToSheets,
   pullDatabaseFromSheets,
   createDriveBackupSnapshot,
+  applyDatabaseSnapshotToLocalStorage,
   DualSyncState
 } from '../../services/dualSyncStorage';
 import {
@@ -53,6 +54,7 @@ import {
 import { GoogleDriveAuthModal } from '../google/GoogleDriveAuthModal';
 import { GoogleSheetsLogo } from '../google/GoogleDriveSyncBadge';
 import { ActivityLogAuditTrailView } from './ActivityLogAuditTrailView';
+import { AutoCacheCleanupSettingsCard } from './AutoCacheCleanupSettingsCard';
 import { logSystemActivity } from '../../data/auditLogData';
 import {
   PortalSystemSettings,
@@ -87,6 +89,13 @@ import {
   setStoredAdminPin,
   requestAdminAction
 } from '../../services/adminAuthService';
+import {
+  loadAutoCleanupConfig,
+  saveAutoCleanupConfig,
+  runAutoCacheCleanup,
+  getLocalStorageUsage,
+  AutoCleanupConfig
+} from '../../utils/autoCacheCleanup';
 
 interface SettingsModuleViewProps {
   showToast?: (message: string, type?: 'success' | 'info' | 'error') => void;
@@ -128,7 +137,25 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
   const [isDriveOperating, setIsDriveOperating] = useState(false);
   const [showDriveRestoreConfirm, setShowDriveRestoreConfirm] = useState(false);
   const [showDriveAuthModal, setShowDriveAuthModal] = useState(false);
-  const [backupSubTab, setBackupSubTab] = useState<'audit_trail' | 'drive_backup'>('audit_trail');
+  const [backupSubTab, setBackupSubTab] = useState<'audit_trail' | 'drive_backup' | 'auto_cleanup'>('auto_cleanup');
+
+  // Auto Cache Cleanup State
+  const [cleanupConfig, setCleanupConfig] = useState(() => loadAutoCleanupConfig());
+  const [isCleaningNow, setIsCleaningNow] = useState(false);
+
+  const handleRunManualCleanup = () => {
+    setIsCleaningNow(true);
+    setTimeout(() => {
+      const result = runAutoCacheCleanup(true);
+      setCleanupConfig(loadAutoCleanupConfig());
+      setIsCleaningNow(false);
+      if (result.success) {
+        showToast?.(result.summary, 'success');
+      } else {
+        showToast?.(result.summary, 'error');
+      }
+    }, 450);
+  };
 
   // Thermal test print modal/dialog state
   const [showTestPrintModal, setShowTestPrintModal] = useState(false);
@@ -580,22 +607,27 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
         const content = evt.target?.result as string;
         const parsed = JSON.parse(content);
 
-        if (!parsed.storageSnapshot && !parsed.payload && !parsed.schedules) {
-          throw new Error('Berkas tidak dikenali sebagai format cadangan SIMRS RSUMB.');
+        let snapshot: Record<string, any> = {};
+        if (parsed.storageSnapshot && typeof parsed.storageSnapshot === 'object') {
+          snapshot = parsed.storageSnapshot;
+        } else if (parsed.database && typeof parsed.database === 'object') {
+          snapshot = parsed.database;
+        } else if (typeof parsed === 'object') {
+          snapshot = parsed;
         }
 
-        if (parsed.storageSnapshot) {
-          Object.entries(parsed.storageSnapshot).forEach(([k, v]) => {
-            if (typeof v === 'string') localStorage.setItem(k, v);
-          });
+        const keysCount = Object.keys(snapshot).length;
+        if (keysCount === 0) {
+          throw new Error('Berkas tidak memuat data yang dapat dipulihkan.');
         }
 
-        showToast?.('Data berhasil dipulihkan! Memuat ulang konfigurasi...', 'success');
+        applyDatabaseSnapshotToLocalStorage(snapshot);
+        showToast?.(`Berhasil memulihkan ${keysCount} tabel data SIMRS RSUMB! Memuat ulang konfigurasi...`, 'success');
         setTimeout(() => {
           window.location.reload();
-        }, 800);
+        }, 900);
       } catch (err: any) {
-        alert(`Gagal memulihkan data: ${err?.message || 'Format tidak valid'}`);
+        alert(`Gagal memulihkan data: ${err?.message || 'Format JSON tidak valid'}`);
       } finally {
         setIsRestoring(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1508,6 +1540,26 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   ) : null}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBackupSubTab('auto_cleanup')}
+                  className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    backupSubTab === 'auto_cleanup'
+                      ? 'bg-[#005d42] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-300" />
+                  <span>Pembersihan Cache Otomatis</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    backupSubTab === 'auto_cleanup'
+                      ? 'bg-emerald-400/25 text-emerald-100 border-emerald-400/30'
+                      : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                  }`}>
+                    App Mount
+                  </span>
+                </button>
               </div>
 
               <div className="text-[11px] text-slate-500 font-medium px-2 flex items-center gap-1.5">
@@ -1518,9 +1570,15 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
               </div>
             </div>
 
-            {backupSubTab === 'audit_trail' ? (
+            {backupSubTab === 'audit_trail' && (
               <ActivityLogAuditTrailView showToast={showToast} />
-            ) : (
+            )}
+
+            {backupSubTab === 'auto_cleanup' && (
+              <AutoCacheCleanupSettingsCard showToast={showToast} />
+            )}
+
+            {backupSubTab === 'drive_backup' && (
               <div className="space-y-6">
                 {/* GOOGLE SHEETS GAS CLOUD STORAGE ENGINE */}
                 <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-emerald-950 via-[#004732] to-[#003828] text-white shadow-md space-y-5 border border-emerald-800/40">
@@ -1806,6 +1864,46 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* CARD PEMBERSIHAN CACHE OTOMATIS (AUTO-CLEANUP > 30 HARI) */}
+            <div className="p-4 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50 to-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-[#005d42] text-white rounded-xl shrink-0 mt-0.5 shadow-2xs">
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                </div>
+                <div>
+                  <h5 className="font-bold text-xs sm:text-sm text-emerald-950 flex items-center gap-2 flex-wrap">
+                    <span>Pembersihan Cache Otomatis ({cleanupConfig.retentionDays} Hari)</span>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      {cleanupConfig.enabled ? 'Aktif Saat App Mount' : 'Non-Aktif'}
+                    </span>
+                  </h5>
+                  <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
+                    Menghapus data usang di localStorage (log aktivitas &gt; {cleanupConfig.retentionDays} hari dan temporary snapshot) secara otomatis setiap kali aplikasi dibuka agar portal selalu ringan.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleRunManualCleanup}
+                  disabled={isCleaningNow}
+                  className="py-2 px-3.5 bg-white hover:bg-emerald-50 text-[#005d42] border border-emerald-400 font-bold rounded-xl text-xs shadow-2xs transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCleaningNow ? 'animate-spin' : ''}`} />
+                  <span>{isCleaningNow ? 'Membersihkan...' : 'Bersihkan Sekarang'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBackupSubTab('auto_cleanup')}
+                  className="py-2 px-3.5 bg-[#005d42] hover:bg-[#004732] text-white font-bold rounded-xl text-xs shadow-2xs transition cursor-pointer"
+                >
+                  Kelola Modul
+                </button>
+              </div>
+            </div>
+
             <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h5 className="font-bold text-xs sm:text-sm text-rose-900 flex items-center gap-1.5">
