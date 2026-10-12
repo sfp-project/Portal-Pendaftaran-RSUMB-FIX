@@ -20,9 +20,158 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+      @media print {
+        @page {
+          margin: 0mm !important;
+          size: auto;
+        }
+        body:has(#printContainer:not(:empty)) *,
+        body.printing-isolated * {
+          visibility: hidden !important;
+        }
+        body:has(#printContainer:not(:empty)) #printContainer,
+        body:has(#printContainer:not(:empty)) #printContainer *,
+        body.printing-isolated #printContainer,
+        body.printing-isolated #printContainer * {
+          visibility: visible !important;
+        }
+        #printContainer {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+        }
+      }
+    </style>
   </head>
   <body class="bg-[#f8f9fc] text-[#0b1c30] antialiased selection:bg-emerald-100 selection:text-emerald-900 min-h-screen">
     <div id="root"></div>
+    <!-- Elemen khusus isolasi pencetakan printContainer -->
+    <div id="printContainer"></div>
+    <script>
+      function printViaPopupHtml(title, htmlContent, printCss) {
+        const full = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { margin: 0; padding: 0; background: #ffffff; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .print-bar { position: sticky; top: 0; background: #005d42; color: #ffffff; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; z-index: 99999; box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 13px; }
+    .print-bar button { background: #ffffff; color: #005d42; border: none; padding: 6px 14px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .print-bar button.btn-close { margin-left: 6px; background: rgba(255,255,255,0.2); color: #ffffff; }
+    @media print { .print-bar, .no-print { display: none !important; } body { background: #ffffff !important; margin: 0 !important; } }
+    ${printCss || ''}
+  </style>
+</head>
+<body>
+  <div class="print-bar no-print">
+    <div><strong>RSU MUHAMMADIYAH BABAT</strong> - ${title}</div>
+    <div>
+      <button onclick="window.print()">🖨️ Cetak Dokumen</button>
+      <button class="btn-close" onclick="window.close()">✖️ Tutup</button>
+    </div>
+  </div>
+  <div class="print-content" style="padding: 16px;">
+    ${htmlContent}
+  </div>
+  <script>
+    setTimeout(function() {
+      try { window.focus(); window.print(); } catch(e) {}
+    }, 500);
+  <\/script>
+</body>
+</html>`;
+
+        let win = null;
+        try {
+          win = window.open('', '_blank', 'width=850,height=900,resizable=yes,scrollbars=yes');
+        } catch(e) {}
+
+        if (win && !win.closed) {
+          try {
+            win.document.open();
+            win.document.write(full);
+            win.document.close();
+            win.focus();
+            setTimeout(function() { try { win.focus(); win.print(); } catch(e) {} }, 500);
+            return;
+          } catch(e) {}
+        }
+
+        try {
+          const blob = new Blob([full], { type: 'text/html;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+          return;
+        } catch(e) {}
+
+        window.print();
+      }
+
+      function cetakStrukThermal() {
+        if (typeof window.cetakStrukThermal === 'function' && window.cetakStrukThermal !== cetakStrukThermal) {
+          return window.cetakStrukThermal();
+        }
+        const paper = document.getElementById('thermalReceiptPaper');
+        if (!paper) {
+          alert('Pratinjau struk thermal tidak ditemukan!');
+          return;
+        }
+        printViaPopupHtml(
+          'Struk Thermal 80mm RSUMB',
+          '<div style="width: 76mm; max-width: 100%; margin: 0 auto; padding: 4mm 2.5mm; font-family: monospace, sans-serif; font-size: 11.5px; line-height: 1.25;">' + paper.innerHTML + '</div>',
+          '@page { size: 80mm auto; margin: 0; }'
+        );
+      }
+
+      function exportKeExcel() {
+        const tabel = document.querySelector('table'); // Mengambil tabel utama
+        if (!tabel) {
+          alert("Data tabel tidak ditemukan!");
+          return;
+        }
+        
+        // Metode HTML Table to Excel Blob
+        const tableHTML = tabel.outerHTML.replace(/ /g, '%20');
+        const filename = `Rekap_Insentif_RSUMB_${new Date().toISOString().slice(0,10)}.xls`;
+        
+        const downloadLink = document.createElement("a");
+        document.body.appendChild(downloadLink);
+        
+        downloadLink.href = 'data:application/vnd.ms-excel,' + tableHTML;
+        downloadLink.download = filename;
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+      }
+
+      function cetakPDF() {
+        if (typeof window.cetakPDF === 'function' && window.cetakPDF !== cetakPDF) {
+          return window.cetakPDF();
+        }
+        const tabel = document.querySelector('table.print-financial-table') || document.querySelector('table');
+        if (tabel) {
+          const cleanTabel = tabel.cloneNode(true);
+          cleanTabel.querySelectorAll('.no-print').forEach(function(el) { el.remove(); });
+          printViaPopupHtml(
+            'Laporan Rekapitulasi Insentif RSUMB',
+            '<div style="width: 100%; max-width: 210mm; margin: 0 auto; padding: 8mm; font-family: sans-serif;">' + cleanTabel.outerHTML + '</div>',
+            '@page { size: A4 portrait; margin: 8mm 10mm; } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #333; padding: 6px 8px; } th { background: #005d42; color: #fff; }'
+          );
+        } else {
+          window.print();
+        }
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

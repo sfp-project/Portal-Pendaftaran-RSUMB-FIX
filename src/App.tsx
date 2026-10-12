@@ -10,8 +10,9 @@ import { ElectiveSurgeryView } from './components/ElectiveSurgeryView';
 import { KhitanJumatView } from './components/KhitanJumatView';
 import { JasaRaharjaView } from './components/JasaRaharjaView';
 import { MedicalLettersView } from './components/MedicalLettersView';
-import { RequirementsChecklistView } from './components/requirements/RequirementsChecklistView';
+import { InpatientOrderManagementView } from './components/inpatient/InpatientOrderManagementView';
 import { ContactPatientsView } from './components/ContactPatientsView';
+import { AuditSurkonBpjsView } from './components/audit/AuditSurkonBpjsView';
 import { IncentiveCalculatorView } from './components/IncentiveCalculatorView';
 import { KuponFeeMohatView } from './components/mohat/KuponFeeMohatView';
 import { PatientNotesView } from './components/patientNotes/PatientNotesView';
@@ -232,7 +233,19 @@ export default function App() {
   });
 
   // Navigation & Filter state
-  const [activeTab, setActiveTab] = useState<ActiveNavTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<ActiveNavTab>(() => {
+    try {
+      const saved = localStorage.getItem('rsumb_active_tab');
+      if (saved) return saved as ActiveNavTab;
+    } catch {}
+    return 'requirements';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('rsumb_active_tab', activeTab);
+    } catch {}
+  }, [activeTab]);
   const [isOpenMobile, setIsOpenMobile] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     try {
@@ -1182,10 +1195,10 @@ export default function App() {
         </div>
 
         {/* Main Body */}
-        <main className="flex-grow px-4 sm:px-6 py-4 sm:py-6 print:p-0 flex flex-col gap-6 sm:gap-8 w-full max-w-full print:max-w-none pb-12 sm:pb-16">
+        <main className={`flex-grow ${activeTab === 'audit_surkon' ? 'px-2 sm:px-3 py-3 sm:py-4' : 'px-4 sm:px-6 py-4 sm:py-6'} print:p-0 flex flex-col gap-6 sm:gap-8 w-full max-w-full print:max-w-none pb-12 sm:pb-16`}>
 
           {/* Page Title & Subtitle */}
-          {activeTab !== 'khitan' && activeTab !== 'letters' && activeTab !== 'rooms' && activeTab !== 'contact_patients' && activeTab !== 'jasa_raharja' && activeTab !== 'incentive_calc' && activeTab !== 'patient_notes' && activeTab !== 'kupon_mohat' && activeTab !== 'requirements' && (
+          {activeTab !== 'khitan' && activeTab !== 'letters' && activeTab !== 'rooms' && activeTab !== 'contact_patients' && activeTab !== 'audit_surkon' && activeTab !== 'jasa_raharja' && activeTab !== 'incentive_calc' && activeTab !== 'patient_notes' && activeTab !== 'kupon_mohat' && activeTab !== 'requirements' && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden no-print">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-[#0b1c30] tracking-tight">
@@ -1414,7 +1427,7 @@ export default function App() {
           )}
 
           {activeTab === 'requirements' && (
-            <RequirementsChecklistView showToast={showToast} />
+            <InpatientOrderManagementView showToast={showToast} />
           )}
 
           {activeTab === 'patient_notes' && (
@@ -1423,6 +1436,10 @@ export default function App() {
 
           {activeTab === 'contact_patients' && (
             <ContactPatientsView showToast={showToast} />
+          )}
+
+          {activeTab === 'audit_surkon' && (
+            <AuditSurkonBpjsView showToast={showToast} />
           )}
 
           {activeTab === 'kupon_mohat' && (

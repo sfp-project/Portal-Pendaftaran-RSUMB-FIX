@@ -242,6 +242,82 @@ export const syncDatabaseToGas = async (
 };
 
 /**
+ * Mengirim khusus data Checklist Persyaratan Berkas Pasien ke Google Sheets
+ */
+export const syncChecklistToGas = async (
+  checklistData: any[],
+  staffName: string = 'Admin SIMRS RSUMB',
+  customUrl?: string
+): Promise<{ success: boolean; message: string; timestamp?: string }> => {
+  const targetUrl = (customUrl || getGasWebAppUrl()).trim();
+  const nowIso = new Date().toISOString();
+
+  const payload = {
+    action: 'saveChecklist',
+    staffName: staffName,
+    timestamp: nowIso,
+    checklist: checklistData
+  };
+
+  try {
+    if (targetUrl) {
+      await fetch(targetUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEY_LAST_SYNC, nowIso);
+      localStorage.setItem('rsumb_last_checklist_sync', nowIso);
+    } catch {}
+
+    // Panggil juga sync snapshot basis data utama
+    try {
+      await pushDatabaseToSheets(true);
+    } catch {}
+
+    return {
+      success: true,
+      message: 'Data checklist berkas pasien berhasil disinkronkan ke Google Sheets.',
+      timestamp: nowIso
+    };
+  } catch (err: any) {
+    try {
+      if (targetUrl) {
+        await fetch('/api/gas/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetUrl,
+            method: 'POST',
+            payload
+          })
+        });
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY_LAST_SYNC, nowIso);
+        localStorage.setItem('rsumb_last_checklist_sync', nowIso);
+      } catch {}
+      return {
+        success: true,
+        message: 'Data checklist berkas berhasil disinkronkan via server proxy.',
+        timestamp: nowIso
+      };
+    } catch (proxyErr: any) {
+      return {
+        success: false,
+        message: `Gagal sinkronisasi ke Spreadsheet: ${err?.message || 'Kesalahan jaringan.'}`
+      };
+    }
+  }
+};
+
+/**
  * Menarik (Pull) seluruh database dari Google Sheets
  */
 export const fetchDatabaseFromGas = async (

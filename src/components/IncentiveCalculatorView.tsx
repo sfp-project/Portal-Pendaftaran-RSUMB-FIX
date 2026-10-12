@@ -72,6 +72,8 @@ import {
   exportIncentiveToPdf,
   formatRupiah
 } from '../utils/incentiveExport';
+import { printViaWindowPopup } from '../utils/printWindowHelper';
+import * as XLSX from 'xlsx';
 import {
   parseExcelSchedule,
   parseCsvSchedule,
@@ -146,6 +148,10 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const [uploadStatusMsg, setUploadStatusMsg] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Refs untuk tombol Export Excel & Cetak PDF agar atribut onclick vanilla JS tertanam presisi di DOM
+  const exportExcelBtnRef = useRef<HTMLButtonElement>(null);
+  const cetakPdfBtnRef = useRef<HTMLButtonElement>(null);
 
   // Muat ulang daftar arsip saat viewMode berpindah ke 'archive'
   useEffect(() => {
@@ -495,25 +501,237 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
     setIsResetConfirmOpen(false);
   };
 
-  // Ekspor Excel
-  const handleExportExcel = async () => {
+  // 1. FUNGSI MANDIRI EKSPOR EXCEL (VANILLA JS + SHEETJS XLSX & HTML TABLE BLOB FALLBACK)
+  const exportKeExcel = () => {
+    // Cari tabel rekapitulasi utama yang tampil di layar
+    let tabel = (document.querySelector('table.print-financial-table') || document.querySelector('table')) as HTMLTableElement | null;
+
+    // Jika pengguna sedang berada di tab Matriks atau Arsip, otomatis alihkan ke tab Rekapitulasi Insentif
+    if (!tabel && viewMode !== 'summary') {
+      setViewMode('summary');
+      setTimeout(() => {
+        exportKeExcel();
+      }, 150);
+      return;
+    }
+
+    if (!tabel) {
+      alert("Data tabel tidak ditemukan!");
+      return;
+    }
+
+    const monthStr = monthData.monthName || 'Bulan';
+    const yearStr = monthData.year || new Date().getFullYear();
+    const periodName = `${monthStr}_${yearStr}`;
+    const filenameXlsx = `Rekap_Insentif_RSUMB_${periodName}.xlsx`;
+    const filenameXls = `Rekap_Insentif_RSUMB_${periodName}.xls`;
+
     try {
-      await exportIncentiveToExcel(monthData, staffSummaries, departmentTotals, rates);
-      showToast('File Excel Rekapitulasi Insentif berhasil diunduh.');
-    } catch (err: any) {
-      showToast(`Gagal mengekspor Excel: ${err.message}`);
+      // 1. Metode Canggih: Menggunakan SheetJS (XLSX) untuk menghasilkan file .xlsx
+      const cleanTabel = tabel.cloneNode(true) as HTMLTableElement;
+      cleanTabel.querySelectorAll('.no-print').forEach((el) => el.remove());
+      const wb = XLSX.utils.table_to_book(cleanTabel, { sheet: "Rekap Insentif" });
+      XLSX.writeFile(wb, filenameXlsx);
+      showToast(`File Excel Rekapitulasi Insentif (${filenameXlsx}) berhasil diunduh.`);
+    } catch {
+      // 2. Metode Mandiri: HTML Table to Excel Blob (.xls) 100% tanpa library eksternal
+      try {
+        const cleanTabel = tabel.cloneNode(true) as HTMLTableElement;
+        cleanTabel.querySelectorAll('.no-print').forEach((el) => el.remove());
+        const tableHTML = cleanTabel.outerHTML.replace(/ /g, '%20');
+        const downloadLink = document.createElement("a");
+        document.body.appendChild(downloadLink);
+        downloadLink.href = 'data:application/vnd.ms-excel,' + tableHTML;
+        downloadLink.download = filenameXls;
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        showToast(`File Excel Rekapitulasi Insentif (${filenameXls}) berhasil diunduh.`);
+      } catch (err: any) {
+        alert("Gagal mengekspor data tabel ke Excel: " + (err?.message || err));
+      }
     }
   };
 
-  // Ekspor PDF (Format Ringkas Finansial)
-  const handleExportPdf = () => {
-    try {
-      exportIncentiveToPdf(monthData, staffSummaries, departmentTotals, rates);
-      showToast('File PDF Rekapitulasi Insentif berhasil diunduh.');
-    } catch (err: any) {
-      showToast(`Gagal mengekspor PDF: ${err.message}`);
+  // 2. FUNGSI JS CETAK PDF REKAPITULASI RESMI (A4)
+  const isPdfPrintingRef = useRef(false);
+  const cetakPDF = () => {
+    if (isPdfPrintingRef.current) return;
+    isPdfPrintingRef.current = true;
+    setTimeout(() => {
+      isPdfPrintingRef.current = false;
+    }, 800);
+
+    // Pastikan berada di tab summary agar data tabel rekapitulasi aktif
+    if (viewMode !== 'summary') {
+      setViewMode('summary');
+    }
+
+    const executePrint = () => {
+      // Ambil tabel rekapitulasi utama
+      const tabel = document.querySelector('table.print-financial-table') || document.querySelector('table');
+      if (!tabel) {
+        alert('Tabel rekapitulasi tidak ditemukan!');
+        return;
+      }
+
+      // Salin tabel dan bersihkan elemen non-cetak (kolom aksi)
+      const clonedTable = tabel.cloneNode(true) as HTMLTableElement;
+      clonedTable.querySelectorAll('.no-print').forEach((el) => el.remove());
+      clonedTable.className = 'w-full text-left text-xs border-collapse print-financial-table';
+
+      // Ambil atau buat elemen #printContainer di body
+      let container = document.getElementById('printContainer');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'printContainer';
+        document.body.appendChild(container);
+      }
+
+      const currentDateFormatted = new Date().toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      // Siapkan layout formal A4: Kop Resmi RSUMB + Judul Laporan + Tabel + Lembar Tanda Tangan
+      const a4DocumentHtml = `
+        <div class="a4-wrapper" style="width: 100%; max-width: 210mm; margin: 0 auto; padding: 6mm 8mm; background: #ffffff; color: #000000; font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;">
+          <!-- Kop Surat Resmi RSUMB -->
+          <div style="text-align: center; border-bottom: 2px solid #000000; padding-bottom: 8px; margin-bottom: 12px;">
+            <div style="font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #000000;">
+              RUMAH SAKIT UMUM MUHAMMADIYAH BABAT
+            </div>
+            <div style="font-size: 11px; color: #333333; margin-top: 2px;">
+              Jl. Raya Babat - Surabaya KM. 4, Babat, Lamongan | Telepon: (0322) 451125 | Layanan 24 Jam
+            </div>
+            <div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: #005d42; margin-top: 6px;">
+              LAPORAN REKAPITULASI INSENTIF DINAS & UANG MAKAN STAF
+            </div>
+            <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #444444;">
+              UNIT PENDAFTARAN & ADMISI | Periode: ${monthData.monthName} ${monthData.year}
+            </div>
+          </div>
+
+          <!-- Tabel Rekapitulasi Utama -->
+          <div style="width: 100%; margin-bottom: 16px;">
+            ${clonedTable.outerHTML}
+          </div>
+
+          <!-- Lembar Tanda Tangan Formal A4 -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px; text-align: center; padding-top: 16px; font-size: 11px; color: #000000;">
+            <div>
+              <div style="color: #555555; font-size: 10px; margin-bottom: 4px;">Mengetahui,</div>
+              <div style="font-weight: 700; color: #000000;">Penanggung Jawab Pendaftaran & Admisi</div>
+              <div style="height: 60px;"></div>
+              <div style="border-bottom: 1px solid #000000; margin: 0 40px;"></div>
+              <div style="font-size: 10px; color: #555555; margin-top: 4px;">NIK / NBM: .......................................</div>
+            </div>
+            <div>
+              <div style="color: #555555; font-size: 10px; margin-bottom: 4px;">Babat, ${currentDateFormatted}</div>
+              <div style="font-weight: 700; color: #000000;">Petugas Keuangan / Verifikator</div>
+              <div style="height: 60px;"></div>
+              <div style="border-bottom: 1px solid #000000; margin: 0 40px;"></div>
+              <div style="font-size: 10px; color: #555555; margin-top: 4px;">NIK / NBM: .......................................</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      container.className = 'print-pdf-container';
+      container.innerHTML = a4DocumentHtml;
+
+      // SOLUSI BLOKIR IFRAME AI STUDIO: Buka jendela popup baru untuk pencetakan / simpan PDF
+      const popupStyles = `
+        @page {
+          size: A4 portrait;
+          margin: 8mm 10mm;
+        }
+        .print-document-body {
+          width: 100%;
+          display: flex;
+          justify-content: center;
+          background: #f1f5f9;
+          padding: 24px 0;
+        }
+        .a4-wrapper {
+          box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 14px;
+          margin-bottom: 18px;
+          font-size: 11px;
+        }
+        th, td {
+          border: 1px solid #333333;
+          padding: 6px 8px;
+        }
+        th {
+          background-color: #005d42 !important;
+          color: #ffffff !important;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+        tfoot tr {
+          background-color: #f0fdf4 !important;
+          font-weight: 700;
+        }
+        @media print {
+          .print-document-body {
+            background: #ffffff !important;
+            padding: 0 !important;
+          }
+          .a4-wrapper {
+            box-shadow: none !important;
+            padding: 2mm 4mm !important;
+          }
+        }
+      `;
+
+      printViaWindowPopup({
+        title: `Laporan Rekapitulasi Insentif RSUMB - ${monthData.monthName} ${monthData.year}`,
+        bodyHtml: a4DocumentHtml,
+        styles: popupStyles,
+        autoPrint: true
+      });
+    };
+
+    if (viewMode !== 'summary') {
+      setTimeout(executePrint, 150);
+    } else {
+      executePrint();
     }
   };
+
+  // Sambungkan event listener 'click' pada tombol "Cetak PDF" dan "Tab Cetak" di toolbar utama
+  useEffect(() => {
+    (window as any).cetakPDF = () => cetakPDF();
+    (window as any).bukaTabCetak = () => setIsThermalModalOpen(true);
+
+    const pdfBtn =
+      cetakPdfBtnRef.current ||
+      document.getElementById('btnCetakPDF') ||
+      document.getElementById('btn-cetak-pdf');
+    if (pdfBtn) {
+      pdfBtn.setAttribute('onclick', 'cetakPDF()');
+      const clickHandler = () => {
+        cetakPDF();
+      };
+      pdfBtn.addEventListener('click', clickHandler);
+    }
+
+    const tabCetakBtn =
+      document.getElementById('btnTabCetak') ||
+      document.getElementById('btn-tab-cetak-thermal');
+    if (tabCetakBtn) {
+      tabCetakBtn.setAttribute('onclick', 'bukaTabCetak()');
+      const clickHandler = () => {
+        setIsThermalModalOpen(true);
+      };
+      tabCetakBtn.addEventListener('click', clickHandler);
+    }
+  }, [viewMode, monthData, staffSummaries, departmentTotals]);
 
   // Handler Upload File (Excel, CSV, & Foto Jadwal dengan OCR Tesseract.js)
   const handleFileUpload = async (file: File) => {
@@ -585,7 +803,7 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Top Banner / Header Card */}
-      <div className="bg-gradient-to-r from-[#005d42] via-[#006e4f] to-[#004e37] rounded-2xl p-6 text-white shadow-lg border border-emerald-700/40 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#005d42] via-[#006e4f] to-[#004e37] rounded-2xl p-6 text-white shadow-lg border border-emerald-700/40 relative overflow-hidden no-print">
         <div className="absolute right-0 top-0 bottom-0 w-80 bg-white/5 skew-x-12 transform origin-top-right pointer-events-none" />
 
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative z-10">
@@ -658,7 +876,7 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
       </div>
 
       {/* Control Bar: Month, View Switcher, Filter, Save & Export */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 no-print">
         {/* Left: Periode, Status Badge & View Mode */}
         <div className="flex flex-wrap items-center gap-3">
           {/* Month Selector */}
@@ -778,14 +996,16 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
             <span>Tambah Pegawai</span>
           </button>
 
-          {/* Cetak Struk Thermal 80mm (Epson TM-T82X) */}
+          {/* Tombol Tab Cetak (Struk Thermal 80mm/58mm & Format A4) */}
           <button
+            id="btnTabCetak"
+            data-alt-id="btn-tab-cetak-thermal"
             onClick={() => setIsThermalModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
-            title="Cetak Struk Thermal 80mm (Epson TM-T82X)"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            title="Buka Tab Cetak & Pratinjau Struk Thermal (80mm/58mm) atau Dokumen A4 / PDF"
           >
             <ReceiptText className="w-3.5 h-3.5" />
-            <span>Struk Thermal</span>
+            <span>Tab Cetak</span>
           </button>
 
           {/* Tombol Simpan Rekapitulasi Bulan Ini */}
@@ -811,20 +1031,14 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
             )}
           </button>
 
-          {/* Export Dropdown / Buttons */}
+          {/* Tombol Cetak PDF Resmi A4 */}
           <button
-            onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
-            title="Download Excel Spreadsheet"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Export Excel</span>
-          </button>
-
-          <button
-            onClick={handleExportPdf}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
-            title="Download PDF Resmi"
+            ref={cetakPdfBtnRef}
+            id="btnCetakPDF"
+            data-alt-id="btn-cetak-pdf"
+            onClick={cetakPDF}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 active:bg-slate-950 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            title="Cetak PDF Laporan Resmi A4 (Buka di jendela baru untuk simpan/cetak PDF)"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Cetak PDF</span>
@@ -841,7 +1055,7 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
       </div>
 
       {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 no-print">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 text-xs mb-1">
             <span>Total Staf Aktif</span>
@@ -973,6 +1187,22 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
               <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full border border-slate-200">
                 Menampilkan {filteredSummaries.length} dari {safeStaffRows.length} Staf
               </span>
+            </div>
+
+            {/* Kop & Judul Khusus Cetak PDF Resmi A4 (Hanya tampil saat print) */}
+            <div className="hidden print-only-block p-6 mb-2 text-center border-b-2 border-slate-900">
+              <div className="font-extrabold text-base tracking-wide uppercase text-slate-950">
+                RUMAH SAKIT UMUM MUHAMMADIYAH BABAT
+              </div>
+              <div className="text-xs text-slate-700 mt-0.5">
+                Jl. Raya Babat - Surabaya KM. 4, Babat, Lamongan | Telepon: (0322) 451125 | Layanan 24 Jam
+              </div>
+              <div className="font-bold text-sm text-slate-900 uppercase mt-2">
+                LAPORAN REKAPITULASI INSENTIF DINAS & UANG MAKAN STAF
+              </div>
+              <div className="text-xs text-emerald-800 font-semibold uppercase">
+                UNIT PENDAFTARAN & ADMISI | Periode: {monthData.monthName} {monthData.year}
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -1109,6 +1339,24 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
                 </tr>
               </tfoot>
             </table>
+
+            {/* Lembar Tanda Tangan Cetak A4 / PDF (Hanya tampil saat print) */}
+            <div className="hidden print-only-grid grid-cols-2 gap-8 text-center pt-8 pb-4 text-xs text-slate-800">
+              <div>
+                <div className="text-slate-500 text-[11px] mb-1">Mengetahui,</div>
+                <div className="font-bold text-slate-900">Penanggung Jawab Pendaftaran & Admisi</div>
+                <div className="h-16" />
+                <div className="border-b border-slate-900 mx-10" />
+                <div className="text-[11px] text-slate-600 mt-1">NIK / NBM: .......................................</div>
+              </div>
+              <div>
+                <div className="text-slate-500 text-[11px] mb-1">Babat, {new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                <div className="font-bold text-slate-900">Petugas Keuangan / Verifikator</div>
+                <div className="h-16" />
+                <div className="border-b border-slate-900 mx-10" />
+                <div className="text-[11px] text-slate-600 mt-1">NIK / NBM: .......................................</div>
+              </div>
+            </div>
           </div>
         </div>
         </div>
@@ -1963,33 +2211,44 @@ export const IncentiveCalculatorView: React.FC<IncentiveCalculatorViewProps> = (
         rates={rates}
       />
 
-      {/* Print Stylesheet */}
+      {/* Print Stylesheet CSS @media print */}
       <style>{`
         @media print {
           @page {
+            margin: 0mm !important;
             size: auto;
-            margin: 6mm;
           }
           body {
-            background: white !important;
-            color: black !important;
+            background: #fff !important;
+            color: #000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
-          nav, header, aside, .no-print, button, input {
-            display: none !important;
+          body * {
+            visibility: hidden !important;
           }
-          .print-financial-table {
+          #printContainer,
+          #printContainer * {
+            visibility: visible !important;
+          }
+          #printContainer {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+          }
+          #printContainer table {
             width: 100% !important;
             border-collapse: collapse !important;
-            font-size: 11px !important;
-            color: black !important;
           }
-          .print-financial-table th, .print-financial-table td {
-            border: 1px solid #888 !important;
+          #printContainer th,
+          #printContainer td {
+            border: 1px solid #ddd !important;
             padding: 6px 8px !important;
-          }
-          .print-financial-table th {
-            background-color: #f0f0f0 !important;
-            color: black !important;
           }
         }
       `}</style>

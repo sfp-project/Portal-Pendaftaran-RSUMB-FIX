@@ -78,6 +78,7 @@ export type ActiveNavTab =
   | 'requirements'
   | 'patient_notes'
   | 'contact_patients'
+  | 'audit_surkon'
   | 'kupon_mohat'
   | 'incentive_calc'
   | 'settings'

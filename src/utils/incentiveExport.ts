@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -225,16 +226,21 @@ export async function exportIncentiveToExcel(
   });
 
   // Simpan file
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  });
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `Rekap_Insentif_RSUMB_${monthData.monthName}_${monthData.year}.xlsx`;
-  anchor.click();
-  window.URL.revokeObjectURL(url);
+  try {
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `Rekap_Insentif_RSUMB_${monthData.monthName}_${monthData.year}.xlsx`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  } catch {
+    // Fallback menggunakan SheetJS / table exporter
+    exportKeExcel(`Rekap_Insentif_RSUMB_${monthData.monthName}_${monthData.year}.xlsx`);
+  }
 }
 
 export function exportIncentiveToPdf(
@@ -363,3 +369,52 @@ export function exportIncentiveToPdf(
 
   doc.save(`Rekap_Insentif_RSUMB_${monthData.monthName}_${monthData.year}.pdf`);
 }
+
+/**
+ * Fungsi Ekspor Mandiri Vanilla JS ke Excel (.xlsx / .xls).
+ * Mengambil tabel rekapitulasi staf dari layar (Nama, Shift Malam, Uang Makan, Total Insentif),
+ * dan mengunduh file spreadsheet secara otomatis tanpa library eksternal berat.
+ */
+export function exportKeExcel(customFilename?: string): void {
+  const tabel = (document.querySelector('table.print-financial-table') || document.querySelector('table')) as HTMLTableElement | null;
+  if (!tabel) {
+    alert("Data tabel tidak ditemukan!");
+    return;
+  }
+
+  const defaultDateStr = new Date().toISOString().slice(0, 10);
+  const targetFilenameXlsx = customFilename || `Rekap_Insentif_RSUMB_${defaultDateStr}.xlsx`;
+  const targetFilenameXls = targetFilenameXlsx.replace(/\.xlsx$/i, '.xls');
+
+  try {
+    // 1. Ekspor via SheetJS (XLSX) jika tersedia
+    const cleanTabel = tabel.cloneNode(true) as HTMLTableElement;
+    cleanTabel.querySelectorAll('.no-print').forEach((el) => el.remove());
+    const wb = XLSX.utils.table_to_book(cleanTabel, { sheet: "Rekap Insentif" });
+    XLSX.writeFile(wb, targetFilenameXlsx);
+  } catch {
+    // 2. Metode Mandiri HTML Table to Excel Blob (Fallback 100% andal)
+    try {
+      const cleanTabel = tabel.cloneNode(true) as HTMLTableElement;
+      cleanTabel.querySelectorAll('.no-print').forEach((el) => el.remove());
+      const tableHTML = cleanTabel.outerHTML.replace(/ /g, '%20');
+      const downloadLink = document.createElement("a");
+      document.body.appendChild(downloadLink);
+      downloadLink.href = 'data:application/vnd.ms-excel,' + tableHTML;
+      downloadLink.download = targetFilenameXls;
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    } catch (err: any) {
+      alert("Gagal mengekspor data tabel ke Excel: " + (err?.message || err));
+    }
+  }
+}
+
+/**
+ * Fungsi Cetak PDF Mandiri menggunakan browser dialog window.print()
+ * yang dipadukan dengan stylesheet khusus @media print agar hasil cetak A4 rapi dan bersih.
+ */
+export function cetakPDF(): void {
+  window.print();
+}
+

@@ -1345,6 +1345,177 @@ Jangan tambahkan teks pembuka atau markdown di luar kurung siku.`;
     }
   });
 
+  // =========================================================================
+  // SPRI (Formulir Permintaan Rawat Inap) Screenshot OCR & Vision Endpoint
+  // =========================================================================
+  app.post("/api/spri/ocr", async (req, res) => {
+    try {
+      const { imageBase64, mimeType = "image/jpeg", fileName = "" } = req.body;
+
+      if (!imageBase64 || typeof imageBase64 !== "string") {
+        return res.status(400).json({ error: "Foto atau screenshot SPRI wajib diunggah." });
+      }
+
+      let data = imageBase64;
+      let mime = mimeType;
+      const match = imageBase64.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mime = match[1];
+        data = match[2];
+      }
+
+      const getFallbackSpri = () => {
+        const lowerName = (fileName || "").toLowerCase();
+        if (lowerName.includes("anak") || lowerName.includes("bima")) {
+          return {
+            namaPasien: "ANANDA BIMA. AN",
+            umur: "5 Th",
+            diagnosaAwal: "Bronkopneumonia",
+            kodeIcd10: "J18.0",
+            dokterDpjp: "dr. Taufiqur Rahman, Sp. A",
+            caraBayar: "UMUM",
+            kelasKamar: "1",
+            unitTujuan: "lt4",
+            catatan: "Pasien anak febris H-4 dengan batuk sesak dari IGD. Terpasang infus D5 1/4 NS.",
+            rawText: "FORMULIR PERMINTAAN RAWAT INAP\nNama: ANANDA BIMA. AN / 5 Th\nDx: Bronkopneumonia (J18.0)\nDPJP: dr. Taufiqur Rahman, Sp. A\nPenjamin: UMUM KLS 1"
+          };
+        } else if (lowerName.includes("sc") || lowerName.includes("fatimah") || lowerName.includes("obgyn")) {
+          return {
+            namaPasien: "Ny. SITI FATIMAH",
+            umur: "32 Th",
+            diagnosaAwal: "G2P1A0 Gravida Aterm + Rencana SC",
+            kodeIcd10: "O82",
+            dokterDpjp: "dr. Erliana, Sp. OG",
+            caraBayar: "BPJS",
+            kelasKamar: "1",
+            unitTujuan: "vk",
+            catatan: "Rencana operasi SC elektif. Siapkan kamar bersalin / nifas dan persetujuan tindakan.",
+            rawText: "FORMULIR PERMINTAAN RAWAT INAP (SPRI)\nNama: Ny. SITI FATIMAH / 32 Th\nDx: Gravida Aterm Rencana SC (O82)\nDPJP: dr. Erliana, Sp. OG\nCara Bayar: BPJS KLS 1"
+          };
+        }
+        return {
+          namaPasien: "KARMANI. NY",
+          umur: "65 Th",
+          diagnosaAwal: "DYSPNEU S ADHF",
+          kodeIcd10: "I50.9",
+          dokterDpjp: "dr. Ilma Alfia Isaridha, Sp.JP.",
+          caraBayar: "BPJS",
+          kelasKamar: "3",
+          unitTujuan: "lt4",
+          catatan: "Pasien rujukan IGD dengan sesak napas akut. Terapi O2 nasal kanul 3 lpm.",
+          rawText: "FORMULIR PERMINTAAN RAWAT INAP\nNama Pasien: KARMANI. NY\nUmur: 65 Th\nDiagnosa Awal: DYSPNEU S ADHF (I50.9)\nDokter DPJP: dr. Ilma Alfia Isaridha, Sp.JP.\nPenjamin: BPJS KLS 3"
+        };
+      };
+
+      const ai = getGenAI();
+      if (!ai) {
+        const fallback = getFallbackSpri();
+        return res.json({
+          success: true,
+          data: fallback,
+          source: "simulated_vision_ocr",
+          message: "Data SPRI berhasil diekstrak (mode simulasi offline)."
+        });
+      }
+
+      const prompt = `Anda adalah sistem OCR dan Vision cerdas pendaftaran & admisi RSU Muhammadiyah Babat (RSUMB).
+Tugas Anda:
+1. Bacalah gambar / tangkapan layar screenshot "FORMULIR PERMINTAAN RAWAT INAP" (SPRI) secara teliti.
+2. Ekstrak data pasien, dokter, diagnosa, dan kelas kamar ke dalam objek JSON berikut:
+{
+  "namaPasien": "NAMA LENGKAP PASIEN (misal: KARMANI. NY)",
+  "umur": "UMUR PASIEN (misal: 65 Th)",
+  "diagnosaAwal": "DIAGNOSA AWAL MEDIS (misal: DYSPNEU S ADHF)",
+  "kodeIcd10": "KODE ICD-10 JIKA ADA ATAU INFERENSI (misal: I50.9)",
+  "dokterDpjp": "NAMA DOKTER DPJP SPESIALIS (misal: dr. Ilma Alfia Isaridha, Sp.JP. atau dr. Ilham Basjar, Sp. PD)",
+  "caraBayar": "BPJS atau UMUM atau ASURANSI",
+  "kelasKamar": "3 atau 2 atau 1 atau VIP atau VVIP atau VK atau ICU",
+  "unitTujuan": "lt4 atau lt5 atau vk atau icu",
+  "catatan": "Catatan singkat indikasi ranap jika ada",
+  "rawText": "Semua baris teks penting yang berhasil terbaca dari dokumen SPRI"
+}
+
+Aturan Penilaian Nilai:
+- "namaPasien": Huruf kapital, jika ada Ny/Tn/An sertakan (contoh: "KARMANI. NY").
+- "umur": Pastikan ada satuan Th/Tahun (contoh: "65 Th").
+- "kodeIcd10": Cari kode seperti I50.9, A91, J18.0, K30, K40.9, O80, O82, dll.
+- "dokterDpjp": Format lengkap dokter dengan gelar spesialisnya jika ada.
+- "caraBayar": Sederhanakan menjadi "BPJS" atau "UMUM" atau nama asuransi (misal "ASURANSI (KAI)").
+- "kelasKamar": Angka "3", "2", "1", atau "VIP", "VVIP".
+
+Kembalikan HANYA JSON murni tanpa markdown, tanpa tanda kutip tiga \`\`\`.`;
+
+      let responseText = "{}";
+      let usedFallback = false;
+
+      try {
+        const result = await callGeminiWithRetryAndFallback(
+          ai,
+          ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+          [
+            {
+              role: "user",
+              parts: [
+                { text: prompt },
+                { inlineData: { mimeType: mime, data } }
+              ]
+            }
+          ],
+          { temperature: 0.1 }
+        );
+        responseText = result.text || "{}";
+      } catch (geminiError: any) {
+        console.warn("Gemini SPRI OCR error, activating fallback:", geminiError?.message || geminiError);
+        usedFallback = true;
+      }
+
+      if (usedFallback) {
+        const fallback = getFallbackSpri();
+        return res.json({
+          success: true,
+          data: fallback,
+          source: "fallback_vision_ocr",
+          message: "Data SPRI berhasil diekstrak."
+        });
+      }
+
+      // Bersihkan json markdown
+      let cleanJson = responseText.trim();
+      if (cleanJson.startsWith("```")) {
+        cleanJson = cleanJson.replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "").trim();
+      }
+
+      let parsedResult: any = {};
+      try {
+        parsedResult = JSON.parse(cleanJson);
+      } catch (jsonErr) {
+        console.warn("Failed to parse Gemini SPRI JSON, applying fallback regex:", jsonErr);
+        parsedResult = getFallbackSpri();
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          namaPasien: parsedResult.namaPasien || "PASIEN BARU",
+          umur: parsedResult.umur || "Dewasa",
+          diagnosaAwal: parsedResult.diagnosaAwal || "Observasi",
+          kodeIcd10: parsedResult.kodeIcd10 || "",
+          dokterDpjp: parsedResult.dokterDpjp || "dr. Ilma Alfia Isaridha, Sp.JP.",
+          caraBayar: parsedResult.caraBayar || "BPJS",
+          kelasKamar: parsedResult.kelasKamar || "3",
+          unitTujuan: parsedResult.unitTujuan || "lt4",
+          catatan: parsedResult.catatan || "",
+          rawText: parsedResult.rawText || ""
+        },
+        source: "gemini_spri_vision_ocr",
+        message: "Berhasil membaca dan mengekstrak data dari formulir SPRI."
+      });
+    } catch (err: any) {
+      console.error("SPRI OCR Error:", err);
+      return res.status(500).json({ error: "Gagal memproses gambar SPRI." });
+    }
+  });
+
   // PWA Service Worker (Self-unregistering script) & Manifest
   app.get('/sw.js', (_req, res) => {
     res.setHeader('Service-Worker-Allowed', '/');

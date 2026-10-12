@@ -1,6 +1,12 @@
-export type GuarantorCategory = 'bpjs' | 'umum_asuransi' | 'jasa_raharja';
+export type GuarantorCategory =
+  | 'umum'
+  | 'bpjs'
+  | 'jasa_raharja'
+  | 'bpjs_tk'
+  | 'asuransi_kai'
+  | 'asuransi_admedika_brilife';
 
-export type ServiceType = 'rawat_jalan' | 'rawat_inap' | 'igd_darurat';
+export type ServiceType = 'rawat_jalan' | 'rawat_inap';
 
 export interface RequirementDocItem {
   id: string;
@@ -11,7 +17,7 @@ export interface RequirementDocItem {
   isMandatory: boolean;
   notes?: string;
   applicableServices: ServiceType[];
-  validityPeriod?: string; // e.g. "90 hari dari fktp", "30 hari"
+  validityPeriod?: string;
 }
 
 export interface PendingDocItem {
@@ -23,7 +29,7 @@ export interface PendingDocItem {
 
 export interface SlipKekuranganBerkas {
   id: string;
-  nomorSlip: string; // e.g. SLIP-20261005-001
+  nomorSlip: string; // Format: SLIP-20261005-001
   tanggal: string; // ISO string
   noRm: string;
   namaPasien: string;
@@ -32,7 +38,7 @@ export interface SlipKekuranganBerkas {
   penjaminLabel: string;
   serviceType: ServiceType;
   poliklinikRuang: string;
-  batasWaktuTeks: string; // e.g. "Maksimal 3 x 24 Jam Kerja (Rabu, 08/10/2026 pukul 14.00 WIB)"
+  batasWaktuTeks: string;
   batasWaktuIso?: string;
   petugasAdmisi: string;
   items: PendingDocItem[];

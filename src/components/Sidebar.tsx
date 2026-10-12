@@ -21,6 +21,8 @@ import {
   Ticket,
   Sliders,
   FileCheck,
+  BedDouble,
+  StickyNote,
   PanelLeftClose,
   PanelLeftOpen,
   ChevronLeft,
@@ -130,9 +132,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'requirements' as ActiveNavTab,
-      label: 'Persyaratan & Checklist',
-      icon: FileCheck,
-      badge: 'Slip Berkas'
+      label: 'Sticky Notes Inden & Ranap',
+      icon: StickyNote,
+      badge: 'Operan Shift'
     },
     {
       id: 'patient_notes' as ActiveNavTab,
@@ -145,6 +147,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Hubungi Pasien',
       icon: Megaphone,
       badge: 'WA Broadcast'
+    },
+    {
+      id: 'audit_surkon' as ActiveNavTab,
+      label: 'Audit & Rekap Surkon BPJS',
+      icon: FileCheck,
+      badge: 'BPJS'
     },
     {
       id: 'kupon_mohat' as ActiveNavTab,
@@ -327,10 +335,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {item.badge && (
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${
-                        item.badge === 'Baru'
+                        item.badge === 'Baru' || item.badge === 'New'
                           ? isActive
                             ? 'bg-amber-400 text-amber-950 border border-amber-300 shadow-2xs'
                             : 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : item.badge === 'BPJS'
+                          ? isActive
+                            ? 'bg-blue-400 text-blue-950 border border-blue-300 shadow-2xs'
+                            : 'bg-blue-100 text-blue-800 border border-blue-200'
                           : isActive
                           ? 'bg-[#004732] text-emerald-100 border border-emerald-400/40'
                           : 'bg-[#d3e4fe] text-[#005d42]'
