@@ -145,6 +145,34 @@ export function subscribeDoc<T>(
 }
 
 /**
+ * Safely sanitize data for Firestore while preserving serverTimestamp and FieldValues
+ */
+export function sanitizeFirestoreData(obj: any): any {
+  if (obj === undefined) return null;
+  if (obj === null) return null;
+  if (typeof obj !== 'object') return obj;
+  // Preserve Firestore FieldValue (e.g. serverTimestamp), Timestamp, and Date
+  if (
+    obj._methodName ||
+    (obj.constructor && obj.constructor.name === 'FieldValue') ||
+    typeof obj.toDate === 'function' ||
+    obj instanceof Date
+  ) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeFirestoreData).filter((v) => v !== undefined);
+  }
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = sanitizeFirestoreData(value);
+    }
+  }
+  return result;
+}
+
+/**
  * Save single document with setDoc
  */
 export async function saveDoc<T extends Record<string, any>>(
@@ -154,9 +182,8 @@ export async function saveDoc<T extends Record<string, any>>(
 ): Promise<void> {
   const path = `${collectionName}/${docId}`;
   try {
-    // Sanitize undefined fields to prevent Firestore serialization errors
-    const sanitized = JSON.parse(JSON.stringify(data));
-    await setDoc(doc(db, collectionName, docId), sanitized);
+    const sanitized = sanitizeFirestoreData(data);
+    await setDoc(doc(db, collectionName, docId), sanitized, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -211,8 +238,8 @@ export async function batchSaveCollection<T extends { id: string }>(
       const batch = writeBatch(db);
       chunk.forEach((item) => {
         const ref = doc(db, collectionName, item.id);
-        const clean = JSON.parse(JSON.stringify(item));
-        batch.set(ref, clean);
+        const clean = sanitizeFirestoreData(item);
+        batch.set(ref, clean, { merge: true });
       });
       await batch.commit();
     }
