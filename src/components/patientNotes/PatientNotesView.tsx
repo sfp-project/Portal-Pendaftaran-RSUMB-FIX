@@ -51,7 +51,11 @@ import {
   saveUmumBeresikoRecords,
   loadShiftHandoverRecords,
   saveShiftHandoverRecords,
-  subscribePatientNotesCategory
+  subscribePatientNotesCategory,
+  subscribeKllPatients,
+  addKllPatientDoc,
+  updateKllPatientDoc,
+  deleteKllPatientDoc
 } from '../../data/patientNotesData';
 import { KllFormModal } from './KllFormModal';
 import { BpjsKendalaModal } from './BpjsKendalaModal';
@@ -101,7 +105,7 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
   const [umumStatusFilter, setUmumStatusFilter] = useState<'all' | 'pending' | 'resolved'>('all');
 
   // Master Data Collections
-  const [kllRecords, setKllRecords] = useState<PatientKllRecord[]>(() => loadKllRecords());
+  const [kllRecords, setKllRecords] = useState<PatientKllRecord[]>([]);
   const [bpjsRecords, setBpjsRecords] = useState<PatientBpjsKendalaRecord[]>(() => loadBpjsKendalaRecords());
   const [asuransiRecords, setAsuransiRecords] = useState<PatientAsuransiSwastaRecord[]>(() => loadAsuransiSwastaRecords());
   const [umumRecords, setUmumRecords] = useState<PatientUmumBeresikoRecord[]>(() => loadUmumBeresikoRecords());
@@ -659,9 +663,11 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
 
   // Real-time Cloud Firestore synchronization
   useEffect(() => {
-    const unsub1 = subscribePatientNotesCategory('kll', (data) => {
-      if (data) setKllRecords(data);
+    // 1. KLL Listener: Koleksi Firestore 'patient_kll' real-time onSnapshot
+    const unsubKll = subscribeKllPatients((items) => {
+      setKllRecords(items);
     });
+
     const unsub2 = subscribePatientNotesCategory('bpjs', (data) => {
       if (data) setBpjsRecords(data);
     });
@@ -675,7 +681,7 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
       if (data) setHandoverRecords(data);
     });
     return () => {
-      unsub1();
+      unsubKll();
       unsub2();
       unsub3();
       unsub4();
@@ -683,11 +689,7 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     };
   }, []);
 
-  // Sync to localStorage & Cloud Firestore
-  useEffect(() => {
-    saveKllRecords(kllRecords);
-  }, [kllRecords]);
-
+  // Sync to localStorage & Cloud Firestore (hanya untuk kategori non-KLL, KLL di-handle direct CRUD)
   useEffect(() => {
     saveBpjsKendalaRecords(bpjsRecords);
   }, [bpjsRecords]);
@@ -729,49 +731,72 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     return handoverRecords.filter((r) => r.status === 'Pending').length;
   }, [handoverRecords]);
 
-  // Tab 1: KLL Handlers
-  const handleSaveKll = (record: PatientKllRecord) => {
-    setKllRecords((prev) => {
-      const exists = prev.some((r) => r.id === record.id);
-      if (exists) {
-        return prev.map((r) => (r.id === record.id ? record : r));
+  // Tab 1: KLL Handlers (Direct Firestore CRUD Operations)
+  const handleSaveKll = async (record: PatientKllRecord) => {
+    try {
+      const isEdit = Boolean(selectedKllForEdit && selectedKllForEdit.id);
+      const targetId = isEdit
+        ? selectedKllForEdit!.id
+        : kllRecords.some((r) => r.id === record.id)
+        ? record.id
+        : null;
+
+      if (targetId) {
+        setKllRecords((prev) =>
+          prev.map((r) => (r.id === targetId ? { ...r, ...record, id: targetId } : r))
+        );
+        await updateKllPatientDoc(targetId, record);
+        showToast(`Data Pasien KLL ${record.namaPasien} berhasil diperbarui di cloud.`);
+      } else {
+        const tempId = `temp-${Date.now()}`;
+        setKllRecords((prev) => [{ ...record, id: tempId }, ...prev]);
+        await addKllPatientDoc(record);
+        showToast(`Data Pasien KLL ${record.namaPasien} berhasil ditambahkan ke cloud.`);
       }
-      return [record, ...prev];
-    });
-    showToast(`Data Pasien KLL ${record.namaPasien} berhasil disimpan.`);
+    } catch (err: any) {
+      console.error('Error saving KLL patient:', err);
+      showToast('Gagal menyimpan data KLL ke database cloud.');
+    }
   };
 
-  const handleToggleKllInsiden = (id: string) => {
+  const handleToggleKllInsiden = async (id: string) => {
     const target = kllRecords.find((r) => r.id === id);
     if (!target) return;
     const nextActive = !target.isInsidenActive;
-    setKllRecords((prev) =>
-      prev.map((r) =>
-        r.id === id ? { ...r, isInsidenActive: nextActive, updatedAt: new Date().toISOString() } : r
-      )
-    );
-    showToast(`Status insiden ${target.namaPasien} diubah menjadi ${nextActive ? 'AKTIF' : 'NON-AKTIF'}.`);
+    try {
+      await updateKllPatientDoc(id, { isInsidenActive: nextActive });
+      showToast(`Status insiden ${target.namaPasien} diubah menjadi ${nextActive ? 'AKTIF' : 'NON-AKTIF'}.`);
+    } catch (err) {
+      console.error('Error updating insiden status:', err);
+      showToast('Gagal memperbarui status insiden di cloud.');
+    }
   };
 
-  const handleToggleKllResolved = (id: string) => {
+  const handleToggleKllResolved = async (id: string) => {
     const target = kllRecords.find((r) => r.id === id);
     if (!target) return;
     const nextResolved = !target.isResolved;
-    setKllRecords((prev) =>
-      prev.map((r) =>
-        r.id === id ? { ...r, isResolved: nextResolved, updatedAt: new Date().toISOString() } : r
-      )
-    );
-    showToast(
-      nextResolved
-        ? `Status follow-up KLL ${target.namaPasien} ditandai SELESAI / AMAN.`
-        : `Status follow-up KLL ${target.namaPasien} ditandai BELUM SELESAI (Need Follow-up).`
-    );
+    try {
+      await updateKllPatientDoc(id, { isResolved: nextResolved });
+      showToast(
+        nextResolved
+          ? `Status follow-up KLL ${target.namaPasien} ditandai SELESAI / AMAN.`
+          : `Status follow-up KLL ${target.namaPasien} ditandai BELUM SELESAI (Need Follow-up).`
+      );
+    } catch (err) {
+      console.error('Error updating follow-up status:', err);
+      showToast('Gagal memperbarui status follow-up di cloud.');
+    }
   };
 
-  const handleDeleteKll = (id: string, name: string) => {
-    setKllRecords((prev) => prev.filter((r) => r.id !== id));
-    showToast(`Data KLL ${name} dihapus.`);
+  const handleDeleteKll = async (id: string, name: string) => {
+    try {
+      await deleteKllPatientDoc(id);
+      showToast(`Data KLL ${name} berhasil dihapus dari cloud.`);
+    } catch (err) {
+      console.error('Error deleting KLL patient:', err);
+      showToast('Gagal menghapus data KLL dari cloud.');
+    }
   };
 
   // Tab 2: BPJS Kendala Handlers
@@ -964,6 +989,7 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
 
     if (tab === 'kll') {
       setKllRecords((prev) => prev.filter((r) => r.id !== id));
+      deleteKllPatientDoc(id).catch((err) => console.error('Error deleting KLL from Firestore:', err));
       showToast(`Data Pasien KLL "${nama}" berhasil dihapus.`);
     } else if (tab === 'bpjs_kendala') {
       setBpjsRecords((prev) => prev.filter((r) => r.id !== id));

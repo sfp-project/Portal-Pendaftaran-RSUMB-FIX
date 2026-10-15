@@ -55,16 +55,65 @@ export const KllFormModal: React.FC<KllFormModalProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setLpFileUrl(reader.result as string);
-      setLpFileName(file.name);
-      setLpFileType(isPdf ? 'pdf' : 'image');
-      if (statusLp === 'BELUM' || !statusLp) {
-        setStatusLp(`LP DIUPLOAD - ${new Date().toLocaleDateString('id-ID')}`);
+    if (isPdf) {
+      if (file.size > 800 * 1024) {
+        alert('Ukuran berkas PDF terlalu besar (maksimal 800 KB). Harap kompres berkas PDF terlebih dahulu.');
+        return;
       }
-    };
-    reader.readAsDataURL(file);
+      const reader = new FileReader();
+      reader.onload = () => {
+        setLpFileUrl(reader.result as string);
+        setLpFileName(file.name);
+        setLpFileType('pdf');
+        if (statusLp === 'BELUM' || !statusLp) {
+          setStatusLp(`LP DIUPLOAD - ${new Date().toLocaleDateString('id-ID')}`);
+        }
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // Compress image to ensure it fits safely in Firestore
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1200;
+          let w = img.width;
+          let h = img.height;
+          if (w > h && w > maxDim) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else if (h > maxDim) {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            const compressed = canvas.toDataURL('image/jpeg', 0.75);
+            setLpFileUrl(compressed);
+          } else {
+            setLpFileUrl(reader.result as string);
+          }
+          setLpFileName(file.name);
+          setLpFileType('image');
+          if (statusLp === 'BELUM' || !statusLp) {
+            setStatusLp(`LP DIUPLOAD - ${new Date().toLocaleDateString('id-ID')}`);
+          }
+        };
+        img.onerror = () => {
+          setLpFileUrl(reader.result as string);
+          setLpFileName(file.name);
+          setLpFileType('image');
+        };
+        img.src = reader.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {

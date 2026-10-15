@@ -11,10 +11,16 @@ import {
   fetchCollection,
   batchSaveCollection,
   serverTimestamp,
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
   db,
   auth
 } from './firebase';
-export { serverTimestamp, db, auth };
+export { serverTimestamp, db, auth, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot };
 import {
   DoctorSchedule,
   DoctorLeaveAnnouncement,
@@ -47,6 +53,7 @@ export const COLLECTIONS = {
   STICKY_NOTES: 'sticky_notes',
   SHIFT_ARCHIVES: 'shift_archives',
   PATIENT_NOTES: 'patient_notes',
+  PATIENT_KLL: 'patient_kll',
   SEP_PENDING: 'sep_pending',
   AUDIT_SURKON: 'audit_surkon',
   MOHAT_COUPONS: 'mohat_coupons',
@@ -250,6 +257,7 @@ export async function saveAuditSurkonDoc(data: Partial<AuditSurkonDocData>) {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // 10. PATIENT NOTES (CATATAN PASIEN RANAP)
 // ---------------------------------------------------------------------------
 export type PatientNoteCategory = 'kll' | 'bpjs' | 'asuransi' | 'umum' | 'handover';
@@ -271,6 +279,121 @@ export async function savePatientNoteDoc(item: UnifiedPatientNoteDoc) {
 
 export async function deletePatientNoteDoc(id: string) {
   await removeDoc(COLLECTIONS.PATIENT_NOTES, id);
+}
+
+// ---------------------------------------------------------------------------
+// 10B. PASIEN KLL (KECELAKAAN LALU LINTAS - DEDICATED FIRESTORE COLLECTION)
+// ---------------------------------------------------------------------------
+export function subscribeKllPatients(callback: (items: PatientKllRecord[]) => void): () => void {
+  const colRef = collection(db, COLLECTIONS.PATIENT_KLL);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const items: PatientKllRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data();
+        let createdAtStr = new Date().toISOString();
+        if (d.createdAt) {
+          if (typeof d.createdAt?.toDate === 'function') {
+            createdAtStr = d.createdAt.toDate().toISOString();
+          } else if (typeof d.createdAt === 'string') {
+            createdAtStr = d.createdAt;
+          }
+        }
+        let updatedAtStr = createdAtStr;
+        if (d.updatedAt) {
+          if (typeof d.updatedAt?.toDate === 'function') {
+            updatedAtStr = d.updatedAt.toDate().toISOString();
+          } else if (typeof d.updatedAt === 'string') {
+            updatedAtStr = d.updatedAt;
+          }
+        }
+        items.push({
+          id: docSnap.id,
+          namaPasien: d.namaPasien || '',
+          noRm: d.noRm || '',
+          tanggalMrs: d.tanggalMrs || '',
+          tanggalKll: d.tanggalKll || '',
+          kronologi: d.kronologi || '',
+          penjamin: d.penjamin || 'Jasa Raharja',
+          statusLp: d.statusLp || 'BELUM',
+          lpFileName: d.lpFileName,
+          lpFileUrl: d.lpFileUrl,
+          lpFileType: d.lpFileType,
+          isInsidenActive: Boolean(d.isInsidenActive),
+          isResolved: Boolean(d.isResolved),
+          catatan: d.catatan || '',
+          createdAt: createdAtStr,
+          updatedAt: updatedAtStr
+        });
+      });
+      // Urutkan paling baru berdasarkan waktu dibuat atau tanggal kejadian
+      items.sort((a, b) => {
+        const timeA = new Date(a.createdAt || a.tanggalMrs || 0).getTime();
+        const timeB = new Date(b.createdAt || b.tanggalMrs || 0).getTime();
+        return timeB - timeA;
+      });
+      callback(items);
+    },
+    (err) => {
+      console.warn('[Firestore] Error onSnapshot patient_kll:', err);
+    }
+  );
+}
+
+export async function addKllPatientDoc(data: Omit<PatientKllRecord, 'id'> | PatientKllRecord): Promise<string> {
+  const colRef = collection(db, COLLECTIONS.PATIENT_KLL);
+  const cleanData: any = {
+    namaPasien: (data.namaPasien || '').trim().toUpperCase(),
+    noRm: (data.noRm || '').trim(),
+    tanggalMrs: data.tanggalMrs || new Date().toISOString().slice(0, 10),
+    tanggalKll: data.tanggalKll || new Date().toISOString().slice(0, 10),
+    kronologi: (data.kronologi || '').trim(),
+    penjamin: data.penjamin || 'Jasa Raharja',
+    statusLp: (data.statusLp || 'BELUM').trim(),
+    isInsidenActive: Boolean(data.isInsidenActive),
+    isResolved: Boolean(data.isResolved),
+    catatan: (data.catatan || '').trim(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  if (data.lpFileName) cleanData.lpFileName = data.lpFileName;
+  if (data.lpFileUrl) cleanData.lpFileUrl = data.lpFileUrl;
+  if (data.lpFileType) cleanData.lpFileType = data.lpFileType;
+
+  const docRef = await addDoc(colRef, cleanData);
+  return docRef.id;
+}
+
+export async function updateKllPatientDoc(id: string, updates: Partial<PatientKllRecord>): Promise<void> {
+  const dRef = doc(db, COLLECTIONS.PATIENT_KLL, id);
+  const cleanUpdates: any = {
+    updatedAt: serverTimestamp()
+  };
+  if (updates.namaPasien !== undefined) cleanUpdates.namaPasien = updates.namaPasien.trim().toUpperCase();
+  if (updates.noRm !== undefined) cleanUpdates.noRm = updates.noRm.trim();
+  if (updates.tanggalMrs !== undefined) cleanUpdates.tanggalMrs = updates.tanggalMrs;
+  if (updates.tanggalKll !== undefined) cleanUpdates.tanggalKll = updates.tanggalKll;
+  if (updates.kronologi !== undefined) cleanUpdates.kronologi = updates.kronologi;
+  if (updates.penjamin !== undefined) cleanUpdates.penjamin = updates.penjamin;
+  if (updates.statusLp !== undefined) cleanUpdates.statusLp = updates.statusLp;
+  if (updates.lpFileName !== undefined) cleanUpdates.lpFileName = updates.lpFileName;
+  if (updates.lpFileUrl !== undefined) cleanUpdates.lpFileUrl = updates.lpFileUrl;
+  if (updates.lpFileType !== undefined) cleanUpdates.lpFileType = updates.lpFileType;
+  if (updates.isInsidenActive !== undefined) cleanUpdates.isInsidenActive = updates.isInsidenActive;
+  if (updates.isResolved !== undefined) cleanUpdates.isResolved = updates.isResolved;
+  if (updates.catatan !== undefined) cleanUpdates.catatan = updates.catatan;
+
+  await updateDoc(dRef, cleanUpdates);
+}
+
+export async function deleteKllPatientDoc(id: string): Promise<void> {
+  const dRef = doc(db, COLLECTIONS.PATIENT_KLL, id);
+  await deleteDoc(dRef);
+}
+
+export async function batchSaveKllPatients(items: PatientKllRecord[]): Promise<void> {
+  await batchSaveCollection(COLLECTIONS.PATIENT_KLL, items);
 }
 
 // ---------------------------------------------------------------------------
