@@ -160,7 +160,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
     } catch (e) {
       console.warn('Error reading surgeries for dashboard:', e);
     }
-    return initialSurgerySchedules;
+    return [];
   }, [surgeryList]);
 
   const surgeriesTodayCount = useMemo(() => {

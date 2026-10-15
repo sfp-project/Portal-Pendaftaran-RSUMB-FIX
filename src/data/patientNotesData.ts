@@ -5,6 +5,10 @@ import {
   PatientUmumBeresikoRecord,
   PatientShiftHandoverRecord
 } from '../types/patientNotesTypes';
+import {
+  saveDoc,
+  subscribeDoc
+} from '../services/firebase';
 
 // Initial Data untuk TAB 1: Pasien Kecelakaan (KLL)
 export const initialKllRecords: PatientKllRecord[] = [
@@ -356,7 +360,7 @@ export function loadKllRecords(): PatientKllRecord[] {
   } catch (e) {
     console.error('Failed to load KLL records:', e);
   }
-  return initialKllRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
+  return [];
 }
 
 export function saveKllRecords(records: PatientKllRecord[]): void {
@@ -365,6 +369,9 @@ export function saveKllRecords(records: PatientKllRecord[]): void {
   } catch (e) {
     console.error('Failed to save KLL records:', e);
   }
+  saveDoc('patient_notes', 'kll', { records }).catch((err) => {
+    console.warn('[Firestore] Failed saving KLL notes:', err);
+  });
 }
 
 export function loadBpjsKendalaRecords(): PatientBpjsKendalaRecord[] {
@@ -379,7 +386,7 @@ export function loadBpjsKendalaRecords(): PatientBpjsKendalaRecord[] {
   } catch (e) {
     console.error('Failed to load BPJS Kendala records:', e);
   }
-  return initialBpjsKendalaRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
+  return [];
 }
 
 export function saveBpjsKendalaRecords(records: PatientBpjsKendalaRecord[]): void {
@@ -388,6 +395,9 @@ export function saveBpjsKendalaRecords(records: PatientBpjsKendalaRecord[]): voi
   } catch (e) {
     console.error('Failed to save BPJS Kendala records:', e);
   }
+  saveDoc('patient_notes', 'bpjs', { records }).catch((err) => {
+    console.warn('[Firestore] Failed saving BPJS Kendala notes:', err);
+  });
 }
 
 export function loadAsuransiSwastaRecords(): PatientAsuransiSwastaRecord[] {
@@ -402,7 +412,7 @@ export function loadAsuransiSwastaRecords(): PatientAsuransiSwastaRecord[] {
   } catch (e) {
     console.error('Failed to load Asuransi Swasta records:', e);
   }
-  return initialAsuransiSwastaRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
+  return [];
 }
 
 export function saveAsuransiSwastaRecords(records: PatientAsuransiSwastaRecord[]): void {
@@ -411,6 +421,9 @@ export function saveAsuransiSwastaRecords(records: PatientAsuransiSwastaRecord[]
   } catch (e) {
     console.error('Failed to save Asuransi Swasta records:', e);
   }
+  saveDoc('patient_notes', 'asuransi', { records }).catch((err) => {
+    console.warn('[Firestore] Failed saving Asuransi Swasta notes:', err);
+  });
 }
 
 export function loadUmumBeresikoRecords(): PatientUmumBeresikoRecord[] {
@@ -425,7 +438,7 @@ export function loadUmumBeresikoRecords(): PatientUmumBeresikoRecord[] {
   } catch (e) {
     console.error('Failed to load UMUM Beresiko records:', e);
   }
-  return initialUmumBeresikoRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
+  return [];
 }
 
 export function saveUmumBeresikoRecords(records: PatientUmumBeresikoRecord[]): void {
@@ -434,6 +447,9 @@ export function saveUmumBeresikoRecords(records: PatientUmumBeresikoRecord[]): v
   } catch (e) {
     console.error('Failed to save UMUM Beresiko records:', e);
   }
+  saveDoc('patient_notes', 'umum', { records }).catch((err) => {
+    console.warn('[Firestore] Failed saving UMUM Beresiko notes:', err);
+  });
 }
 
 export function loadShiftHandoverRecords(): PatientShiftHandoverRecord[] {
@@ -448,7 +464,7 @@ export function loadShiftHandoverRecords(): PatientShiftHandoverRecord[] {
   } catch (e) {
     console.error('Failed to load Shift Handover records:', e);
   }
-  return initialShiftHandoverRecords.filter((r: any) => !r.is_deleted && !r.isDeleted);
+  return [];
 }
 
 export function saveShiftHandoverRecords(records: PatientShiftHandoverRecord[]): void {
@@ -457,4 +473,18 @@ export function saveShiftHandoverRecords(records: PatientShiftHandoverRecord[]):
   } catch (e) {
     console.error('Failed to save Shift Handover records:', e);
   }
+  saveDoc('patient_notes', 'handover', { records }).catch((err) => {
+    console.warn('[Firestore] Failed saving Shift Handover notes:', err);
+  });
+}
+
+export function subscribePatientNotesCategory(
+  category: 'kll' | 'bpjs' | 'asuransi' | 'umum' | 'handover',
+  callback: (records: any[]) => void
+): () => void {
+  return subscribeDoc<{ records: any[] }>('patient_notes', category, (data) => {
+    if (data && Array.isArray(data.records)) {
+      callback(data.records);
+    }
+  });
 }

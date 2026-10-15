@@ -51,8 +51,14 @@ import {
   deleteShiftArchive,
   updateShiftArchive,
   getLastArchiveInfo,
-  autoSaveShiftArchive
+  autoSaveShiftArchive,
+  subscribeShiftArchives
 } from '../../data/shiftArchiveData';
+import {
+  subscribeStickyNotes,
+  saveStickyNoteDoc,
+  batchSaveStickyNotes
+} from '../../services/firestoreSync';
 import { StickyColorTheme, StickyNoteItem } from '../../types/inpatientOrderTypes';
 import { htmlToCleanWhatsAppText } from '../../utils/inpatientWaFormat';
 
@@ -143,7 +149,7 @@ export const THEME_STYLES: Record<
   }
 };
 
-// Data Default Standar Operan Shift RSUMB
+// Template Standar 4 Kolom Sticky Notes RSUMB
 const DEFAULT_NOTES: StickyNoteItem[] = [
   {
     id: 'lt4',
@@ -152,7 +158,7 @@ const DEFAULT_NOTES: StickyNoteItem[] = [
     headerCode: 'LT 4',
     theme: 'blue',
     updatedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    contentHtml: `<div><b>KARMANI. NY / 65 Th</b></div><div>- DYSPNEU S ADHF (I50.9)</div><div>- dr. Ilma Alfia Isaridha, Sp.JP.</div><div><span style="background-color: #fecdd3; padding: 2px 6px; border-radius: 4px; font-weight: 500;">- BPJS KLS 3 ( &nbsp; )</span></div><br><div><b>ANANDA BIMA. AN / 5 Th</b></div><div>- BRONKOPNEUMONIA (J18.0)</div><div>- dr. Taufiqur Rahman, Sp. A</div><div><span style="background-color: #fecdd3; padding: 2px 6px; border-radius: 4px; font-weight: 500;">- UMUM KLS 1 ( &nbsp; )</span></div><br><div><b>ABDUL QODIR. TN / 33 Th</b></div><div>- BATU URETER S (N20.1)</div><div>- dr. Randa Halfian, Sp. U</div><div>- BPJS KLS 3 (JN 1B)</div>`
+    contentHtml: ''
   },
   {
     id: 'lt5',
@@ -161,7 +167,7 @@ const DEFAULT_NOTES: StickyNoteItem[] = [
     headerCode: 'LT 5',
     theme: 'green',
     updatedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    contentHtml: `<div><b>SUGIANTO. TN / 48 Th</b></div><div>- CHOLELITHIASIS (K80.2)</div><div>- dr. Rieski Widhanar, Sp. B</div><div><span style="background-color: #fecdd3; padding: 2px 6px; border-radius: 4px; font-weight: 500;">- BPJS KLS 2 ( &nbsp; )</span></div><br><div><b>SRI WAHYUNI. NY / 52 Th</b></div><div>- VERTIGO VESTIBULER (R42)</div><div>- dr. Dian Permatasari, Sp. S</div><div>- UMUM KLS 2 (JM 3A)</div><br><div><b>WARSONO. TN / 61 Th</b></div><div>- HIL DEXTRA INKARSERATA (K40.9)</div><div>- dr. Nikita Gladys L., Sp. B</div><div>- BPJS KLS 3 (JM 5B)</div>`
+    contentHtml: ''
   },
   {
     id: 'vk',
@@ -170,7 +176,7 @@ const DEFAULT_NOTES: StickyNoteItem[] = [
     headerCode: 'VK',
     theme: 'pink',
     updatedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    contentHtml: `<div><b>NURUL HIDAYAH. NY / 29 Th</b></div><div>- G2P1A0 INPARTU KALA 1 (O80)</div><div>- dr. Dony R. Bimantara, Sp. OG</div><div><span style="background-color: #fecdd3; padding: 2px 6px; border-radius: 4px; font-weight: 500;">- BPJS KLS 3 ( &nbsp; )</span></div><br><div><b>SITI KHOTIMAH. NY / 34 Th</b></div><div>- G3P2A0 POST SC H-1 (O82)</div><div>- dr. Dony R. Bimantara, Sp. OG</div><div>- BPJS KLS 2 (VK Nifas 2)</div>`
+    contentHtml: ''
   },
   {
     id: 'kamar_kosong',
@@ -179,7 +185,7 @@ const DEFAULT_NOTES: StickyNoteItem[] = [
     headerCode: 'BED KOSONG',
     theme: 'cream',
     updatedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    contentHtml: `<div><b>KETERSEDIAAN BED KOSONG (RSUMB):</b></div><br><div><b>• LANTAI 4 (JN / JF):</b></div><div>&nbsp;&nbsp;- Kls 1 (Anak): JN 05 (1 Bed)</div><div>&nbsp;&nbsp;- Kls 2: JN 08A (1 Bed)</div><div>&nbsp;&nbsp;- Kls 3: JF 02, JF 04B (2 Bed)</div><br><div><b>• LANTAI 5 (JM):</b></div><div>&nbsp;&nbsp;- VIP: JM 01 (1 Bed)</div><div>&nbsp;&nbsp;- Kls 2: JM 06B (1 Bed)</div><div>&nbsp;&nbsp;- Kls 3: JM 09A (1 Bed)</div><br><div><b>• VK (DARUSSALAM / NIFAS):</b></div><div>&nbsp;&nbsp;- Ruang Nifas Kls 3: 2 Bed Kosong</div><div>&nbsp;&nbsp;- Ruang Bersalin: 1 Bed Siap Pakai</div><br><div><b>• ICU:</b></div><div>&nbsp;&nbsp;- Bed 02 (1 Bed Siap Pakai / Ventilator)</div>`
+    contentHtml: `<div><b>KETERSEDIAAN BED KOSONG (RSUMB):</b></div><br><div><b>• LANTAI 4 (JN / JF):</b></div><div>&nbsp;&nbsp;- Kls 1 (Anak): Siap Pakai</div><div>&nbsp;&nbsp;- Kls 2: Siap Pakai</div><div>&nbsp;&nbsp;- Kls 3: Siap Pakai</div><br><div><b>• LANTAI 5 (JM):</b></div><div>&nbsp;&nbsp;- VIP: Siap Pakai</div><div>&nbsp;&nbsp;- Kls 2: Siap Pakai</div><div>&nbsp;&nbsp;- Kls 3: Siap Pakai</div><br><div><b>• VK (DARUSSALAM / NIFAS):</b></div><div>&nbsp;&nbsp;- Ruang Nifas Kls 3: Siap Pakai</div><div>&nbsp;&nbsp;- Ruang Bersalin: Siap Pakai</div><br><div><b>• ICU:</b></div><div>&nbsp;&nbsp;- Siap Pakai</div>`
   }
 ];
 
@@ -236,6 +242,34 @@ export const InpatientOrderManagementView: React.FC<InpatientOrderManagementView
   const [archiveAutosaveStatus, setArchiveAutosaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const autosaveArchiveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMountRef = useRef<boolean>(true);
+
+  // SINKRONISASI REAL-TIME CLOUD FIRESTORE:
+  useEffect(() => {
+    const unsubNotes = subscribeStickyNotes((items) => {
+      if (items && items.length > 0) {
+        const order = ['lt4', 'lt5', 'vk', 'kamar_kosong'];
+        const sorted = [...items].sort((a, b) => {
+          const idxA = order.indexOf(a.id);
+          const idxB = order.indexOf(b.id);
+          return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+        });
+        setNotes(sorted);
+      } else {
+        batchSaveStickyNotes(DEFAULT_NOTES);
+        setNotes(DEFAULT_NOTES);
+      }
+    });
+
+    const unsubArchives = subscribeShiftArchives((list) => {
+      setArchives(list);
+      setLastArchiveInfo(getLastArchiveInfo());
+    });
+
+    return () => {
+      unsubNotes();
+      unsubArchives();
+    };
+  }, []);
 
   // FITUR AUTOSAVE KE RIWAYAT ARSIP:
   // Setiap kali isi Sticky Notes berubah, otomatis tersimpan/terperbarui ke riwayat arsip shift aktif
@@ -371,9 +405,12 @@ BPJS KLS 3`);
     [showToast]
   );
 
-  // Simpan Otomatis ke LocalStorage saat State Berubah
+  // Simpan Otomatis ke Cloud Firestore & LocalStorage saat State Berubah
   const saveNotesToStorage = (updatedNotes: StickyNoteItem[]) => {
     setNotes(updatedNotes);
+    batchSaveStickyNotes(updatedNotes).catch((err) => {
+      console.warn('[Firestore] Gagal menyimpan sticky notes:', err);
+    });
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedNotes));
       const nowStr = new Date().toLocaleTimeString('id-ID', {
@@ -394,6 +431,12 @@ BPJS KLS 3`);
       const nextNotes = prevNotes.map((note) =>
         note.id === noteId ? { ...note, contentHtml: newHtml, updatedAt: nowTime } : note
       );
+      const target = nextNotes.find((n) => n.id === noteId);
+      if (target) {
+        saveStickyNoteDoc(target).catch((err) => {
+          console.warn('[Firestore] Gagal update catatan:', err);
+        });
+      }
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(nextNotes));
         setLastSavedTime(

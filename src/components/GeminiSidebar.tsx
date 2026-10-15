@@ -460,7 +460,7 @@ export const GeminiSidebar: React.FC<GeminiSidebarProps> = ({
           if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
       } catch {}
-      return initialSurgerySchedules;
+      return [];
     })();
     const khitans = loadKhitanParticipants();
     const jrClaims = loadJasaRaharjaData();

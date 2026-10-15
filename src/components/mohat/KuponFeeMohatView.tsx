@@ -51,7 +51,8 @@ import {
   loadMohatAuditTrail,
   recordCouponGenerated,
   recordCouponReprinted,
-  syncCouponStatusInAudit
+  syncCouponStatusInAudit,
+  subscribeMohatCouponsList
 } from '../../data/mohatData';
 import { exportToExcel } from '../../utils/exportHelpers';
 import { loadPortalSettings } from '../../data/settingsData';
@@ -79,6 +80,14 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
   // State Data Kupon & Suggestions
   const [kuponList, setKuponList] = useState<KuponMohat[]>(() => loadKuponList());
   const [suggestions, setSuggestions] = useState<MohatSuggestions>(() => loadMohatSuggestions());
+
+  // Real-time Cloud Firestore synchronization
+  useEffect(() => {
+    const unsub = subscribeMohatCouponsList((items) => {
+      if (items) setKuponList(items);
+    });
+    return () => unsub();
+  }, []);
 
   // State Form Input
   const [tanggalMasuk, setTanggalMasuk] = useState<string>(getTodayDateStr());

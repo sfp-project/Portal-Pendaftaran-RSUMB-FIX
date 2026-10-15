@@ -112,7 +112,7 @@ export const DailyHuddleReportModal: React.FC<DailyHuddleReportModalProps> = ({
     } catch (e) {
       console.warn('Error loading surgeries for huddle:', e);
     }
-    return initialSurgerySchedules;
+    return [];
   }, [surgeryList]);
 
   // High priority patient notes from patientNotesData

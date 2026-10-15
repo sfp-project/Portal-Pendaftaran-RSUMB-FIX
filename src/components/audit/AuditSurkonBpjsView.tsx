@@ -37,6 +37,14 @@ import {
   ShieldAlert,
   X
 } from 'lucide-react';
+import {
+  subscribeSepPending,
+  saveSepPendingDoc,
+  deleteSepPendingDoc,
+  batchSaveSepPending,
+  subscribeAuditSurkon,
+  saveAuditSurkonDoc
+} from '../../services/firestoreSync';
 
 export interface AuditSurkonItem {
   noAntrian: string;
@@ -102,6 +110,8 @@ const SAMPLE_DATA_SURKON = `2026/10/09/000106 0204R0191026V001073 0000103721556 
 2026/10/09/000110 0204R0191026V001077 0001928374650 019283 HJ. KUSTINAH 2026-10-09 0204R0191026K000740 2026-11-12 Poliklinik Jantung dr. Spesialis Jantung
 2026/10/09/000111 0204R0191026V001078 0002819384756 067812 ZAINAL ABIDIN 2026-10-09 0204R0191026K000741 2026-11-15 Poliklinik Saraf dr. Spesialis Saraf`;
 
+const SAMPLE_SEP_PENDING = SAMPLE_DATA_PASIEN;
+
 const STORAGE_KEY_PASIEN = 'rsumb_audit_surkon_pasien_text';
 const STORAGE_KEY_SURKON = 'rsumb_audit_surkon_surkon_text';
 const STORAGE_KEY_HASIL = 'rsumb_audit_surkon_hasil_list';
@@ -161,13 +171,9 @@ export const AuditSurkonBpjsView: React.FC<AuditSurkonBpjsViewProps> = ({ showTo
   // --------------------------------------------------------------------------
   // MODUL 3: TRACKER SEP PENDING (BEDA HFIS)
   // --------------------------------------------------------------------------
-  const SAMPLE_SEP_PENDING = `001 2026/10/09/000081 087401 AHMAD ASSRORUL ABIDIN. SDR Poliklinik Kulit & Kelamin dr. Hamidah Luthfidyaningrum, Sp. DVE., M.Ked.Klin Sudah
-002 2026/10/09/000082 041248 EVI LUTFIANI MUFIAROH, NY Poliklinik Kulit & Kelamin dr. Hamidah Luthfidyaningrum, Sp. DVE., M.Ked.Klin Sudah
-003 2026/10/09/000083 031829 MOHAMMAD FIRDAUS IRWANSYAH Poliklinik Jantung BPJS dr. Spesialis Jantung Sudah`;
-
   const [activeMainTab, setActiveMainTab] = useState<'audit' | 'rujukan' | 'sepPending'>('audit');
   const [sepPasteText, setSepPasteText] = useState<string>(() => {
-    return localStorage.getItem('rsumb_sep_paste_text') || SAMPLE_SEP_PENDING;
+    return localStorage.getItem('rsumb_sep_paste_text') || '';
   });
   const [sepPendingList, setSepPendingList] = useState<SepPendingItem[]>(() => {
     try {
@@ -179,34 +185,45 @@ export const AuditSurkonBpjsView: React.FC<AuditSurkonBpjsViewProps> = ({ showTo
     } catch {
       // ignore
     }
-    return [
-      {
-        id: 'sep_1',
-        noAntrian: '001',
-        rm: '087401',
-        nama: 'AHMAD ASSRORUL ABIDIN. SDR',
-        namaPoli: 'Poliklinik Kulit & Kelamin',
-        dokter: 'dr. Hamidah Luthfidyaningrum, Sp. DVE., M.Ked.Klin',
-        noRawat: '2026/10/09/000081',
-        fingerprintStatus: 'Sudah',
-        targetPrintTime: '13:30',
-        statusCetak: 'pending'
-      },
-      {
-        id: 'sep_2',
-        noAntrian: '002',
-        rm: '041248',
-        nama: 'EVI LUTFIANI MUFIAROH, NY',
-        namaPoli: 'Poliklinik Kulit & Kelamin',
-        dokter: 'dr. Hamidah Luthfidyaningrum, Sp. DVE., M.Ked.Klin',
-        noRawat: '2026/10/09/000082',
-        fingerprintStatus: 'Sudah',
-        targetPrintTime: '13:30',
-        statusCetak: 'pending'
-      }
-    ];
+    return [];
   });
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+
+  // REAL-TIME FIRESTORE SUBSCRIPTION:
+  useEffect(() => {
+    const unsubSep = subscribeSepPending((items) => {
+      if (items) {
+        setSepPendingList(items as SepPendingItem[]);
+        try {
+          localStorage.setItem('rsumb_sep_pending_list', JSON.stringify(items));
+        } catch {}
+      }
+    });
+
+    const unsubAudit = subscribeAuditSurkon((data) => {
+      if (data) {
+        if (data.dataPasienText !== undefined && data.dataPasienText !== '') {
+          setDataPasienText(data.dataPasienText);
+        }
+        if (data.dataSurkonText !== undefined && data.dataSurkonText !== '') {
+          setDataSurkonText(data.dataSurkonText);
+        }
+        if (data.hasilAuditJson) {
+          try {
+            const parsed = JSON.parse(data.hasilAuditJson);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setHasilAudit(parsed);
+            }
+          } catch {}
+        }
+      }
+    });
+
+    return () => {
+      unsubSep();
+      unsubAudit();
+    };
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 10000);
@@ -361,17 +378,26 @@ export const AuditSurkonBpjsView: React.FC<AuditSurkonBpjsViewProps> = ({ showTo
       });
     });
 
-    if (newItems.length === 0) {
-      triggerToast('Gagal mengekstrak data SEP pending dari teks.', 'error');
-      return;
+    if (newItems.length > 0) {
+      setSepPendingList(prev => [...prev, ...newItems]);
+      batchSaveSepPending(newItems as any).catch(err => {
+        console.warn('[Firestore] Gagal menyimpan SEP pending:', err);
+      });
+      triggerToast(`Berhasil menambahkan ${newItems.length} pasien ke antrean SEP Pending!`, 'success');
     }
-
-    setSepPendingList(prev => [...prev, ...newItems]);
-    triggerToast(`Berhasil menambahkan ${newItems.length} pasien ke antrean SEP Pending!`, 'success');
   };
 
   const handleMarkSepDone = (id: string) => {
-    setSepPendingList(prev => prev.map(item => item.id === id ? { ...item, statusCetak: 'done' } : item));
+    setSepPendingList(prev => prev.map(item => {
+      if (item.id === id) {
+        const updated = { ...item, statusCetak: 'done' as const };
+        saveSepPendingDoc(updated as any).catch(err => {
+          console.warn('[Firestore] Gagal update status cetak SEP:', err);
+        });
+        return updated;
+      }
+      return item;
+    }));
     triggerToast('Status SEP ditandai Sudah Cetak!', 'success');
   };
 
@@ -1107,6 +1133,13 @@ export const AuditSurkonBpjsView: React.FC<AuditSurkonBpjsViewProps> = ({ showTo
     }
 
     setHasilAudit(newHasil);
+    saveAuditSurkonDoc({
+      dataPasienText,
+      dataSurkonText,
+      hasilAuditJson: JSON.stringify(newHasil)
+    }).catch(err => {
+      console.warn('[Firestore] Gagal menyimpan hasil audit:', err);
+    });
     const total = newHasil.length;
     const done = newHasil.filter((x) => x.status === 'done').length;
     const overdue = newHasil.filter((x) => x.status === 'overdue').length;
@@ -1382,6 +1415,17 @@ export const AuditSurkonBpjsView: React.FC<AuditSurkonBpjsViewProps> = ({ showTo
       localStorage.removeItem(STORAGE_KEY_HASIL);
       localStorage.removeItem('rsumb_sep_paste_text');
       localStorage.removeItem('rsumb_sep_pending_list');
+
+      // Bersihkan juga dari Cloud Firestore
+      sepPendingList.forEach((item) => {
+        deleteSepPendingDoc(item.id).catch(() => {});
+      });
+      saveAuditSurkonDoc({
+        dataPasienText: '',
+        dataSurkonText: '',
+        sepPasteText: '',
+        hasilAuditJson: '[]'
+      }).catch(() => {});
 
       triggerToast('Seluruh data, form, dan riwayat pada semua tab berhasil di-reset.', 'success');
     }

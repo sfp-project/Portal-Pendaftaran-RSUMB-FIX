@@ -85,6 +85,30 @@ import {
   AlertTriangle,
   Info
 } from 'lucide-react';
+import {
+  subscribeSchedules,
+  saveScheduleDoc,
+  deleteScheduleDoc,
+  batchSaveSchedules,
+  subscribeDoctorLeaves,
+  saveDoctorLeaveDoc,
+  deleteDoctorLeaveDoc,
+  subscribePatientQueues,
+  savePatientQueueDoc,
+  deletePatientQueueDoc,
+  subscribeSurgerySchedules,
+  saveSurgeryScheduleDoc,
+  deleteSurgeryScheduleDoc,
+  subscribeKhitanParticipants,
+  saveKhitanParticipantDoc,
+  deleteKhitanParticipantDoc,
+  subscribeMedicalLetters,
+  saveMedicalLetterDoc,
+  deleteMedicalLetterDoc,
+  subscribeJasaRaharja,
+  saveJasaRaharjaDoc,
+  deleteJasaRaharjaDoc
+} from './services/firestoreSync';
 
 export default function App() {
   // Persistence state
@@ -132,7 +156,7 @@ export default function App() {
     } catch (e) {
       console.error('Error loading medcentral_leaves_v5:', e);
     }
-    return consolidateAndSortDoctorLeaves(initialDoctorLeaves.filter((s: any) => !s.is_deleted && !s.isDeleted));
+    return [];
   });
 
   const [queueList, setQueueList] = useState<PatientQueueItem[]>(() => {
@@ -147,7 +171,7 @@ export default function App() {
     } catch (e) {
       console.error('Error loading medcentral_queue_v3:', e);
     }
-    return initialQueueList.filter((s: any) => !s.is_deleted && !s.isDeleted);
+    return [];
   });
 
   const [surgeryList, setSurgeryList] = useState<ElectiveSurgerySchedule[]>(() => {
@@ -206,7 +230,7 @@ export default function App() {
     } catch (e) {
       console.error('Error loading surgery schedules:', e);
     }
-    return initialSurgerySchedules;
+    return [];
   });
 
   const [khitanParticipants, setKhitanParticipants] = useState<KhitanParticipant[]>(() => {
@@ -291,14 +315,62 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [highlightedDoctor, setHighlightedDoctor] = useState<string | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialMountRef = useRef<boolean>(true);
 
   const handleOpenLeavePoster = (leave: DoctorLeaveAnnouncement) => {
     setLeaveForPoster(leave);
     setIsLeavePosterModalOpen(true);
   };
 
-  // Ref to skip triggering Drive push on first mount
-  const isInitialMountRef = useRef(true);
+  // ----------------------------------------------------
+  // SINKRONISASI REAL-TIME CLOUD FIRESTORE (SEMUA MENU)
+  // ----------------------------------------------------
+  useEffect(() => {
+    const unsubSchedules = subscribeSchedules((items) => {
+      if (items && items.length > 0) {
+        setSchedules(items);
+      } else {
+        batchSaveSchedules(initialSchedules).catch(() => {});
+        setSchedules(initialSchedules);
+      }
+    });
+
+    const unsubLeaves = subscribeDoctorLeaves((items) => {
+      if (items) {
+        setDoctorLeaves(consolidateAndSortDoctorLeaves(items));
+      }
+    });
+
+    const unsubQueues = subscribePatientQueues((items) => {
+      if (items) setQueueList(items);
+    });
+
+    const unsubSurgeries = subscribeSurgerySchedules((items) => {
+      if (items) setSurgeryList(items);
+    });
+
+    const unsubKhitan = subscribeKhitanParticipants((items) => {
+      if (items) setKhitanParticipants(items);
+    });
+
+    const unsubLetters = subscribeMedicalLetters((items) => {
+      if (items) setMedicalLetters(items);
+    });
+
+    const unsubJR = subscribeJasaRaharja((items) => {
+      if (items) setJasaRaharjaList(items);
+    });
+
+    return () => {
+      unsubSchedules();
+      unsubLeaves();
+      unsubQueues();
+      unsubSurgeries();
+      unsubKhitan();
+      unsubLetters();
+      unsubJR();
+    };
+  }, []);
 
   useEffect(() => {
     // Jalankan pembersihan cache otomatis (hapus log aktivitas & snapshot data usang > 30 hari pada app mount)
@@ -476,16 +548,21 @@ export default function App() {
       no: surgeryList.length + 1
     };
     setSurgeryList((prev) => [newItem, ...prev]);
+    saveSurgeryScheduleDoc(newItem).catch(() => {});
   };
 
   const handleUpdateSurgery = (id: string, updated: Partial<ElectiveSurgerySchedule>) => {
-    setSurgeryList((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updated } : s))
-    );
+    setSurgeryList((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, ...updated } : s));
+      const target = next.find((s) => s.id === id);
+      if (target) saveSurgeryScheduleDoc(target).catch(() => {});
+      return next;
+    });
   };
 
   const handleDeleteSurgery = (id: string) => {
     setSurgeryList((prev) => prev.filter((s) => s.id !== id));
+    deleteSurgeryScheduleDoc(id).catch(() => {});
   };
 
   const handleAddKhitanParticipant = (data: Omit<KhitanParticipant, 'id' | 'createdAt'>) => {
@@ -498,22 +575,28 @@ export default function App() {
       dokterOperatorKontrol: data.dokterOperatorKontrol || 'dr. H. Abd. Rokhim, MARS'
     };
     setKhitanParticipants((prev) => [newItem, ...prev]);
+    saveKhitanParticipantDoc(newItem).catch(() => {});
   };
 
   const handleUpdateKhitanParticipant = (id: string, updated: Partial<KhitanParticipant>) => {
-    setKhitanParticipants((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updated } : item))
-    );
+    setKhitanParticipants((prev) => {
+      const next = prev.map((item) => (item.id === id ? { ...item, ...updated } : item));
+      const target = next.find((item) => item.id === id);
+      if (target) saveKhitanParticipantDoc(target).catch(() => {});
+      return next;
+    });
   };
 
   const handleDeleteKhitanParticipant = (id: string) => {
     setKhitanParticipants((prev) => prev.filter((item) => item.id !== id));
+    deleteKhitanParticipantDoc(id).catch(() => {});
   };
 
   const handleAddLetter = (newLetter: MedicalLetterItem) => {
     setMedicalLetters((prev) => {
       const updated = [newLetter, ...prev];
       saveMedicalLetters(updated);
+      saveMedicalLetterDoc(newLetter).catch(() => {});
       return updated;
     });
   };
@@ -524,6 +607,7 @@ export default function App() {
         item.id === updatedLetter.id ? updatedLetter : item
       );
       saveMedicalLetters(updated);
+      saveMedicalLetterDoc(updatedLetter).catch(() => {});
       return updated;
     });
   };
@@ -532,6 +616,7 @@ export default function App() {
     setMedicalLetters((prev) => {
       const updated = prev.filter((item) => item.id !== id);
       saveMedicalLetters(updated);
+      deleteMedicalLetterDoc(id).catch(() => {});
       return updated;
     });
   };
@@ -544,6 +629,7 @@ export default function App() {
     setJasaRaharjaList((prev) => {
       const updated = [itemWithId, ...prev];
       saveJasaRaharjaData(updated);
+      saveJasaRaharjaDoc(itemWithId).catch(() => {});
       return updated;
     });
     showToast(`Data Plafon pasien ${itemWithId.namaPasien} berhasil disimpan.`);
@@ -555,6 +641,7 @@ export default function App() {
         item.id === updatedItem.id ? updatedItem : item
       );
       saveJasaRaharjaData(updated);
+      saveJasaRaharjaDoc(updatedItem).catch(() => {});
       return updated;
     });
     showToast(`Data Plafon pasien ${updatedItem.namaPasien} berhasil diperbarui.`);
@@ -566,6 +653,7 @@ export default function App() {
       const updated = prev.filter((item) => item.id !== idOrNoRm && item.noRm !== idOrNoRm);
       saveJasaRaharjaData(updated);
       if (target) {
+        deleteJasaRaharjaDoc(target.id).catch(() => {});
         showToast(`Data Plafon pasien ${target.namaPasien} berhasil dihapus.`);
       }
       return updated;
@@ -751,18 +839,21 @@ export default function App() {
     if (Array.isArray(scheduleData)) {
       if (scheduleData.length === 0) return;
       setSchedules((prev) => [...scheduleData, ...prev]);
+      batchSaveSchedules(scheduleData).catch(() => {});
       const docName = scheduleData[0]?.dpjp || 'Dokter Baru';
       const docPoli = scheduleData[0]?.poli || 'Poliklinik';
-      showToast(`${scheduleData.length} jadwal praktik ${docName} (${docPoli}) berhasil ditambahkan & disinkronkan ke rsumb_database.json.`);
+      showToast(`${scheduleData.length} jadwal praktik ${docName} (${docPoli}) berhasil ditambahkan & disinkronkan ke Cloud Firestore.`);
       setEditingSchedule(null);
       return;
     }
 
     if (editingSchedule) {
+      const updated = { ...editingSchedule, ...scheduleData } as DoctorSchedule;
       setSchedules((prev) =>
-        prev.map((s) => (s.id === editingSchedule.id ? ({ ...s, ...scheduleData } as DoctorSchedule) : s))
+        prev.map((s) => (s.id === editingSchedule.id ? updated : s))
       );
-      showToast(`Jadwal ${scheduleData.dpjp} (${scheduleData.poli}) berhasil diperbarui & disinkronkan ke HFIS BPJS.`);
+      saveScheduleDoc(updated).catch(() => {});
+      showToast(`Jadwal ${scheduleData.dpjp} (${scheduleData.poli}) berhasil diperbarui & disinkronkan ke Cloud Firestore.`);
     } else {
       const newSchedule: DoctorSchedule = {
         id: `sch-${Date.now()}`,
@@ -780,13 +871,15 @@ export default function App() {
         status: (scheduleData.kuotaTerisi || 0) >= (scheduleData.kuotaTotal || 50) ? 'Penuh' : 'Tersedia'
       };
       setSchedules((prev) => [newSchedule, ...prev]);
-      showToast(`Jadwal baru ${scheduleData.dpjp} (${scheduleData.poli}) berhasil ditambahkan & disinkronkan ke rsumb_database.json.`);
+      saveScheduleDoc(newSchedule).catch(() => {});
+      showToast(`Jadwal baru ${scheduleData.dpjp} (${scheduleData.poli}) berhasil ditambahkan & disinkronkan ke Cloud Firestore.`);
     }
     setEditingSchedule(null);
   };
 
   const handleDeleteSchedule = (id: string) => {
     setSchedules((prev) => prev.filter((s) => s.id !== id));
+    deleteScheduleDoc(id).catch(() => {});
     showToast('Jadwal dokter berhasil dihapus.');
   };
 
@@ -796,7 +889,6 @@ export default function App() {
       prev.map((s) => {
         if (!ids.includes(s.id)) return s;
         const merged = { ...s, ...updates };
-        // If status wasn't explicitly set, re-evaluate Tersedia vs Penuh if quota changed
         if (!updates.status && (updates.kuotaTotal !== undefined || updates.kuotaTerisi !== undefined)) {
           const terisi = updates.kuotaTerisi !== undefined ? updates.kuotaTerisi : s.kuotaTerisi;
           const total = updates.kuotaTotal !== undefined ? updates.kuotaTotal : s.kuotaTotal;
@@ -806,6 +898,7 @@ export default function App() {
             merged.status = 'Tersedia';
           }
         }
+        saveScheduleDoc(merged).catch(() => {});
         return merged;
       })
     );
@@ -815,6 +908,7 @@ export default function App() {
   const handleBulkDeleteSchedules = (ids: string[]) => {
     if (!ids || ids.length === 0) return;
     setSchedules((prev) => prev.filter((s) => !ids.includes(s.id)));
+    ids.forEach((id) => deleteScheduleDoc(id).catch(() => {}));
     showToast(`${ids.length} jadwal dokter berhasil dihapus.`);
   };
 
@@ -824,15 +918,12 @@ export default function App() {
       const targetDpjpKey = normalizeDoctorName(leaveData.dpjp || '');
 
       if (editingLeave) {
-        // If editing existing record
         updated = prev.map((l) => (l.id === editingLeave.id ? leaveData : l));
       } else {
-        // Check if a card with this doctor already exists
         const existingIdx = prev.findIndex(
           (l) => normalizeDoctorName(l.dpjp || '') === targetDpjpKey
         );
         if (existingIdx >= 0) {
-          // Merge schedules into existing doctor card
           updated = [...prev];
           const existing = updated[existingIdx];
           const mergedJadwal = [...existing.jadwal];
@@ -856,6 +947,7 @@ export default function App() {
           updated = [leaveData, ...prev];
         }
       }
+      saveDoctorLeaveDoc(leaveData).catch(() => {});
       return consolidateAndSortDoctorLeaves(updated);
     });
 
@@ -873,6 +965,7 @@ export default function App() {
       const filtered = prev.filter(
         (l) => l.id !== id && (!normalizedTarget || normalizeDoctorName(l.dpjp) !== normalizedTarget)
       );
+      deleteDoctorLeaveDoc(id).catch(() => {});
       return consolidateAndSortDoctorLeaves(filtered);
     });
     setEditingLeave(null);
@@ -896,18 +989,22 @@ export default function App() {
     };
 
     setQueueList((prev) => [newQueue, ...prev]);
+    savePatientQueueDoc(newQueue).catch(() => {});
 
     // Increment kuota terisi
     setSchedules((prev) =>
-      prev.map((s) =>
-        s.id === selectedScheduleForBooking.id
-          ? {
-              ...s,
-              kuotaTerisi: Math.min(s.kuotaTotal, s.kuotaTerisi + 1),
-              status: s.kuotaTerisi + 1 >= s.kuotaTotal ? 'Penuh' : 'Tersedia'
-            }
-          : s
-      )
+      prev.map((s) => {
+        if (s.id === selectedScheduleForBooking.id) {
+          const updated = {
+            ...s,
+            kuotaTerisi: Math.min(s.kuotaTotal, s.kuotaTerisi + 1),
+            status: s.kuotaTerisi + 1 >= s.kuotaTotal ? ('Penuh' as const) : ('Tersedia' as const)
+          };
+          saveScheduleDoc(updated).catch(() => {});
+          return updated;
+        }
+        return s;
+      })
     );
 
     showToast(`Nomor Antrean ${newQueue.nomorAntrean} berhasil diterbitkan.`);

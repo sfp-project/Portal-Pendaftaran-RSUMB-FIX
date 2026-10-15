@@ -50,7 +50,8 @@ import {
   loadUmumBeresikoRecords,
   saveUmumBeresikoRecords,
   loadShiftHandoverRecords,
-  saveShiftHandoverRecords
+  saveShiftHandoverRecords,
+  subscribePatientNotesCategory
 } from '../../data/patientNotesData';
 import { KllFormModal } from './KllFormModal';
 import { BpjsKendalaModal } from './BpjsKendalaModal';
@@ -656,7 +657,33 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     return [...kllPending, ...bpjsPending];
   }, [kllRecords, bpjsRecords]);
 
-  // Sync to localStorage
+  // Real-time Cloud Firestore synchronization
+  useEffect(() => {
+    const unsub1 = subscribePatientNotesCategory('kll', (data) => {
+      if (data) setKllRecords(data);
+    });
+    const unsub2 = subscribePatientNotesCategory('bpjs', (data) => {
+      if (data) setBpjsRecords(data);
+    });
+    const unsub3 = subscribePatientNotesCategory('asuransi', (data) => {
+      if (data) setAsuransiRecords(data);
+    });
+    const unsub4 = subscribePatientNotesCategory('umum', (data) => {
+      if (data) setUmumRecords(data);
+    });
+    const unsub5 = subscribePatientNotesCategory('handover', (data) => {
+      if (data) setHandoverRecords(data);
+    });
+    return () => {
+      unsub1();
+      unsub2();
+      unsub3();
+      unsub4();
+      unsub5();
+    };
+  }, []);
+
+  // Sync to localStorage & Cloud Firestore
   useEffect(() => {
     saveKllRecords(kllRecords);
   }, [kllRecords]);

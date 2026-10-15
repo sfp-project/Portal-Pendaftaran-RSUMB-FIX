@@ -643,7 +643,7 @@ export function loadMedicalLetters(): MedicalLetterItem[] {
   } catch (err) {
     console.error('Failed to load medical letters from localStorage:', err);
   }
-  return INITIAL_LETTERS.filter((item: any) => !item.is_deleted && !item.isDeleted);
+  return [];
 }
 
 export function saveMedicalLetters(letters: MedicalLetterItem[]): void {

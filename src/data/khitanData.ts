@@ -323,11 +323,7 @@ export function loadKhitanParticipants(): KhitanParticipant[] {
   } catch (e) {
     console.error('Error loading khitan participants from localStorage', e);
   }
-  return INITIAL_KHITAN_PARTICIPANTS.filter((p: any) => !p.is_deleted && !p.isDeleted).map((p) => ({
-    ...p,
-    tanggalKontrol: p.tanggalKontrol || calculateDefaultControlDate(p.tanggalPelaksanaan, 3),
-    dokterOperatorKontrol: p.dokterOperatorKontrol || 'dr. H. Abd. Rokhim, MARS'
-  }));
+  return [];
 }
 
 export function saveKhitanParticipants(data: KhitanParticipant[]): void {

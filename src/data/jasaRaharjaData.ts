@@ -1,4 +1,10 @@
 import { JasaRaharjaItem } from '../types';
+import {
+  subscribeCollection,
+  saveDoc,
+  removeDoc,
+  batchSaveCollection
+} from '../services/firebase';
 
 export const PLAFON_MAKSIMAL_DEFAULT = 20000000; // Rp 20.000.000 (Standar Batas Plafon Luka-Luka Jasa Raharja)
 
@@ -170,9 +176,17 @@ export const initialJasaRaharjaData: JasaRaharjaItem[] = [
 const LOCAL_STORAGE_KEY = 'rsumb_jasa_raharja_v1';
 const FALLBACK_STORAGE_KEYS = ['rsumb_jr_data_v1', 'rsumb_jr_cases_v1'];
 
+export function subscribeJasaRaharjaList(callback: (items: JasaRaharjaItem[]) => void): () => void {
+  return subscribeCollection<JasaRaharjaItem>('jasa_raharja', (items) => {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(items));
+    } catch {}
+    callback(items);
+  });
+}
+
 export function loadJasaRaharjaData(): JasaRaharjaItem[] {
-  const getInitialActive = () => initialJasaRaharjaData.filter((i: any) => !i.is_deleted && !i.isDeleted);
-  if (typeof window === 'undefined') return getInitialActive();
+  if (typeof window === 'undefined') return [];
 
   const allKeys = [LOCAL_STORAGE_KEY, ...FALLBACK_STORAGE_KEYS];
 
@@ -192,29 +206,28 @@ export function loadJasaRaharjaData(): JasaRaharjaItem[] {
         }
       }
     } catch (err) {
-      // Auto-heal corrupted key by removing it safely
       try {
         localStorage.removeItem(key);
       } catch {}
     }
   }
 
-  // Auto-heal by writing initial clean data to primary key
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initialJasaRaharjaData));
-  } catch {}
-
-  return getInitialActive();
+  return [];
 }
 
 export function saveJasaRaharjaData(data: JasaRaharjaItem[]): void {
   if (typeof window === 'undefined') return;
+  const validData = Array.isArray(data) ? data : [];
   try {
-    const validData = Array.isArray(data) ? data : [];
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(validData));
   } catch (err) {
     console.warn('Peringatan: Gagal menyimpan data Jasa Raharja ke storage:', err);
   }
+
+  // Cloud Firestore Sync
+  batchSaveCollection('jasa_raharja', validData).catch((err) => {
+    console.warn('[Firestore] Gagal menyimpan batch Jasa Raharja:', err);
+  });
 }
 
 /**

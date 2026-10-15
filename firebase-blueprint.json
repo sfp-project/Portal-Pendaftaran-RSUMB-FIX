@@ -1,0 +1,257 @@
+{
+  "entities": {
+    "DoctorSchedule": {
+      "title": "DoctorSchedule",
+      "description": "Jadwal Praktik Dokter Poliklinik RSUMB",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "dpjp": { "type": "string", "maxLength": 256 },
+        "spesialisasi": { "type": "string", "maxLength": 256 },
+        "poli": { "type": "string", "maxLength": 128 },
+        "hari": { "type": "string", "maxLength": 64 },
+        "jam": { "type": "string", "maxLength": 64 },
+        "jamSelesai": { "type": "string", "maxLength": 64 },
+        "kuota": { "type": "number" },
+        "sisaKuota": { "type": "number" },
+        "status": { "type": "string", "maxLength": 64 },
+        "is_deleted": { "type": "boolean" }
+      },
+      "required": ["id", "dpjp", "poli", "hari"]
+    },
+    "DoctorLeave": {
+      "title": "DoctorLeave",
+      "description": "Pengumuman Cuti Dokter",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "doctorName": { "type": "string", "maxLength": 256 },
+        "poli": { "type": "string", "maxLength": 128 },
+        "startDate": { "type": "string", "maxLength": 64 },
+        "endDate": { "type": "string", "maxLength": 64 },
+        "replacementDoctor": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "maxLength": 64 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "is_deleted": { "type": "boolean" }
+      },
+      "required": ["id", "doctorName", "startDate"]
+    },
+    "PatientQueue": {
+      "title": "PatientQueue",
+      "description": "Antrean Pasien Poliklinik",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "queueNumber": { "type": "string", "maxLength": 64 },
+        "patientName": { "type": "string", "maxLength": 256 },
+        "noRm": { "type": "string", "maxLength": 64 },
+        "poli": { "type": "string", "maxLength": 128 },
+        "doctor": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "maxLength": 64 },
+        "is_deleted": { "type": "boolean" }
+      },
+      "required": ["id", "patientName"]
+    },
+    "SurgerySchedule": {
+      "title": "SurgerySchedule",
+      "description": "Jadwal Operasi Elektif",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "namaPasien": { "type": "string", "maxLength": 256 },
+        "noRm": { "type": "string", "maxLength": 64 },
+        "umur": { "type": "string", "maxLength": 64 },
+        "poli": { "type": "string", "maxLength": 128 },
+        "dokterOperator": { "type": "string", "maxLength": 256 },
+        "tindakan": { "type": "string", "maxLength": 512 },
+        "tanggalOperasi": { "type": "string", "maxLength": 64 },
+        "jamOperasi": { "type": "string", "maxLength": 64 },
+        "jenisBayar": { "type": "string", "maxLength": 128 },
+        "pelayanan": { "type": "string", "maxLength": 128 },
+        "kamarRawatInap": { "type": "string", "maxLength": 128 },
+        "keterangan": { "type": "string", "maxLength": 1000 },
+        "is_deleted": { "type": "boolean" }
+      },
+      "required": ["id", "namaPasien", "noRm"]
+    },
+    "KhitanParticipant": {
+      "title": "KhitanParticipant",
+      "description": "Peserta Khitan Jumat Berkah",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "nama": { "type": "string", "maxLength": 256 },
+        "noRm": { "type": "string", "maxLength": 64 },
+        "umur": { "type": "string", "maxLength": 64 },
+        "alamat": { "type": "string", "maxLength": 512 },
+        "namaWali": { "type": "string", "maxLength": 256 },
+        "noHp": { "type": "string", "maxLength": 64 },
+        "tanggalPelaksanaan": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "maxLength": 64 },
+        "catatan": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "nama"]
+    },
+    "JasaRaharjaItem": {
+      "title": "JasaRaharjaItem",
+      "description": "Data Pasien Kasus KLL / Jasa Raharja",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "noBerkas": { "type": "string", "maxLength": 128 },
+        "namaPasien": { "type": "string", "maxLength": 256 },
+        "noRm": { "type": "string", "maxLength": 64 },
+        "tanggalKejadian": { "type": "string", "maxLength": 64 },
+        "tanggalMasuk": { "type": "string", "maxLength": 64 },
+        "lokasiKejadian": { "type": "string", "maxLength": 512 },
+        "statusKlaim": { "type": "string", "maxLength": 128 },
+        "statusJaminan": { "type": "string", "maxLength": 128 },
+        "nominalJaminan": { "type": "number" },
+        "keterangan": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["id", "namaPasien"]
+    },
+    "StickyNote": {
+      "title": "StickyNote",
+      "description": "Catatan Sticky Notes Operan Shift & Inden Ranap",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 128 },
+        "subtitle": { "type": "string", "maxLength": 256 },
+        "headerCode": { "type": "string", "maxLength": 64 },
+        "theme": { "type": "string", "maxLength": 32 },
+        "contentHtml": { "type": "string", "maxLength": 50000 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "title"]
+    },
+    "ShiftArchive": {
+      "title": "ShiftArchive",
+      "description": "Arsip Riwayat Operan Shift",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 64 },
+        "dateDisplay": { "type": "string", "maxLength": 128 },
+        "shift": { "type": "string", "maxLength": 128 },
+        "officerName": { "type": "string", "maxLength": 128 },
+        "notesText": { "type": "string", "maxLength": 5000 },
+        "savedAt": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "date", "shift", "officerName"]
+    },
+    "PatientNote": {
+      "title": "PatientNote",
+      "description": "Catatan Pasien Ranap (KLL, BPJS Kendala, Asuransi, dll)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "category": { "type": "string", "maxLength": 64 },
+        "namaPasien": { "type": "string", "maxLength": 256 },
+        "noRm": { "type": "string", "maxLength": 64 },
+        "tanggalMrs": { "type": "string", "maxLength": 64 },
+        "kronologi": { "type": "string", "maxLength": 5000 },
+        "penjamin": { "type": "string", "maxLength": 128 },
+        "catatan": { "type": "string", "maxLength": 5000 },
+        "isResolved": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "category", "namaPasien"]
+    },
+    "SepPendingItem": {
+      "title": "SepPendingItem",
+      "description": "Daftar Tracker SEP Pending Beda HFIS",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "noAntrian": { "type": "string", "maxLength": 64 },
+        "rm": { "type": "string", "maxLength": 64 },
+        "nama": { "type": "string", "maxLength": 256 },
+        "namaPoli": { "type": "string", "maxLength": 128 },
+        "dokter": { "type": "string", "maxLength": 256 },
+        "noRawat": { "type": "string", "maxLength": 128 },
+        "fingerprintStatus": { "type": "string", "maxLength": 64 },
+        "targetPrintTime": { "type": "string", "maxLength": 32 },
+        "statusCetak": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "rm", "nama"]
+    },
+    "AuditSurkonDoc": {
+      "title": "AuditSurkonDoc",
+      "description": "Data State dan Hasil Audit Surat Kontrol BPJS",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "dataPasienText": { "type": "string", "maxLength": 200000 },
+        "dataSurkonText": { "type": "string", "maxLength": 200000 },
+        "sepPasteText": { "type": "string", "maxLength": 200000 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id"]
+    },
+    "MohatCoupon": {
+      "title": "MohatCoupon",
+      "description": "Data Kupon Fee Mohat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "nomorKupon": { "type": "string", "maxLength": 64 },
+        "namaDokter": { "type": "string", "maxLength": 256 },
+        "namaPasien": { "type": "string", "maxLength": 256 },
+        "noRm": { "type": "string", "maxLength": 64 },
+        "tindakan": { "type": "string", "maxLength": 256 },
+        "nominal": { "type": "number" },
+        "status": { "type": "string", "maxLength": 64 },
+        "tanggal": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "nomorKupon", "namaDokter"]
+    },
+    "MedicalLetter": {
+      "title": "MedicalLetter",
+      "description": "Surat Medis / Surat Keterangan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "nomorSurat": { "type": "string", "maxLength": 128 },
+        "jenisSurat": { "type": "string", "maxLength": 128 },
+        "perihal": { "type": "string", "maxLength": 256 },
+        "namaPasien": { "type": "string", "maxLength": 256 },
+        "noRm": { "type": "string", "maxLength": 64 },
+        "dokter": { "type": "string", "maxLength": 256 },
+        "tanggal": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "nomorSurat", "namaPasien"]
+    },
+    "SystemSetting": {
+      "title": "SystemSetting",
+      "description": "Konfigurasi Sistem Portal RSUMB",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "hospitalName": { "type": "string", "maxLength": 256 },
+        "hospitalLogo": { "type": "string", "maxLength": 1000000 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/schedules/{id}": { "schema": "DoctorSchedule", "description": "Koleksi jadwal dokter" },
+    "/doctor_leaves/{id}": { "schema": "DoctorLeave", "description": "Koleksi cuti dokter" },
+    "/patient_queues/{id}": { "schema": "PatientQueue", "description": "Koleksi antrean pasien" },
+    "/surgery_schedules/{id}": { "schema": "SurgerySchedule", "description": "Koleksi jadwal operasi" },
+    "/khitan_participants/{id}": { "schema": "KhitanParticipant", "description": "Koleksi peserta khitan" },
+    "/jasa_raharja/{id}": { "schema": "JasaRaharjaItem", "description": "Koleksi data KLL Jasa Raharja" },
+    "/sticky_notes/{id}": { "schema": "StickyNote", "description": "Koleksi sticky notes operan shift" },
+    "/shift_archives/{id}": { "schema": "ShiftArchive", "description": "Koleksi arsip shift" },
+    "/patient_notes/{id}": { "schema": "PatientNote", "description": "Koleksi catatan pasien ranap" },
+    "/sep_pending/{id}": { "schema": "SepPendingItem", "description": "Koleksi pending SEP beda HFIS" },
+    "/audit_surkon/{id}": { "schema": "AuditSurkonDoc", "description": "Koleksi audit surkon" },
+    "/mohat_coupons/{id}": { "schema": "MohatCoupon", "description": "Koleksi kupon mohat" },
+    "/medical_letters/{id}": { "schema": "MedicalLetter", "description": "Koleksi surat medis" },
+    "/system_settings/{id}": { "schema": "SystemSetting", "description": "Koleksi konfigurasi sistem" }
+  }
+}

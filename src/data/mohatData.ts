@@ -7,6 +7,11 @@ import {
   StatusKlaimKupon
 } from '../types/mohatTypes';
 import { loadPortalSettings } from './settingsData';
+import {
+  subscribeCollection,
+  saveDoc,
+  batchSaveCollection
+} from '../services/firebase';
 
 export const STORAGE_KEY_KUPON_MOHAT = 'rsumb_kupon_fee_mohat_v1';
 export const STORAGE_KEY_MOHAT_SUGGESTIONS = 'rsumb_mohat_suggestions_v1';
@@ -249,23 +254,22 @@ export const SEED_KUPON_MOHAT: KuponMohat[] = [
 
 export const STORAGE_KEY_MOHAT_SERIAL = 'rsumb_mohat_serial_counter_v1';
 
+export const subscribeMohatCouponsList = (callback: (items: KuponMohat[]) => void): (() => void) => {
+  return subscribeCollection<KuponMohat>('mohat_coupons', (items) => {
+    try {
+      localStorage.setItem(STORAGE_KEY_KUPON_MOHAT, JSON.stringify(items));
+    } catch {}
+    callback(items);
+  });
+};
+
 export const loadKuponList = (): KuponMohat[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_KUPON_MOHAT);
     let list: KuponMohat[] = [];
-    if (!raw) {
-      list = SEED_KUPON_MOHAT;
-      localStorage.setItem(STORAGE_KEY_KUPON_MOHAT, JSON.stringify(SEED_KUPON_MOHAT));
-    } else {
+    if (raw) {
       const parsed = JSON.parse(raw);
-      list = Array.isArray(parsed) ? parsed : SEED_KUPON_MOHAT;
-      // Pastikan kupon arsip dasar (termasuk Agustus 2026) selalu tersedia jika belum ada
-      const existingIds = new Set(list.map((k) => k.id));
-      const missingSeeds = SEED_KUPON_MOHAT.filter((s) => !existingIds.has(s.id));
-      if (missingSeeds.length > 0) {
-        list = [...missingSeeds, ...list];
-        localStorage.setItem(STORAGE_KEY_KUPON_MOHAT, JSON.stringify(list));
-      }
+      if (Array.isArray(parsed)) list = parsed;
     }
 
     // Pastikan seluruh kupon memiliki nomor seri unik untuk integritas audit
@@ -291,7 +295,7 @@ export const loadKuponList = (): KuponMohat[] => {
     return list;
   } catch (error) {
     console.error('Gagal membaca kupon mohat dari storage:', error);
-    return SEED_KUPON_MOHAT;
+    return [];
   }
 };
 
@@ -301,6 +305,9 @@ export const saveKuponList = (list: KuponMohat[]) => {
   } catch (error) {
     console.error('Gagal menyimpan kupon mohat ke storage:', error);
   }
+  batchSaveCollection('mohat_coupons', list).catch((err) => {
+    console.warn('[Firestore] Gagal menyimpan batch kupon mohat:', err);
+  });
 };
 
 export const loadMohatSuggestions = (): MohatSuggestions => {
