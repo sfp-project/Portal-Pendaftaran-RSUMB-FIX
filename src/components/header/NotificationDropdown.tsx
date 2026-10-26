@@ -13,6 +13,7 @@ import {
   Sparkles,
   Layers,
   ChevronRight,
+  QrCode,
   X
 } from 'lucide-react';
 import { SystemNotification, NotificationCategory } from '../../types/headerTypes';
@@ -22,6 +23,7 @@ interface NotificationDropdownProps {
   isOpen: boolean;
   onClose: () => void;
   notifications: SystemNotification[];
+  unreadScanQrCount?: number;
   onMarkAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
   onNavigateToModule: (tab: ActiveNavTab, notification: SystemNotification) => void;
@@ -31,6 +33,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   isOpen,
   onClose,
   notifications,
+  unreadScanQrCount = 0,
   onMarkAsRead,
   onMarkAllAsRead,
   onNavigateToModule
@@ -172,6 +175,33 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
               )}
             </button>
           </div>
+
+          {/* Banner Indikator Data Scan QR Masuk */}
+          {unreadScanQrCount > 0 && (
+            <div className="mt-3 p-3 bg-gradient-to-r from-emerald-100 via-teal-50 to-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-extrabold text-emerald-950 truncate">
+                    {unreadScanQrCount} Pendaftaran Scan QR Baru
+                  </p>
+                  <p className="text-[10px] text-emerald-700 truncate">
+                    Data pasien masuk dari meja loket admisi
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  window.dispatchEvent(new CustomEvent('rsumb_open_incoming_self_reg_modal'));
+                }}
+                className="px-3 py-1.5 bg-[#005d42] hover:bg-emerald-800 text-white text-xs font-bold rounded-lg shadow-2xs transition-all shrink-0 cursor-pointer"
+              >
+                Buka Data
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Notifications List Body */}
@@ -202,6 +232,11 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                   <div className="flex items-start gap-3">
                     {/* Icon based on Subcategory */}
                     <div className="mt-0.5 shrink-0">
+                      {notif.subCategory === 'Scan QR Mandiri' && (
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shadow-2xs">
+                          <QrCode className="w-4 h-4 text-emerald-700" />
+                        </div>
+                      )}
                       {notif.subCategory === 'Jadwal DPJP' && (
                         <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shadow-2xs">
                           <Calendar className="w-4 h-4" />
@@ -280,12 +315,18 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              onNavigateToModule(notif.targetTab, notif);
+                              if (notif.subCategory === 'Scan QR Mandiri') {
+                                onMarkAsRead(notif.id);
+                                onClose();
+                                window.dispatchEvent(new CustomEvent('rsumb_open_incoming_self_reg_modal'));
+                              } else {
+                                onNavigateToModule(notif.targetTab, notif);
+                              }
                             }}
                             className="text-[10.5px] font-bold text-[#005d42] hover:text-[#004a35] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 px-2.5 py-0.5 rounded-md flex items-center gap-1 transition shadow-2xs cursor-pointer"
-                            title="Buka modul terkait langsung"
+                            title={notif.subCategory === 'Scan QR Mandiri' ? 'Buka data masuk scan QR pasien' : 'Buka modul terkait langsung'}
                           >
-                            <span>Lihat Detail</span>
+                            <span>{notif.subCategory === 'Scan QR Mandiri' ? 'Buka Data QR' : 'Lihat Detail'}</span>
                             <ChevronRight className="w-3 h-3" />
                           </button>
                         </div>

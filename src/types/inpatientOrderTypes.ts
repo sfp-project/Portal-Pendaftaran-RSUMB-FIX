@@ -53,6 +53,7 @@ export interface LantaiKamarKosong {
 }
 
 export type StickyColorTheme = 'blue' | 'green' | 'pink' | 'cream';
+export type StickyFontSize = 'xs' | 'sm' | 'base' | 'lg';
 
 export interface StickyNoteItem {
   id: string; // 'lt4' | 'lt5' | 'vk' | 'kamar_kosong'
@@ -62,4 +63,7 @@ export interface StickyNoteItem {
   theme: StickyColorTheme;
   contentHtml: string;
   updatedAt: string;
+  fontSize?: StickyFontSize; // 'xs' | 'sm' | 'base' | 'lg'
+  customWidth?: number; // lebar kartu dalam piksel (resizable)
+  customHeight?: number; // tinggi kartu dalam piksel (resizable)
 }

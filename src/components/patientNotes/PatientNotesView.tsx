@@ -41,8 +41,6 @@ import {
   PenjaminKll
 } from '../../types/patientNotesTypes';
 import {
-  loadKllRecords,
-  saveKllRecords,
   loadBpjsKendalaRecords,
   saveBpjsKendalaRecords,
   loadAsuransiSwastaRecords,
@@ -58,6 +56,7 @@ import {
   deleteKllPatientDoc
 } from '../../data/patientNotesData';
 import { KllFormModal } from './KllFormModal';
+import { SIMRSRecapParser } from './SIMRSRecapParser';
 import { BpjsKendalaModal } from './BpjsKendalaModal';
 import { AsuransiSwastaModal } from './AsuransiSwastaModal';
 import { UmumBeresikoModal } from './UmumBeresikoModal';
@@ -1385,6 +1384,15 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
               </span>
             )}
           </button>
+          <button
+            onClick={() => setActiveSubTab('rekap_pendaftaran')}
+            className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeSubTab === 'rekap_pendaftaran' ? 'bg-blue-800 text-white shadow-md' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            <span>📋</span>
+            <span>Rekap</span>
+          </button>
         </div>
       </div>
 
@@ -1404,6 +1412,8 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
           }}
           showToast={showToast}
         />
+      ) : activeSubTab === 'rekap_pendaftaran' ? (
+        <SIMRSRecapParser />
       ) : (
         <>
           {/* GLOBAL FILTER BAR & SEARCH BAR */}

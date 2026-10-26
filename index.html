@@ -75,6 +75,21 @@
     </div>
   </div>
   <div class="print-content" style="padding: 16px;">
+    ${htmlContent.includes('rsumb-print-header') || htmlContent.includes('print-header-kop') || htmlContent.includes('RSU MUHAMMADIYAH BABAT') ? '' : `
+    <div style="border-bottom: 2px solid #047857; padding-bottom: 8px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;">
+      <img src="/logo-rsumb.png" alt="Logo RSUMB" style="width: 50px; height: 50px; object-fit: contain;">
+      <div style="flex: 1;">
+        <div style="font-size: 11px; font-weight: bold; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">RSU MUHAMMADIYAH BABAT</div>
+        <div style="font-size: 14px; font-weight: 800; color: #047857; text-transform: uppercase; margin-top: 1px;">${title}</div>
+        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Jl. Raya Babat No. 184, Babat, Lamongan - Jawa Timur | Telp. (0322) 451111 / 451234</div>
+      </div>
+      <div style="text-align: right; font-size: 9px; color: #64748b; font-family: monospace;">
+        <div>Dicetak pada:</div>
+        <div style="font-weight: bold; color: #1e293b;">${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+      </div>
+    </div>
+    <div style="height: 1px; background: #0f172a; margin-top: -8px; margin-bottom: 12px;"></div>
+    `}
     ${htmlContent}
   </div>
   <script>

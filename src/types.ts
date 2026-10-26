@@ -33,10 +33,12 @@ export interface DoctorLeaveItem {
   keterangan: string;
   tglLibur: string;
   tglMasuk: string;
-  tipe: 'LIBUR' | 'MAJU' | 'CUTI' | 'SUBSTITUSI';
+  tipe: 'LIBUR' | 'MAJU' | 'CUTI' | 'SUBSTITUSI' | 'BATAS_KUOTA';
   jamPraktikBaru?: string; // e.g. "07.00 - 10.00 WIB"
   jamHfisBaru?: string; // e.g. "07.00 - 10.00 WIB"
   jamCetakBaru?: string; // e.g. "06.00 WIB" or "cetak 06.00"
+  batasKuota?: number; // e.g. 25
+  tglSpesifik?: string; // e.g. "30 Oktober 2026"
 }
 
 export interface DoctorLeaveAnnouncement {
@@ -112,4 +114,22 @@ export interface EmergencyAlertData {
   message: string;
   issuedAt: string;
   issuedBy: string;
+}
+
+export interface PatientSelfRegistrationItem {
+  id: string;
+  statusPasien: 'Baru' | 'Lama';
+  namaPasien: string;
+  nik?: string;
+  tempatLahir?: string;
+  tanggalLahir?: string;
+  jenisKelamin: 'L' | 'P';
+  alamat: string;
+  noHp: string;
+  namaPenanggungJawab?: string;
+  hubunganKeluarga?: string;
+  jenisPembayaran: 'BPJS Kesehatan' | 'UMUM' | 'Asuransi Swasta';
+  waktuDaftar: string;
+  createdAt?: any;
+  statusProses?: 'Menunggu' | 'Diproses' | 'Selesai';
 }

@@ -25,6 +25,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { JasaRaharjaItem } from '../types';
+import { exportToExcel, exportToPdf } from '../utils/exportHelpers';
 import {
   formatRupiah,
   formatTanggalIndo,
@@ -44,6 +45,7 @@ interface JasaRaharjaViewProps {
   onDeleteItem: (id: string) => void;
   onBatchAddItems: (newItems: Omit<JasaRaharjaItem, 'id'>[]) => void;
   onUpsertItems?: (incomingItems: JasaRaharjaOcrItem[]) => UpsertResult;
+  onClearAllItems?: () => void;
   showToast?: (message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
@@ -236,6 +238,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
   onUpdateItem,
   onDeleteItem,
   onUpsertItems,
+  onClearAllItems,
   showToast = (_message: string, _type?: 'success' | 'info' | 'error') => {}
 }) => {
   // ---------------------------------------------------------------------------
@@ -247,6 +250,7 @@ export const JasaRaharjaView: React.FC<JasaRaharjaViewProps> = ({
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [copiedRm, setCopiedRm] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // ---------------------------------------------------------------------------
   // 2. Multi-Upload State (Images, PDF & Excel)
@@ -466,6 +470,7 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
         }
 
         // Apply UPSERT logic based on No. RM
+        localStorage.removeItem('kll_data_cleared');
         let upsertResult: UpsertResult;
         if (onUpsertItems) {
           upsertResult = onUpsertItems(extractedList);
@@ -522,6 +527,7 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
   );
 
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Handle Excel / CSV File Import (Local SheetJS Parser)
   // ---------------------------------------------------------------------------
   const handleExcelFileSelected = async (file: File) => {
@@ -531,6 +537,11 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
     setLastUpsertSummary(null);
 
     try {
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.xls') && !lowerName.endsWith('.csv')) {
+        throw new Error('Format file tidak didukung. Harap unggah berkas berformat .xlsx, .xls, atau .csv.');
+      }
+
       const buffer = await file.arrayBuffer();
       setOcrProgressPercent(60);
       setOcrProgressText('Memetakan kolom (No. RM, Pasien, Biaya, Plafon)...');
@@ -539,11 +550,11 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
       setOcrProgressPercent(90);
 
       if (extractedItems.length === 0) {
-        showToast('Tidak ada data pasien yang valid di dalam file Excel.', 'error');
-        return;
+        throw new Error('Tidak ada data pasien yang valid di dalam file Excel / CSV. Pastikan format tabel tidak rusak.');
       }
 
       // Upsert into state
+      localStorage.removeItem('kll_data_cleared');
       let upsertResult: UpsertResult;
       if (onUpsertItems) {
         upsertResult = onUpsertItems(extractedItems);
@@ -555,13 +566,14 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
       setOcrProgressPercent(100);
       setLastUpsertSummary(upsertResult);
 
+      const totalExtracted = upsertResult.updatedCount + upsertResult.addedCount;
       showToast(
-        `Impor Excel Sukses: ${upsertResult.updatedCount} pasien diperbarui, ${upsertResult.addedCount} pasien baru ditambahkan dari ${file.name}!`,
+        `Berhasil mengekstrak ${totalExtracted} data pasien dari file Excel!`,
         'success'
       );
     } catch (err: any) {
       console.error('Error saat parsing file Excel:', err);
-      showToast(err?.message || 'Gagal membaca berkas Excel/CSV. Pastikan format tabel memiliki kolom data pasien.', 'error');
+      showToast(err?.message || 'Gagal membaca berkas Excel/CSV. Format file rusak atau tidak valid.', 'error');
     } finally {
       setIsProcessingOcr(false);
       setOcrProgressText('');
@@ -825,6 +837,7 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
     const sisa = Math.max(0, plafonMax - biaya);
     const statusPlafon = sisa <= 0 ? 'HABIS' : 'TERSEDIA';
 
+    localStorage.removeItem('kll_data_cleared');
     if (editingItem) {
       onUpdateItem({
         ...editingItem,
@@ -943,6 +956,129 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
     setFormDiagnosa(item.diagnosa || '');
     setFormCatatan(item.catatan || '');
     setIsAddModalOpen(true);
+  };
+
+  // Delete single patient row handler
+  const handleDeletePatient = (id: string, namaPasien?: string) => {
+    if (window.confirm('Hapus data pasien ini?')) {
+      onDeleteItem(id);
+      showToast(`Data pasien ${namaPasien || ''} berhasil dihapus.`, 'info');
+      if (items.length <= 1) {
+        localStorage.setItem('kll_data_cleared', 'true');
+        localStorage.setItem('jasa_raharja_patients', JSON.stringify([]));
+      } else {
+        const remaining = items.filter((item) => item.id !== id);
+        localStorage.setItem('jasa_raharja_patients', JSON.stringify(remaining));
+      }
+    }
+  };
+
+  // Reset all data handler
+  const handleResetAll = async () => {
+    if (window.confirm('Apakah Anda yakin ingin menghapus SELURUH data rekapitulasi?')) {
+      setIsDeleting(true);
+      try {
+        localStorage.setItem('kll_data_cleared', 'true');
+        localStorage.setItem('jasa_raharja_patients', JSON.stringify([]));
+        if (onClearAllItems) {
+          await onClearAllItems();
+        } else {
+          saveJasaRaharjaData([]);
+          try {
+            localStorage.removeItem('rsumb_jasa_raharja_v1');
+            localStorage.removeItem('rsumb_jr_data_v1');
+            localStorage.removeItem('rsumb_jr_cases_v1');
+            localStorage.removeItem('rsumb_kll_patients');
+            localStorage.removeItem('jasaraharja_active_photo_url');
+            localStorage.removeItem('jasaraharja_photo_gallery');
+          } catch {}
+          showToast('Semua data berhasil direset. Silakan unggah file terbaru.', 'success');
+        }
+      } finally {
+        setIsDeleting(false);
+      }
+    }
+  };
+
+  // Export Excel Handler
+  const handleExportExcel = async () => {
+    try {
+      const tableData = filteredAndSortedItems.map((item, index) => [
+        index + 1,
+        formatTanggalIndo(item.tanggal),
+        item.noRm,
+        item.namaPasien,
+        item.biayaTerpakai,
+        item.sisaPlafon,
+        item.keterangan || '-'
+      ]);
+
+      await exportToExcel({
+        filename: 'Rekap_Plafon_Jasa_Raharja.xlsx',
+        sheetName: 'Rekap Plafon KLL',
+        title: 'Rekapitulasi Plafon Jasa Raharja (KLL)',
+        subtitle: `Filter: ${activeFilter.toUpperCase()} | Total Pasien: ${filteredAndSortedItems.length}`,
+        totalLabel: `Total Plafon Terpakai: ${formatRupiah(stats.totalTerpakai)} | Total Sisa: ${formatRupiah(stats.totalSisa)}`,
+        headers: ['No', 'Tanggal', 'No. RM', 'Nama Pasien', 'Plafon Terpakai (Rp)', 'Sisa Plafon (Rp)', 'Status / Keterangan'],
+        data: tableData,
+        columnAlignments: ['center', 'center', 'center', 'left', 'right', 'right', 'center']
+      });
+      showToast('Berhasil mengekspor data ke Rekap_Plafon_Jasa_Raharja.xlsx', 'success');
+    } catch (err: any) {
+      console.error('Error exporting Excel:', err);
+      showToast('Gagal mengekspor file Excel.', 'error');
+    }
+  };
+
+  // Export PDF Handler
+  const handleExportPdf = async () => {
+    try {
+      const tableData = filteredAndSortedItems.map((item, index) => {
+        const isHabis =
+          item.sisaPlafon <= 0 ||
+          item.statusPlafon === 'HABIS' ||
+          item.keterangan?.toUpperCase().includes('HABIS') ||
+          item.biayaTerpakai >= 20000000;
+
+        const biayaStr = isHabis ? `${formatRupiah(item.biayaTerpakai)} (HABIS)` : formatRupiah(item.biayaTerpakai);
+        const sisaStr = isHabis ? 'HABIS (Rp 0)' : formatRupiah(item.sisaPlafon);
+
+        return [
+          index + 1,
+          formatTanggalIndo(item.tanggal),
+          item.noRm,
+          item.namaPasien,
+          biayaStr,
+          sisaStr,
+          item.keterangan || (isHabis ? 'HABIS' : '-')
+        ];
+      });
+
+      await exportToPdf({
+        filename: 'Rekap_Plafon_Jasa_Raharja.pdf',
+        title: 'Rekapitulasi Plafon Jasa Raharja (KLL) RSU Muhammadiyah Babat',
+        subtitle: `Filter: ${activeFilter.toUpperCase()} | Total Pasien: ${filteredAndSortedItems.length}`,
+        totalLabel: `Total Terpakai: ${formatRupiah(stats.totalTerpakai)} | Total Sisa: ${formatRupiah(stats.totalSisa)}`,
+        headers: ['No', 'Tanggal', 'No. RM', 'Nama Pasien', 'Plafon Terpakai', 'Sisa Plafon', 'Status'],
+        data: tableData,
+        columnStyles: {
+          0: { cellWidth: 12, halign: 'center' },
+          1: { cellWidth: 26, halign: 'center' },
+          2: { cellWidth: 24, halign: 'center' },
+          3: { cellWidth: 55, halign: 'left' },
+          4: { cellWidth: 35, halign: 'right' },
+          5: { cellWidth: 35, halign: 'right' },
+          6: { cellWidth: 28, halign: 'center' }
+        },
+        orientation: 'landscape',
+        signatureCity: 'Babat',
+        signatureTitle: 'Penanggung Jawab Jasa Raharja / Admisi'
+      });
+      showToast('Berhasil mencetak / mengekspor laporan PDF Rekap Plafon KLL', 'success');
+    } catch (err: any) {
+      console.error('Error exporting PDF:', err);
+      showToast('Gagal mengekspor dokumen PDF.', 'error');
+    }
   };
 
   return (
@@ -1325,7 +1461,40 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">Urutkan:</span>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold transition-colors cursor-pointer"
+              title="Ekspor data ke file Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Ekspor Excel</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-semibold transition-colors cursor-pointer"
+              title="Cetak atau ekspor dokumen PDF"
+            >
+              <FileText className="w-4 h-4 text-rose-600" />
+              <span>Ekspor PDF</span>
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={handleResetAll}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              title="Reset Data / Hapus Semua Pasien"
+            >
+              {isDeleting ? (
+                <RefreshCw className="w-4 h-4 text-rose-600 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 text-rose-600" />
+              )}
+              <span>{isDeleting ? 'Menghapus...' : 'Reset Data'}</span>
+            </button>
+
+            <span className="text-[11px] text-slate-400 ml-2">Urutkan:</span>
             <select
               value={`${sortField}-${sortOrder}`}
               onChange={(e) => {
@@ -1479,8 +1648,8 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
                           </button>
                           <button
                             type="button"
-                            onClick={() => setItemToDelete(item)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            onClick={() => handleDeletePatient(item.id, item.namaPasien)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Hapus Pasien"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

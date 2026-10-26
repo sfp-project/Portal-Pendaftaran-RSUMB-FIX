@@ -21,6 +21,7 @@ import {
   DAY_ORDER_MAP,
   formatDoctorScheduleTime,
   formatDoctorQuota,
+  getCleanDoctorQuota,
   getScheduleStartMinutes,
   formatLeaveBadgeSummary
 } from '../utils/dateHelpers';
@@ -188,7 +189,7 @@ export const DoctorSchedulePreviewModal: React.FC<DoctorSchedulePreviewModalProp
     text += `📅 *Rincian Hari & Jam Praktik:*\n`;
 
     matchingSchedules.forEach((s, idx) => {
-      text += `${idx + 1}. *${s.hari}*: ${formatDoctorScheduleTime(s)} - Kuota: ${formatDoctorQuota(s)}\n`;
+      text += `${idx + 1}. *${s.hari}*: ${formatDoctorScheduleTime(s)} - Kuota: ${getCleanDoctorQuota(s)}\n`;
     });
 
     if (docLeaves.length > 0) {
@@ -395,7 +396,7 @@ export const DoctorSchedulePreviewModal: React.FC<DoctorSchedulePreviewModalProp
                         </td>
                         <td className="px-4 py-3 text-center whitespace-nowrap">
                           <span className="inline-flex items-center justify-center font-bold px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                            {formatDoctorQuota(sch)}
+                            {getCleanDoctorQuota(sch)}
                           </span>
                         </td>
                       </tr>
@@ -573,7 +574,7 @@ export const DoctorSchedulePreviewModal: React.FC<DoctorSchedulePreviewModalProp
                       {formatDoctorScheduleTime(sch)}
                     </td>
                     <td className="border border-black px-3 py-2 text-center font-bold">
-                      {formatDoctorQuota(sch)}
+                      {getCleanDoctorQuota(sch)}
                     </td>
                   </tr>
                 ))}

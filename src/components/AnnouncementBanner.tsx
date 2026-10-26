@@ -9,7 +9,8 @@ import {
   ArrowRight,
   ChevronDown,
   Sparkles,
-  Timer
+  Timer,
+  Users
 } from 'lucide-react';
 import { DoctorLeaveAnnouncement } from '../types';
 import {
@@ -112,6 +113,8 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
 
           const allMaju = doc.jadwal.length > 0 && doc.jadwal.every((j) => j.tipe === 'MAJU');
           const allCuti = doc.jadwal.length > 0 && doc.jadwal.every((j) => j.tipe === 'CUTI');
+          const allBatasKuota = doc.jadwal.length > 0 && doc.jadwal.every((j) => j.tipe === 'BATAS_KUOTA');
+          const hasBatasKuota = doc.jadwal.some((j) => j.tipe === 'BATAS_KUOTA');
           const hasCuti = doc.jadwal.some((j) => j.tipe === 'CUTI');
           const hasMaju = doc.jadwal.some((j) => j.tipe === 'MAJU');
 
@@ -120,7 +123,11 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
           let badgeStyle = 'bg-red-50 text-red-700 border-red-200';
           let badgeIcon = <AlertTriangle className="w-2.5 h-2.5 text-red-600 shrink-0" />;
 
-          if (allMaju) {
+          if (allBatasKuota || (hasBatasKuota && !hasMaju && !hasCuti)) {
+            badgeText = 'KUOTA DIBATASI';
+            badgeStyle = 'bg-amber-50 text-amber-900 border-amber-300 font-bold';
+            badgeIcon = <Users className="w-2.5 h-2.5 text-amber-700 shrink-0" />;
+          } else if (allMaju) {
             badgeText = 'JADWAL MAJU';
             badgeStyle = 'bg-blue-50 text-blue-700 border-blue-200';
             badgeIcon = <Clock className="w-2.5 h-2.5 text-blue-600 shrink-0" />;
@@ -258,6 +265,7 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
                       const itemTimestamps = getAllScheduleItemTimestamps(item);
                       const isItemUpcoming = itemTimestamps.some((t) => t >= refTimestamp);
 
+                      const isBatasKuota = item.tipe === 'BATAS_KUOTA';
                       const isMaju = item.tipe === 'MAJU';
                       const cleanCetak = item.jamCetakBaru
                         ? item.jamCetakBaru.replace(/^cetak\s*/i, '').trim()
@@ -270,60 +278,86 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
                           key={idx}
                           className={idx > 0 ? 'pt-1.5 border-t border-slate-100' : ''}
                         >
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between gap-1">
-                              <span
-                                className={`px-2 py-1 rounded font-medium text-[11px] sm:text-xs leading-snug w-full block border break-words ${
-                                  item.tipe === 'CUTI'
-                                    ? 'bg-purple-50 text-purple-700 border-purple-100/80'
-                                    : isItemUpcoming && idx === 0
-                                    ? 'bg-red-50 text-red-700 border-red-200/90 font-semibold'
-                                    : 'bg-red-50 text-red-700 border-red-100/80'
-                                }`}
-                              >
-                                {item.tipe === 'CUTI'
-                                  ? 'Tgl Cuti'
-                                  : isMaju
-                                  ? 'Tgl Semula'
-                                  : 'Tgl Libur'}
-                                : {item.tglLibur}
-                              </span>
-                              {isMaju && (
-                                <span className="shrink-0 text-[9px] sm:text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-                                  MAJU
+                          {isBatasKuota ? (
+                            <div className="space-y-1.5 p-2 rounded-lg bg-amber-50/90 border border-amber-300/80">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[11px] font-bold text-amber-950 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3 text-amber-700 shrink-0" />
+                                  <span>{item.tglSpesifik || item.tglLibur}</span>
                                 </span>
-                              )}
-                              {item.tipe === 'CUTI' && (
-                                <span className="shrink-0 text-[9px] sm:text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
-                                  CUTI
+                                <span className="shrink-0 text-[9px] font-bold bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">
+                                  BATAS KUOTA
                                 </span>
-                              )}
-                            </div>
+                              </div>
 
-                            {/* Tanggal Masuk / Pengganti & Detail Jam Baru jika Jadwal Maju */}
-                            <div className="flex flex-col gap-1">
-                              <span
-                                className={`px-2 py-1 rounded font-medium text-[11px] sm:text-xs leading-snug w-full block border break-words ${
-                                  isMaju
-                                    ? 'bg-blue-50 text-blue-900 border-blue-200/80'
-                                    : 'bg-emerald-50 text-emerald-800 border-emerald-100/80'
-                                }`}
-                              >
-                                {isMaju ? 'Jadwal Maju: ' : 'Masuk/Ganti: '}
-                                <strong>{item.tglMasuk}</strong>
-                                {isMaju && item.jamPraktikBaru && (
-                                  <span className="block mt-0.5 text-[10.5px] text-blue-800 font-semibold">
-                                    🕒 Jam Praktik: {item.jamPraktikBaru}
-                                  </span>
-                                )}
-                                {isMaju && cleanCetak && (
-                                  <span className="block mt-0.5 text-[10px] text-emerald-800 font-bold bg-emerald-100/80 px-1.5 py-0.5 rounded w-fit border border-emerald-300">
-                                    🎫 Cetak tiket mulai {cleanCetak}
-                                  </span>
-                                )}
-                              </span>
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-950 bg-white/90 px-2 py-0.5 rounded border border-amber-200 shadow-2xs">
+                                <Users className="w-3 h-3 text-amber-700 shrink-0" />
+                                <span>Maksimal {item.batasKuota || 25} Pasien</span>
+                              </div>
+
+                              <p className="text-[10.5px] text-amber-900 leading-snug font-medium pt-0.5">
+                                {item.keterangan ||
+                                  `${doc.poli.toLowerCase().startsWith('poli') ? doc.poli : `Poli ${doc.poli}`} tgl ${
+                                    item.tglSpesifik || item.tglLibur
+                                  } kuota dibatasi maksimal ${item.batasKuota || 25} pasien`}
+                              </p>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span
+                                  className={`px-2 py-1 rounded font-medium text-[11px] sm:text-xs leading-snug w-full block border break-words ${
+                                    item.tipe === 'CUTI'
+                                      ? 'bg-purple-50 text-purple-700 border-purple-100/80'
+                                      : isItemUpcoming && idx === 0
+                                      ? 'bg-red-50 text-red-700 border-red-200/90 font-semibold'
+                                      : 'bg-red-50 text-red-700 border-red-100/80'
+                                  }`}
+                                >
+                                  {item.tipe === 'CUTI'
+                                    ? 'Tgl Cuti'
+                                    : isMaju
+                                    ? 'Tgl Semula'
+                                    : 'Tgl Libur'}
+                                  : {item.tglLibur}
+                                </span>
+                                {isMaju && (
+                                  <span className="shrink-0 text-[9px] sm:text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                    MAJU
+                                  </span>
+                                )}
+                                {item.tipe === 'CUTI' && (
+                                  <span className="shrink-0 text-[9px] sm:text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                    CUTI
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Tanggal Masuk / Pengganti & Detail Jam Baru jika Jadwal Maju */}
+                              <div className="flex flex-col gap-1">
+                                <span
+                                  className={`px-2 py-1 rounded font-medium text-[11px] sm:text-xs leading-snug w-full block border break-words ${
+                                    isMaju
+                                      ? 'bg-blue-50 text-blue-900 border-blue-200/80'
+                                      : 'bg-emerald-50 text-emerald-800 border-emerald-100/80'
+                                  }`}
+                                >
+                                  {isMaju ? 'Jadwal Maju: ' : 'Masuk/Ganti: '}
+                                  <strong>{item.tglMasuk}</strong>
+                                  {isMaju && item.jamPraktikBaru && (
+                                    <span className="block mt-0.5 text-[10.5px] text-blue-800 font-semibold">
+                                      🕒 Jam Praktik: {item.jamPraktikBaru}
+                                    </span>
+                                  )}
+                                  {isMaju && cleanCetak && (
+                                    <span className="block mt-0.5 text-[10px] text-emerald-800 font-bold bg-emerald-100/80 px-1.5 py-0.5 rounded w-fit border border-emerald-300">
+                                      🎫 Cetak tiket mulai {cleanCetak}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

@@ -23,7 +23,7 @@ import {
   Lock,
   Unlock
 } from 'lucide-react';
-import { ActiveNavTab, DoctorSchedule, DoctorLeaveAnnouncement } from '../types';
+import { ActiveNavTab, DoctorSchedule, DoctorLeaveAnnouncement, PatientQueueItem } from '../types';
 import { ElectiveSurgerySchedule } from '../data/surgeryData';
 import { KhitanParticipant } from '../data/khitanData';
 import { StaffUser, SystemNotification } from '../types/headerTypes';
@@ -32,8 +32,13 @@ import {
   saveActiveStaff,
   loadHeaderNotifications,
   saveHeaderNotifications,
+  markAllHeaderNotificationsAsRead,
   getShiftTimeRange
 } from '../data/headerData';
+import {
+  getUnreadSelfRegCount,
+  markAllSelfRegistrationsAsRead
+} from '../services/firestoreSync';
 import { NotificationDropdown } from './header/NotificationDropdown';
 import { UserProfileDropdown } from './header/UserProfileDropdown';
 import { StaffHandoverModal } from './header/StaffHandoverModal';
@@ -49,6 +54,26 @@ import {
 } from '../services/adminAuthService';
 import { getEffectiveHospitalLogo, DEFAULT_HOSPITAL_LOGO } from '../data/settingsData';
 
+const STORAGE_READ_QUEUE_KEY = 'rsumb_read_queue_patient_ids_v1';
+
+function getReadQueuePatientIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_READ_QUEUE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed);
+    }
+  } catch {}
+  return new Set();
+}
+
+function saveReadQueuePatientIds(ids: Set<string> | string[]) {
+  try {
+    localStorage.setItem(STORAGE_READ_QUEUE_KEY, JSON.stringify(Array.from(ids)));
+    window.dispatchEvent(new CustomEvent('rsumb_queue_read_status_changed'));
+  } catch {}
+}
+
 interface HeaderProps {
   onToggleMobileMenu: () => void;
   activeNavTab?: ActiveNavTab;
@@ -62,6 +87,7 @@ interface HeaderProps {
   doctorLeaves?: DoctorLeaveAnnouncement[];
   surgeryList?: ElectiveSurgerySchedule[];
   khitanParticipants?: KhitanParticipant[];
+  queueList?: PatientQueueItem[];
   onSelectPoli?: (poli: string) => void;
   onSelectDoctor?: (dpjp: string) => void;
   onClearSearch?: () => void;
@@ -80,6 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
   schedules = [],
   surgeryList = [],
   khitanParticipants = [],
+  queueList = [],
   onSelectPoli,
   onSelectDoctor,
   onClearSearch,
@@ -94,6 +121,35 @@ export const Header: React.FC<HeaderProps> = ({
   const [notifications, setNotifications] = useState<SystemNotification[]>(() => {
     return loadHeaderNotifications();
   });
+
+  // Real-time unread Scan QR Patient Count
+  const [unreadScanQrCount, setUnreadScanQrCount] = useState<number>(() => {
+    return getUnreadSelfRegCount();
+  });
+
+  // Track read IDs for queueList
+  const [readQueueIds, setReadQueueIds] = useState<Set<string>>(() => {
+    return getReadQueuePatientIds();
+  });
+
+  // Calculate unread patients from queueList
+  const unreadQueueCount = useMemo(() => {
+    if (!queueList || queueList.length === 0) return 0;
+    return queueList.filter((q) => !readQueueIds.has(q.id)).length;
+  }, [queueList, readQueueIds]);
+
+  // Seed initial existing queue items as read on first cold start so historical items don't falsely pulse
+  useEffect(() => {
+    if (!queueList || queueList.length === 0) return;
+    try {
+      const stored = localStorage.getItem(STORAGE_READ_QUEUE_KEY);
+      if (stored === null) {
+        const initialSet = new Set(queueList.map((q) => q.id));
+        saveReadQueuePatientIds(initialSet);
+        setReadQueueIds(initialSet);
+      }
+    } catch {}
+  }, [queueList]);
 
   // Active Staff State & Persistence
   const [activeStaff, setActiveStaff] = useState<StaffUser>(() => {
@@ -149,11 +205,40 @@ export const Header: React.FC<HeaderProps> = ({
       setHospitalLogo(getEffectiveHospitalLogo());
     };
 
+    const handleScanQrNotifsSync = () => {
+      setUnreadScanQrCount(getUnreadSelfRegCount());
+      setNotifications(loadHeaderNotifications());
+    };
+
+    // Saat modal 'Data Masuk Scan QR Pasien' dibuka:
+    // status notifikasi pada state lonceng langsung di-reset ke 0 dan efek berkedip berhenti
+    const handleResetScanQrModalState = () => {
+      if (queueList && queueList.length > 0) {
+        const allIds = new Set(readQueueIds);
+        queueList.forEach((q) => allIds.add(q.id));
+        saveReadQueuePatientIds(allIds);
+        setReadQueueIds(allIds);
+      }
+      markAllSelfRegistrationsAsRead();
+      setUnreadScanQrCount(0);
+    };
+
+    const handleQueueReadStatusSync = () => {
+      setReadQueueIds(getReadQueuePatientIds());
+    };
+
     window.addEventListener('rsumb_open_admin_pin_modal', handleOpenAdminPinModal as EventListener);
     window.addEventListener('rsumb_active_staff_changed', handleActiveStaffChanged);
     window.addEventListener('rsumb_logo_updated', handleLogoUpdated);
     window.addEventListener('rsumb_settings_updated', handleSettingsUpdated);
     window.addEventListener('storage', handleSettingsUpdated);
+    window.addEventListener('rsumb_self_registration_updated', handleScanQrNotifsSync);
+    window.addEventListener('rsumb_self_reg_read_status_changed', handleScanQrNotifsSync);
+    window.addEventListener('rsumb_header_notifications_updated', handleScanQrNotifsSync);
+    window.addEventListener('rsumb_modal_incoming_scan_qr_opened', handleResetScanQrModalState);
+    window.addEventListener('rsumb_open_incoming_self_reg_modal', handleResetScanQrModalState);
+    window.addEventListener('rsumb_open_incoming_self_reg_modal_inner', handleResetScanQrModalState);
+    window.addEventListener('rsumb_queue_read_status_changed', handleQueueReadStatusSync);
 
     return () => {
       unsub();
@@ -162,8 +247,15 @@ export const Header: React.FC<HeaderProps> = ({
       window.removeEventListener('rsumb_logo_updated', handleLogoUpdated);
       window.removeEventListener('rsumb_settings_updated', handleSettingsUpdated);
       window.removeEventListener('storage', handleSettingsUpdated);
+      window.removeEventListener('rsumb_self_registration_updated', handleScanQrNotifsSync);
+      window.removeEventListener('rsumb_self_reg_read_status_changed', handleScanQrNotifsSync);
+      window.removeEventListener('rsumb_header_notifications_updated', handleScanQrNotifsSync);
+      window.removeEventListener('rsumb_modal_incoming_scan_qr_opened', handleResetScanQrModalState);
+      window.removeEventListener('rsumb_open_incoming_self_reg_modal', handleResetScanQrModalState);
+      window.removeEventListener('rsumb_open_incoming_self_reg_modal_inner', handleResetScanQrModalState);
+      window.removeEventListener('rsumb_queue_read_status_changed', handleQueueReadStatusSync);
     };
-  }, []);
+  }, [queueList, readQueueIds]);
 
   const showToast = (msg: string) => {
     setToastNotice(msg);
@@ -176,16 +268,36 @@ export const Header: React.FC<HeaderProps> = ({
     return notifications.filter((n) => !n.isRead).length;
   }, [notifications]);
 
+  // Total counter data pasien baru belum terbaca (queueList + Scan QR)
+  const unreadNewPatientsCount = unreadQueueCount + unreadScanQrCount;
+
+  // Animasi berkedip (pulsing effect) aktif saat counter data pasien baru > 0
+  const isBlinkingActive = unreadNewPatientsCount > 0;
+
+  // Total counter badge pada lonceng (notifikasi sistem + pasien baru)
+  const totalUnreadCount = unreadAlertsCount + unreadNewPatientsCount;
+
   const handleMarkAsRead = (id: string) => {
     const updated = notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n));
     setNotifications(updated);
     saveHeaderNotifications(updated);
   };
 
+  const markAllQueueAsRead = () => {
+    if (queueList && queueList.length > 0) {
+      const allIds = new Set(readQueueIds);
+      queueList.forEach((q) => allIds.add(q.id));
+      saveReadQueuePatientIds(allIds);
+      setReadQueueIds(allIds);
+    }
+  };
+
   const handleMarkAllAsRead = () => {
-    const updated = notifications.map((n) => ({ ...n, isRead: true }));
-    setNotifications(updated);
-    saveHeaderNotifications(updated);
+    markAllHeaderNotificationsAsRead();
+    markAllSelfRegistrationsAsRead();
+    markAllQueueAsRead();
+    setNotifications(loadHeaderNotifications());
+    setUnreadScanQrCount(0);
     showToast('Semua notifikasi sistem telah ditandai sudah dibaca.');
   };
 
@@ -434,7 +546,7 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="bg-[#f8f9ff]/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#d8e4f5] shadow-xs px-3 sm:px-5 lg:px-6 h-16 flex items-center justify-between gap-2 sm:gap-3 lg:gap-4 transition-all w-full">
+    <header className="bg-white/95 backdrop-blur-md sticky top-0 z-50 border-b border-[#d8e4f5] shadow-xs px-3 sm:px-5 lg:px-6 h-16 flex items-center justify-between gap-2 sm:gap-3 lg:gap-4 transition-all w-full">
       {/* Left side: Hamburger (Mobile & Tablet) & App Title */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <button
@@ -698,15 +810,25 @@ export const Header: React.FC<HeaderProps> = ({
               setShowNotifications(!showNotifications);
               setShowProfileMenu(false);
             }}
-            className="p-2 text-[#005d42] hover:bg-[#e5eeff] rounded-full relative transition-colors cursor-pointer"
+            className={`p-2 rounded-full relative transition-all cursor-pointer ${
+              isBlinkingActive
+                ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 ring-2 ring-emerald-400 ring-offset-1 animate-pulse'
+                : 'text-[#005d42] hover:bg-[#e5eeff]'
+            }`}
             aria-label="Pemberitahuan Sistem SIMRS"
-            title={`Notifikasi Pelayanan (${unreadAlertsCount} Belum Dibaca)`}
+            title={
+              isBlinkingActive
+                ? `Perhatian: Ada ${unreadNewPatientsCount} data pasien baru belum terbaca!`
+                : `Notifikasi Pelayanan (${totalUnreadCount} Belum Dibaca)`
+            }
           >
-            <Bell className="w-5 h-5" />
-            {unreadAlertsCount > 0 && (
-              <span className="absolute top-1 right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-emerald-600 text-white font-bold text-[10px] rounded-full ring-2 ring-white shadow-xs">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative">{unreadAlertsCount}</span>
+            <Bell className={`w-5 h-5 ${isBlinkingActive ? 'text-emerald-700' : ''}`} />
+            {totalUnreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[20px] h-[20px] px-1 bg-emerald-600 text-white font-black text-[10px] rounded-full ring-2 ring-white shadow-xs">
+                {isBlinkingActive && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-80" />
+                )}
+                <span className="relative z-10">{totalUnreadCount}</span>
               </span>
             )}
           </button>
@@ -715,6 +837,7 @@ export const Header: React.FC<HeaderProps> = ({
             isOpen={showNotifications}
             onClose={() => setShowNotifications(false)}
             notifications={notifications}
+            unreadScanQrCount={unreadNewPatientsCount}
             onMarkAsRead={handleMarkAsRead}
             onMarkAllAsRead={handleMarkAllAsRead}
             onNavigateToModule={handleNavigateToModule}

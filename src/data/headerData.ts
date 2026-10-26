@@ -144,7 +144,7 @@ export const INITIAL_SYSTEM_NOTIFICATIONS: SystemNotification[] = [
     title: 'Perubahan Jadwal dr. Ilma Alifa, Sp.JP',
     message: 'Jadwal praktik Poli Jantung Kamis dimajukan ke Rabu, 3 Sept 2026 pukul 08.00 WIB.',
     time: '12 menit lalu',
-    isRead: false,
+    isRead: true,
     targetTab: 'schedules',
     severity: 'info',
     dpjpName: 'dr. Ilma Alifa, Sp.JP',
@@ -157,7 +157,7 @@ export const INITIAL_SYSTEM_NOTIFICATIONS: SystemNotification[] = [
     title: 'Cuti Praktik dr. Budi Santoso, Sp.A',
     message: 'Cuti kegiatan ilmiah tanggal 12 - 14 September 2026. Pasien dialihkan ke dr. Maya, Sp.A.',
     time: '35 menit lalu',
-    isRead: false,
+    isRead: true,
     targetTab: 'schedules',
     severity: 'warning',
     dpjpName: 'dr. Budi Santoso, Sp.A',
@@ -171,7 +171,7 @@ export const INITIAL_SYSTEM_NOTIFICATIONS: SystemNotification[] = [
     title: 'Peringatan Kuota BPJS: Poli Penyakit Dalam',
     message: 'Kuota antrean BPJS mencapai 48/50 (96% terisi). Segera pantau pendaftaran loket & MJKN.',
     time: '20 menit lalu',
-    isRead: false,
+    isRead: true,
     targetTab: 'quotas',
     severity: 'alert',
     poliName: 'Penyakit Dalam'
@@ -183,7 +183,7 @@ export const INITIAL_SYSTEM_NOTIFICATIONS: SystemNotification[] = [
     title: 'Kuota Maksimal Poli Saraf Terpenuhi',
     message: 'Sistem menutup otomatis antrean online Poli Saraf (45/45 pasien terdaftar).',
     time: '45 menit lalu',
-    isRead: false,
+    isRead: true,
     targetTab: 'quotas',
     severity: 'alert',
     poliName: 'Saraf'
@@ -196,7 +196,7 @@ export const INITIAL_SYSTEM_NOTIFICATIONS: SystemNotification[] = [
     title: 'Handover Prioritas Tinggi: Ny. Siti Rahayu (RM 38-44-12)',
     message: 'Pasien Ranap Kelas 1, pending SEP BPJS & persetujuan jaminan GL Asuransi. Butuh follow-up ke dokter DPJP.',
     time: '8 menit lalu',
-    isRead: false,
+    isRead: true,
     targetTab: 'patient_notes',
     severity: 'alert',
     patientName: 'Ny. Siti Rahayu'
@@ -209,7 +209,7 @@ export const INITIAL_SYSTEM_NOTIFICATIONS: SystemNotification[] = [
     title: 'Pengiriman WA Blast Gagal: Ny. Aminah',
     message: 'Pesan pengingat kontrol gagal terkirim ke 0812-3499-1288 (Error: Nomor tidak terdaftar WhatsApp).',
     time: '1 jam lalu',
-    isRead: false,
+    isRead: true,
     targetTab: 'contact_patients',
     severity: 'error',
     patientName: 'Ny. Aminah'
@@ -221,7 +221,7 @@ export const INITIAL_SYSTEM_NOTIFICATIONS: SystemNotification[] = [
     title: 'Pengiriman WA Blast Gagal: Tn. Subardi',
     message: 'Notifikasi antrean poliklinik ke 0857-8891-3200 gagal terkirim (Error: Timeout koneksi gateway WhatsApp).',
     time: '2 jam lalu',
-    isRead: false,
+    isRead: true,
     targetTab: 'contact_patients',
     severity: 'error',
     patientName: 'Tn. Subardi'
@@ -246,7 +246,65 @@ export function loadHeaderNotifications(): SystemNotification[] {
 export function saveHeaderNotifications(notifs: SystemNotification[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(notifs));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rsumb_header_notifications_updated'));
+    }
   } catch (e) {
     console.error('Failed to save header notifications to storage:', e);
   }
+}
+
+export function addScanQrHeaderNotification(patient: {
+  id: string;
+  namaPasien: string;
+  statusPasien: string;
+  jenisPembayaran: string;
+  noHp: string;
+}): void {
+  const current = loadHeaderNotifications();
+  const notifId = `notif-scan-${patient.id}`;
+  const filtered = current.filter((n) => n.id !== notifId);
+
+  const newNotif: SystemNotification = {
+    id: notifId,
+    category: 'Operasional',
+    subCategory: 'Scan QR Mandiri',
+    title: `Pendaftaran Baru: ${patient.namaPasien}`,
+    message: `Pasien ${patient.statusPasien} (${patient.jenisPembayaran}) mendaftar via scan QR admisi. No. HP: ${patient.noHp}`,
+    time: 'Baru saja',
+    isRead: false,
+    targetTab: 'dashboard',
+    severity: 'info',
+    patientName: patient.namaPasien
+  };
+
+  saveHeaderNotifications([newNotif, ...filtered]);
+}
+
+export function markAllScanQrHeaderNotificationsAsRead(): void {
+  const current = loadHeaderNotifications();
+  let hasChanges = false;
+  const updated = current.map((n) => {
+    if (n.subCategory === 'Scan QR Mandiri' && !n.isRead) {
+      hasChanges = true;
+      return { ...n, isRead: true };
+    }
+    return n;
+  });
+
+  if (hasChanges) {
+    saveHeaderNotifications(updated);
+  }
+}
+
+export function markAllHeaderNotificationsAsRead(): void {
+  const current = loadHeaderNotifications();
+  const updated = current.map((n) => ({ ...n, isRead: true }));
+  saveHeaderNotifications(updated);
+}
+
+export function removeHeaderNotification(id: string): void {
+  const current = loadHeaderNotifications();
+  const updated = current.filter((n) => n.id !== id);
+  saveHeaderNotifications(updated);
 }

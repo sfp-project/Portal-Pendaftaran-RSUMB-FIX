@@ -11,7 +11,7 @@ import { KhitanJumatView } from './components/KhitanJumatView';
 import { JasaRaharjaView } from './components/JasaRaharjaView';
 import { MedicalLettersView } from './components/MedicalLettersView';
 import { InpatientOrderManagementView } from './components/inpatient/InpatientOrderManagementView';
-import { ContactPatientsView } from './components/ContactPatientsView';
+import { SIMRSRecapParser } from './components/patientNotes/SIMRSRecapParser';
 import { AuditSurkonBpjsView } from './components/audit/AuditSurkonBpjsView';
 import { IncentiveCalculatorView } from './components/IncentiveCalculatorView';
 import { KuponFeeMohatView } from './components/mohat/KuponFeeMohatView';
@@ -36,6 +36,7 @@ import { DailyPosterModal } from './components/poster/DailyPosterModal';
 import { DoctorLeavePosterModal } from './components/poster/DoctorLeavePosterModal';
 import { GeminiSidebar } from './components/GeminiSidebar';
 import { ExecutiveDashboardView } from './components/ExecutiveDashboardView';
+import { PatientSelfRegistrationPublicView } from './components/forms/PatientSelfRegistrationPublicView';
 import {
   initialSchedules,
   initialDoctorLeaves,
@@ -257,6 +258,46 @@ export default function App() {
   });
 
   // Navigation & Filter state
+  const checkIsFormMandiri = () => {
+    if (typeof window === 'undefined') return false;
+    const hash = (window.location.hash || '').toLowerCase();
+    const search = (window.location.search || '').toLowerCase();
+    const pathname = (window.location.pathname || '').toLowerCase();
+
+    // 1. Cek Query Parameter (misal: ?page=form-mandiri atau ?form=mandiri)
+    const urlParams = new URLSearchParams(window.location.search);
+    const pageParam = urlParams.get('page') || urlParams.get('form') || urlParams.get('view');
+    if (pageParam && (pageParam === 'form-mandiri' || pageParam === 'form-mandiri-pasien' || pageParam === 'mandiri')) {
+      return true;
+    }
+
+    // 2. Cek Hash Route (misal: #/form-mandiri-pasien atau #form-mandiri)
+    if (hash.includes('form-mandiri') || hash.includes('pendaftaran-mandiri')) {
+      return true;
+    }
+
+    // 3. Cek Pathname (misal: /form-mandiri-pasien)
+    if (pathname.endsWith('/form-mandiri-pasien') || pathname.endsWith('/form-mandiri')) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const [isPublicFormMandiri, setIsPublicFormMandiri] = useState<boolean>(checkIsFormMandiri);
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      setIsPublicFormMandiri(checkIsFormMandiri());
+    };
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, []);
+
   const [activeTab, setActiveTab] = useState<ActiveNavTab>(() => {
     try {
       const saved = localStorage.getItem('rsumb_active_tab');
@@ -358,6 +399,9 @@ export default function App() {
     });
 
     const unsubJR = subscribeJasaRaharja((items) => {
+      if (localStorage.getItem('kll_data_cleared') === 'true') {
+        return;
+      }
       if (items) setJasaRaharjaList(items);
     });
 
@@ -390,7 +434,19 @@ export default function App() {
       // Pastikan snapshot terbaru tersinkronkan ke Google Drive
       triggerSilentDriveSync(2000);
     }, 1500);
-    return () => clearTimeout(timer);
+
+    const handleGlobalOpenIncomingModal = () => {
+      setActiveTab('dashboard');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('rsumb_open_incoming_self_reg_modal_inner'));
+      }, 80);
+    };
+    window.addEventListener('rsumb_open_incoming_self_reg_modal', handleGlobalOpenIncomingModal);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('rsumb_open_incoming_self_reg_modal', handleGlobalOpenIncomingModal);
+    };
   }, []);
 
   // Auto-backup pushDatabaseToSheets() secara otomatis setiap 20 menit (20 * 60 * 1000 = 1.200.000 ms)
@@ -622,6 +678,7 @@ export default function App() {
   };
 
   const handleAddJasaRaharja = (newItem: Omit<JasaRaharjaItem, 'id'>) => {
+    localStorage.removeItem('kll_data_cleared');
     const itemWithId: JasaRaharjaItem = {
       ...newItem,
       id: `jr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
@@ -652,6 +709,12 @@ export default function App() {
       const target = prev.find((item) => item.id === idOrNoRm || item.noRm === idOrNoRm);
       const updated = prev.filter((item) => item.id !== idOrNoRm && item.noRm !== idOrNoRm);
       saveJasaRaharjaData(updated);
+      if (updated.length === 0) {
+        localStorage.setItem('kll_data_cleared', 'true');
+        localStorage.setItem('jasa_raharja_patients', JSON.stringify([]));
+      } else {
+        localStorage.setItem('jasa_raharja_patients', JSON.stringify(updated));
+      }
       if (target) {
         deleteJasaRaharjaDoc(target.id).catch(() => {});
         showToast(`Data Plafon pasien ${target.namaPasien} berhasil dihapus.`);
@@ -661,6 +724,7 @@ export default function App() {
   };
 
   const handleBatchAddJasaRaharja = (newItems: Omit<JasaRaharjaItem, 'id'>[]) => {
+    localStorage.removeItem('kll_data_cleared');
     const itemsWithId: JasaRaharjaItem[] = newItems.map((item, idx) => ({
       ...item,
       id: `jr-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`
@@ -675,9 +739,28 @@ export default function App() {
 
   const handleUpsertJasaRaharja = (incomingItems: JasaRaharjaOcrItem[]): UpsertResult => {
     const result = upsertJasaRaharjaItems(jasaRaharjaList, incomingItems);
+    if (result.updatedList.length > 0) {
+      localStorage.removeItem('kll_data_cleared');
+    }
     setJasaRaharjaList(result.updatedList);
     saveJasaRaharjaData(result.updatedList);
     return result;
+  };
+
+  const handleClearAllJasaRaharja = () => {
+    setJasaRaharjaList([]);
+    localStorage.setItem('kll_data_cleared', 'true');
+    localStorage.setItem('jasa_raharja_patients', JSON.stringify([]));
+    saveJasaRaharjaData([]);
+    try {
+      localStorage.removeItem('rsumb_jasa_raharja_v1');
+      localStorage.removeItem('rsumb_jr_data_v1');
+      localStorage.removeItem('rsumb_jr_cases_v1');
+      localStorage.removeItem('rsumb_kll_patients');
+      localStorage.removeItem('jasaraharja_active_photo_url');
+      localStorage.removeItem('jasaraharja_photo_gallery');
+    } catch {}
+    showToast('Semua data berhasil direset. Silakan unggah file terbaru.');
   };
 
   useEffect(() => {
@@ -1222,6 +1305,21 @@ export default function App() {
     }, 3500);
   };
 
+  if (isPublicFormMandiri) {
+    return (
+      <PatientSelfRegistrationPublicView
+        onBackToPortal={() => {
+          if (window.location.search.includes('form-mandiri') || window.location.search.includes('page=')) {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+          window.location.hash = '';
+          setIsPublicFormMandiri(false);
+          setActiveTab('requirements');
+        }}
+      />
+    );
+  }
+
   return (
     <div className="bg-[#f8f9ff] text-[#0b1c30] min-h-screen flex font-['Inter',sans-serif] text-sm selection:bg-emerald-100 selection:text-emerald-900">
       {/* Toast Notification */}
@@ -1231,14 +1329,6 @@ export default function App() {
           <span>{toastMessage}</span>
         </div>
       )}
-
-      {/* Emergency Alert Banner */}
-      <div className="print:hidden no-print">
-        <EmergencyAlertBanner
-          alert={emergencyAlert}
-          onDismiss={() => setEmergencyAlert((prev) => ({ ...prev, active: false }))}
-        />
-      </div>
 
       {/* Side Navigation Bar */}
       <div className="print:hidden no-print">
@@ -1261,8 +1351,12 @@ export default function App() {
           isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
         } ml-0 print:ml-0 flex flex-col w-full min-w-0 transition-all duration-300 ease-in-out`}
       >
-        {/* Top Nav Bar */}
-        <div className="print:hidden no-print">
+        {/* Top Nav Bar (Sticky / Fixed at top across all 13 modules) */}
+        <div className="sticky top-0 z-50 print:hidden no-print bg-[#f8f9ff]/95 backdrop-blur-md">
+          <EmergencyAlertBanner
+            alert={emergencyAlert}
+            onDismiss={() => setEmergencyAlert((prev) => ({ ...prev, active: false }))}
+          />
           <Header
             onToggleMobileMenu={() => setIsOpenMobile(true)}
             activeNavTab={activeTab}
@@ -1275,6 +1369,7 @@ export default function App() {
             doctorLeaves={doctorLeaves}
             surgeryList={surgeryList}
             khitanParticipants={khitanParticipants}
+            queueList={queueList}
             onSelectPoli={(poli) => {
               setSelectedPoli(poli);
               setActiveTab('schedules');
@@ -1292,7 +1387,7 @@ export default function App() {
         </div>
 
         {/* Main Body */}
-        <main className={`flex-grow ${activeTab === 'audit_surkon' ? 'px-2 sm:px-3 py-3 sm:py-4' : 'px-4 sm:px-6 py-4 sm:py-6'} print:p-0 flex flex-col gap-6 sm:gap-8 w-full max-w-full print:max-w-none pb-12 sm:pb-16`}>
+        <main className={`flex-grow pt-16 sm:pt-20 ${activeTab === 'audit_surkon' ? 'px-2 sm:px-3 pb-3 sm:pb-4' : 'px-4 sm:px-6 pb-6 sm:pb-8'} print:p-0 flex flex-col gap-6 sm:gap-8 w-full max-w-full print:max-w-none pb-12 sm:pb-16`}>
 
           {/* Page Title & Subtitle */}
           {activeTab !== 'khitan' && activeTab !== 'letters' && activeTab !== 'rooms' && activeTab !== 'contact_patients' && activeTab !== 'audit_surkon' && activeTab !== 'jasa_raharja' && activeTab !== 'incentive_calc' && activeTab !== 'patient_notes' && activeTab !== 'kupon_mohat' && activeTab !== 'requirements' && (
@@ -1507,6 +1602,7 @@ export default function App() {
               onDeleteItem={handleDeleteJasaRaharja}
               onBatchAddItems={handleBatchAddJasaRaharja}
               onUpsertItems={handleUpsertJasaRaharja}
+              onClearAllItems={handleClearAllJasaRaharja}
               showToast={showToast}
             />
           )}
@@ -1532,7 +1628,7 @@ export default function App() {
           )}
 
           {activeTab === 'contact_patients' && (
-            <ContactPatientsView showToast={showToast} />
+            <SIMRSRecapParser />
           )}
 
           {activeTab === 'audit_surkon' && (

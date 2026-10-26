@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Stethoscope,
   CalendarX2,
@@ -22,9 +22,12 @@ import {
   Share2,
   FileCheck2,
   Printer,
-  QrCode
+  QrCode,
+  Inbox,
+  ExternalLink as ExternalLinkIcon
 } from 'lucide-react';
-import { DoctorSchedule, DoctorLeaveAnnouncement } from '../types';
+import { QRCodeSVG } from 'qrcode.react';
+import { DoctorSchedule, DoctorLeaveAnnouncement, PatientSelfRegistrationItem } from '../types';
 import { ElectiveSurgerySchedule, initialSurgerySchedules } from '../data/surgeryData';
 import {
   loadShiftHandoverRecords,
@@ -33,6 +36,14 @@ import {
 } from '../data/patientNotesData';
 import { DailyHuddleReportModal } from './dashboard/DailyHuddleReportModal';
 import { DoctorScheduleThermalSlipModal } from './dashboard/DoctorScheduleThermalSlipModal';
+import { PatientRegistrationModal } from './PatientRegistrationModal';
+import {
+  PatientSelfRegistrationStandeeModal,
+  getDefaultDynamicUrl,
+  formatEffectiveQrUrl
+} from './forms/PatientSelfRegistrationStandeeModal';
+import { IncomingSelfRegistrationsModal } from './forms/IncomingSelfRegistrationsModal';
+import { subscribePatientSelfRegistrations } from '../services/firestoreSync';
 import { RSUMB_LOGO_BASE64 } from '../assets/logoRsumbBase64';
 import {
   isDoctorLeaveActiveOnDate,
@@ -72,6 +83,57 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   const [isDailyHuddleOpen, setIsDailyHuddleOpen] = useState(false);
   // Modal State for Thermal Slip Jadwal Dokter
   const [isThermalSlipModalOpen, setIsThermalSlipModalOpen] = useState(false);
+  // Modal State for Patient Registration Slip (1/3 F4)
+  const [isRegistrationModalOpen, setIsRegistrationModalOpen] = useState(false);
+  // Modal State for Standee Poster QR Code (A4/A5)
+  const [isStandeeModalOpen, setIsStandeeModalOpen] = useState(false);
+  // Modal State for Incoming Self-Registrations (Real-Time)
+  const [isIncomingDataModalOpen, setIsIncomingDataModalOpen] = useState(false);
+  const [incomingCount, setIncomingCount] = useState<number>(0);
+  const [selectedPatientForSlip, setSelectedPatientForSlip] = useState<any>(null);
+
+  // Helper URL Pendaftaran Mandiri Pasien (Bebas 403 Forbidden & Mendukung Dynamic Origin / Override)
+  const getCleanPublicFormUrl = (): string => {
+    try {
+      const saved = localStorage.getItem('rsumb_custom_self_reg_url');
+      if (saved && saved.trim()) {
+        return formatEffectiveQrUrl(saved.trim());
+      }
+    } catch {}
+
+    return getDefaultDynamicUrl();
+  };
+
+  const [selfRegUrl, setSelfRegUrl] = useState<string>(getCleanPublicFormUrl);
+
+  // Dengarkan pembaruan custom URL dari Standee modal
+  useEffect(() => {
+    const handleUrlUpdate = (e: any) => {
+      setSelfRegUrl(e.detail || getCleanPublicFormUrl());
+    };
+    window.addEventListener('rsumb_custom_url_updated', handleUrlUpdate);
+    return () => window.removeEventListener('rsumb_custom_url_updated', handleUrlUpdate);
+  }, []);
+
+  // Real-time subscription untuk incoming self registrations
+  useEffect(() => {
+    const unsub = subscribePatientSelfRegistrations((list) => {
+      setIncomingCount(list.length);
+    });
+
+    const handleOpenIncomingModal = () => {
+      setIsIncomingDataModalOpen(true);
+    };
+
+    window.addEventListener('rsumb_open_incoming_self_reg_modal', handleOpenIncomingModal);
+    window.addEventListener('rsumb_open_incoming_self_reg_modal_inner', handleOpenIncomingModal);
+
+    return () => {
+      unsub();
+      window.removeEventListener('rsumb_open_incoming_self_reg_modal', handleOpenIncomingModal);
+      window.removeEventListener('rsumb_open_incoming_self_reg_modal_inner', handleOpenIncomingModal);
+    };
+  }, []);
 
   // 1. Current Date Context (Simulated / Real: local container date)
   const now = new Date();
@@ -402,6 +464,184 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 1.5 CARD WIDGET KHUSUS: CETAK SLIP / KARTU INFORMASI JADWAL DOKTER */}
+      <div className="bg-gradient-to-br from-emerald-900 via-[#005d42] to-teal-950 rounded-2xl p-5 sm:p-6 text-white shadow-lg border border-emerald-700/50 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+        <div className="relative z-10 flex items-start gap-4 min-w-0">
+          <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner shrink-0 text-emerald-300">
+            <Printer className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base sm:text-lg font-black tracking-wide">
+                Cetak Slip / Kartu Informasi Jadwal
+              </h3>
+              <span className="text-[10px] font-bold uppercase bg-emerald-400/30 text-emerald-200 px-2.5 py-0.5 rounded-full border border-emerald-400/40">
+                Printer Thermal POS 58mm / 80mm
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-emerald-100/90 font-medium mt-1 max-w-2xl leading-relaxed">
+              Cetak struk informasi pendaftaran & QR Code jadwal dokter / info libur real-time untuk diberikan langsung kepada pasien atau keluarga yang mendaftar di admisi.
+            </p>
+            <div className="flex items-center gap-3 sm:gap-4 mt-2.5 text-[11px] text-emerald-200/90 flex-wrap">
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> Format Rapi Tanpa Logo</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> QR Code Publik SIMRS</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> Info Telp & Alamat Lengkap</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-center gap-2.5">
+          <button
+            type="button"
+            id="btn-beranda-open-thermal-slip"
+            onClick={() => setIsThermalSlipModalOpen(true)}
+            className="w-full sm:w-auto px-5 py-3 bg-white hover:bg-emerald-50 text-[#005d42] active:bg-emerald-100 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-md hover:shadow-xl active:scale-95 transition-all cursor-pointer border border-white/80 group"
+          >
+            <Printer className="w-4 h-4 text-[#005d42] group-hover:scale-110 transition-transform" />
+            <span>🖨️ Cetak Slip Thermal</span>
+          </button>
+        </div>
+
+        {/* Subtle decorative glow */}
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
+      </div>
+
+      {/* 1.6 CARD WIDGET: FORM IDENTITAS PASIEN (1/3 F4) & QR PENDAFTARAN MANDIRI */}
+      <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-md border border-slate-200 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 hover:shadow-lg transition-shadow">
+        {/* Kolom Informasi & Tombol Aksi */}
+        <div className="flex items-start gap-4 flex-1 min-w-0">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0 border border-emerald-200 shadow-2xs">
+            <ClipboardList className="w-6 h-6" />
+          </div>
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                Formulir Pendaftaran Pasien (1/3 F4) & QR Mandiri
+              </h3>
+              <span className="text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                Kertas SEP &bull; 215 x 110 mm
+              </span>
+              <span className="text-[10px] font-bold uppercase bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full border border-blue-200">
+                Self-Service QR
+              </span>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
+              Cetak formulir isian fisik ukuran 1/3 F4 (atau opsi 3-in-1 kertas F4 utuh), atau persilakan pasien memindai (scan) QR Code pendaftaran mandiri dari HP masing-masing di meja loket admisi.
+            </p>
+
+            {/* 3 Tombol Aksi Admisi */}
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPatientForSlip(null);
+                  setIsRegistrationModalOpen(true);
+                }}
+                className="px-4 py-2.5 bg-[#005d42] hover:bg-emerald-800 active:bg-emerald-950 text-white rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                title="Buka pratinjau dan cetak formulir fisik 1/3 F4 atau 3-in-1"
+              >
+                <Printer className="w-4 h-4 text-emerald-200" />
+                <span>🖨️ Cetak Form Isian (1/3 F4)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsStandeeModalOpen(true)}
+                className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                title="Cetak poster/standee akrilik meja ukuran A4/A5 untuk dipajang di loket admisi"
+              >
+                <QrCode className="w-4 h-4 text-emerald-700" />
+                <span>🖨️ Cetak Standee Meja QR</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsIncomingDataModalOpen(true)}
+                className="relative px-4 py-2.5 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                title="Buka daftar data pendaftaran mandiri yang masuk secara real-time dari HP pasien"
+              >
+                <Inbox className="w-4 h-4 text-emerald-400" />
+                <span>📥 Data Masuk Scan QR Pasien</span>
+                <span className="bg-emerald-500 text-slate-950 text-[11px] font-black px-2 py-0.5 rounded-full ml-0.5">
+                  {incomingCount}
+                </span>
+                {incomingCount > 0 && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 absolute -top-1 -right-1 animate-ping" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Kolom Kanan: Kotak QR Code Pendaftaran Mandiri (Scan HP Pasien) */}
+        <div className="shrink-0 flex flex-col items-center justify-center p-3.5 bg-emerald-50/70 rounded-2xl border-2 border-dashed border-emerald-500/70 shadow-2xs group hover:bg-emerald-50 transition-all text-center">
+          <div className="p-2 bg-white rounded-xl shadow-xs border border-emerald-200">
+            <QRCodeSVG value={selfRegUrl} size={84} level="M" />
+          </div>
+          <div className="mt-2 text-center">
+            <div className="text-[11px] font-black text-emerald-950 uppercase tracking-tight">
+              Pendaftaran Mandiri Pasien
+            </div>
+            <div className="text-[10px] text-emerald-700 font-semibold flex items-center justify-center gap-1 mt-0.5">
+              <span>Scan Kamera HP</span>
+              <ExternalLinkIcon className="w-3 h-3 text-emerald-600 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </div>
+          <a
+            href={selfRegUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1.5 text-[10px] text-[#005d42] hover:underline font-semibold bg-white/80 px-2 py-0.5 rounded border border-emerald-200"
+          >
+            Buka Form Pasien ↗
+          </a>
+        </div>
+      </div>
+
+      {/* Modal 1: Cetak Formulir Slip 1/3 F4 */}
+      <PatientRegistrationModal
+        isOpen={isRegistrationModalOpen}
+        onClose={() => {
+          setIsRegistrationModalOpen(false);
+          setSelectedPatientForSlip(null);
+        }}
+        initialPatientData={selectedPatientForSlip}
+      />
+
+      {/* Modal 2: Cetak Standee Meja Akrilik QR Code A4/A5 */}
+      <PatientSelfRegistrationStandeeModal
+        isOpen={isStandeeModalOpen}
+        onClose={() => setIsStandeeModalOpen(false)}
+        formUrl={selfRegUrl}
+        onUrlChange={(newUrl) => setSelfRegUrl(newUrl)}
+      />
+
+      {/* Modal 3: Data Masuk Scan QR Pasien (Real-Time) */}
+      <IncomingSelfRegistrationsModal
+        isOpen={isIncomingDataModalOpen}
+        onClose={() => setIsIncomingDataModalOpen(false)}
+        showToast={showToast}
+        onPrintPatientSlip={(patient) => {
+          setSelectedPatientForSlip({
+            nama: patient.namaPasien,
+            nik: patient.nik,
+            noHp: patient.noHp,
+            tglLahir: patient.tanggalLahir
+              ? `${patient.tempatLahir ? patient.tempatLahir + ', ' : ''}${patient.tanggalLahir}`
+              : patient.tempatLahir,
+            alamat: patient.alamat,
+            penanggungJawab: patient.namaPenanggungJawab,
+            hubungan: patient.hubunganKeluarga,
+            jenisKelamin: patient.jenisKelamin,
+            statusPasien: patient.statusPasien,
+            jenisPembayaran: patient.jenisPembayaran
+          });
+          setIsIncomingDataModalOpen(false);
+          setIsRegistrationModalOpen(true);
+        }}
+      />
 
       {/* 2. KARTU RINGKAS HARI INI (4 EXECUTIVE METRICS) */}
       <div>
@@ -892,48 +1132,6 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
             );
           })}
         </div>
-      </div>
-
-      {/* 5. CARD WIDGET KHUSUS: CETAK SLIP / KARTU INFORMASI JADWAL DOKTER */}
-      <div className="bg-gradient-to-br from-emerald-900 via-[#005d42] to-teal-950 rounded-2xl p-5 sm:p-6 text-white shadow-lg border border-emerald-700/50 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
-        <div className="relative z-10 flex items-start gap-4 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner shrink-0 text-emerald-300">
-            <Printer className="w-6 h-6 animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-base sm:text-lg font-black tracking-wide">
-                Cetak Slip / Kartu Informasi Jadwal
-              </h3>
-              <span className="text-[10px] font-bold uppercase bg-emerald-400/30 text-emerald-200 px-2.5 py-0.5 rounded-full border border-emerald-400/40">
-                Printer Thermal POS 58mm / 80mm
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-emerald-100/90 font-medium mt-1 max-w-2xl leading-relaxed">
-              Cetak struk informasi pendaftaran & QR Code jadwal dokter / info libur real-time untuk diberikan langsung kepada pasien atau keluarga yang mendaftar di admisi.
-            </p>
-            <div className="flex items-center gap-3 sm:gap-4 mt-2.5 text-[11px] text-emerald-200/90 flex-wrap">
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> Format Rapi Tanpa Logo</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> QR Code Publik SIMRS</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> Info Telp & Alamat Lengkap</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative z-10 shrink-0 w-full md:w-auto flex flex-col sm:flex-row items-center gap-2.5">
-          <button
-            type="button"
-            id="btn-beranda-open-thermal-slip"
-            onClick={() => setIsThermalSlipModalOpen(true)}
-            className="w-full sm:w-auto px-5 py-3 bg-white hover:bg-emerald-50 text-[#005d42] active:bg-emerald-100 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-md hover:shadow-xl active:scale-95 transition-all cursor-pointer border border-white/80 group"
-          >
-            <Printer className="w-4 h-4 text-[#005d42] group-hover:scale-110 transition-transform" />
-            <span>🖨️ Cetak Slip Thermal</span>
-          </button>
-        </div>
-
-        {/* Subtle decorative glow */}
-        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
       </div>
 
       {/* 6. QUICK NAVIGATION & INFORMATIONAL FOOTER BANNER */}

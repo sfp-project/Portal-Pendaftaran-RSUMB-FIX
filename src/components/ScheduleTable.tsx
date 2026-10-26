@@ -40,6 +40,7 @@ import {
   formatHfisTime,
   getJamCetak,
   formatDoctorQuota,
+  getCleanDoctorQuota,
   getScheduleStartMinutes,
   DAY_ORDER_MAP
 } from '../utils/dateHelpers';
@@ -452,7 +453,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
           s.hari,
           formatDoctorScheduleTime(s),
           jamHfisCombined,
-          `${s.kuotaTerisi}/${s.kuotaTotal} (${s.status})`
+          Number(getCleanDoctorQuota(s)) || getCleanDoctorQuota(s)
         ];
       });
 
@@ -562,7 +563,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
           s.hari,
           formatDoctorScheduleTime(s),
           jamHfisCombined,
-          `${s.kuotaTerisi}/${s.kuotaTotal} (${s.status})`
+          getCleanDoctorQuota(s)
         ];
       });
 
@@ -591,7 +592,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
 
   return (
     <>
-      <div id="schedule-table-section" className="schedule-main-card bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden flex flex-col transition-all">
+      <div id="schedule-table-section" className="scroll-mt-20 schedule-main-card bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden flex flex-col transition-all">
       {/* Kop Cetak Resmi RSUMB (Khusus Tampil saat Print PDF / window.print) */}
       <div className="px-4 pt-4">
         <PrintHeaderKop
@@ -1192,12 +1193,16 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                           {(Array.isArray(doc.jadwal) ? doc.jadwal : []).map((j, jIdx) => {
                             const isMaju = j.tipe === 'MAJU';
                             const isCuti = j.tipe === 'CUTI';
+                            const isBatasKuota = j.tipe === 'BATAS_KUOTA';
                             const isGanti = (j.tipe as string) === 'GANTI_JAM' || (j.tipe as string) === 'GANTI';
 
                             let badgeBg = 'bg-red-50 text-red-700 border-red-200';
                             let badgeLabel = 'Libur Praktik';
 
-                            if (isMaju) {
+                            if (isBatasKuota) {
+                              badgeBg = 'bg-amber-50 text-amber-900 border-amber-300 font-bold';
+                              badgeLabel = 'Batas Kuota';
+                            } else if (isMaju) {
                               badgeBg = 'bg-blue-50 text-blue-700 border-blue-200';
                               badgeLabel = 'Maju';
                             } else if (isGanti) {
@@ -1219,7 +1224,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                                   {badgeLabel}
                                 </span>
                                 <span className="font-semibold text-slate-900 text-xs sm:text-sm">
-                                  {j.tglLibur || '-'}
+                                  {j.tglSpesifik || j.tglLibur || '-'}
                                 </span>
                               </div>
                             );
@@ -1227,20 +1232,27 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                         </div>
                       </td>
 
-                      {/* MASUK KEMBALI / JADWAL MAJU (background hijau muda lembut) */}
+                      {/* MASUK KEMBALI / JADWAL MAJU / BATAS KUOTA (background hijau muda lembut) */}
                       <td className="px-5 py-3.5 bg-emerald-50/70 border-r border-emerald-100/90 align-top">
                         <div className="space-y-2">
                           {(Array.isArray(doc.jadwal) ? doc.jadwal : []).map((j, jIdx) => {
                             const isMaju = j.tipe === 'MAJU';
+                            const isBatasKuota = j.tipe === 'BATAS_KUOTA';
                             const cleanCetak = j.jamCetakBaru
                               ? j.jamCetakBaru.replace(/^cetak\s*/i, '').trim()
                               : '';
 
                             return (
                               <div key={jIdx} className="text-xs space-y-0.5">
-                                <span className="font-semibold text-emerald-950 text-xs sm:text-sm block">
-                                  {j.tglMasuk || '-'}
-                                </span>
+                                {isBatasKuota ? (
+                                  <span className="font-bold text-amber-950 text-xs sm:text-sm block bg-amber-100/70 px-2 py-0.5 rounded border border-amber-200 w-fit">
+                                    Maks. {j.batasKuota || 25} Pasien
+                                  </span>
+                                ) : (
+                                  <span className="font-semibold text-emerald-950 text-xs sm:text-sm block">
+                                    {j.tglMasuk || '-'}
+                                  </span>
+                                )}
                                 {isMaju && j.jamPraktikBaru && (
                                   <span className="text-[11px] font-semibold text-blue-800 bg-blue-100/80 px-1.5 py-0.5 rounded block w-fit border border-blue-200">
                                     🕒 {j.jamPraktikBaru}
@@ -1262,12 +1274,17 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                         <div className="space-y-2">
                           {(Array.isArray(doc.jadwal) ? doc.jadwal : []).map((j, jIdx) => {
                             const isMaju = j.tipe === 'MAJU';
+                            const isBatasKuota = j.tipe === 'BATAS_KUOTA';
                             const cleanCetak = j.jamCetakBaru
                               ? j.jamCetakBaru.replace(/^cetak\s*/i, '').trim()
                               : '';
                             const customOrFormatted =
-                              j.keterangan && j.keterangan !== 'JADWAL MAJU'
+                              j.keterangan && j.keterangan !== 'JADWAL MAJU' && j.keterangan !== 'KUOTA DIBATASI'
                                 ? j.keterangan
+                                : isBatasKuota
+                                ? `${doc.poli.toLowerCase().startsWith('poli') ? doc.poli : `Poli ${doc.poli}`} tgl ${
+                                    j.tglSpesifik || j.tglLibur || '30 Oktober 2026'
+                                  } kuota dibatasi maksimal ${j.batasKuota || 25} pasien`
                                 : isMaju
                                 ? `Jadwal Maju tgl ${j.tglMasuk || 'terjadwal'} menjadi jam ${j.jamPraktikBaru || '07.00 - 10.00 WIB'}${
                                     cleanCetak ? ` (Cetak tiket mulai ${cleanCetak})` : ''
@@ -1593,8 +1610,11 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
 
                       {/* Kuota BPJS (Total Batas Kapasitas Pasien per Hari) */}
                       <td className="px-4 py-3.5 text-center">
-                        <span className="inline-flex items-center justify-center font-semibold text-slate-700 text-xs whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center font-semibold text-slate-700 text-xs whitespace-nowrap print:hidden no-print">
                           {formatDoctorQuota(sch)}
+                        </span>
+                        <span className="hidden print:inline-block font-bold text-slate-900 text-xs">
+                          {getCleanDoctorQuota(sch)}
                         </span>
                       </td>
 

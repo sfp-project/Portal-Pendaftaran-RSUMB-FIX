@@ -185,6 +185,14 @@ const DoctorLeavePosterModalContent: React.FC<DoctorLeavePosterModalContentProps
         textColor: 'text-white'
       };
     }
+    if (currentItem.tipe === 'BATAS_KUOTA') {
+      return {
+        text: 'KUOTA DIBATASI',
+        bgGradient: 'from-amber-600 to-orange-700',
+        borderColor: 'border-amber-400',
+        textColor: 'text-white'
+      };
+    }
     if (currentItem.tipe === 'MAJU') {
       return {
         text: 'JADWAL MAJU',

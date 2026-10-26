@@ -225,6 +225,28 @@
       },
       "required": ["id", "nomorSurat", "namaPasien"]
     },
+    "PatientSelfRegistration": {
+      "title": "PatientSelfRegistration",
+      "description": "Data Pendaftaran Mandiri Pasien Scan QR Meja Admisi",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "statusPasien": { "type": "string", "maxLength": 32 },
+        "namaPasien": { "type": "string", "maxLength": 256 },
+        "nik": { "type": "string", "maxLength": 32 },
+        "tempatLahir": { "type": "string", "maxLength": 128 },
+        "tanggalLahir": { "type": "string", "maxLength": 64 },
+        "jenisKelamin": { "type": "string", "maxLength": 8 },
+        "alamat": { "type": "string", "maxLength": 500 },
+        "noHp": { "type": "string", "maxLength": 64 },
+        "namaPenanggungJawab": { "type": "string", "maxLength": 256 },
+        "hubunganKeluarga": { "type": "string", "maxLength": 128 },
+        "jenisPembayaran": { "type": "string", "maxLength": 64 },
+        "waktuDaftar": { "type": "string", "maxLength": 128 },
+        "statusProses": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "namaPasien", "alamat", "noHp", "jenisPembayaran"]
+    },
     "SystemSetting": {
       "title": "SystemSetting",
       "description": "Konfigurasi Sistem Portal RSUMB",
@@ -252,6 +274,7 @@
     "/audit_surkon/{id}": { "schema": "AuditSurkonDoc", "description": "Koleksi audit surkon" },
     "/mohat_coupons/{id}": { "schema": "MohatCoupon", "description": "Koleksi kupon mohat" },
     "/medical_letters/{id}": { "schema": "MedicalLetter", "description": "Koleksi surat medis" },
+    "/patient_self_registrations/{id}": { "schema": "PatientSelfRegistration", "description": "Koleksi pendaftaran mandiri pasien scan QR" },
     "/system_settings/{id}": { "schema": "SystemSetting", "description": "Koleksi konfigurasi sistem" }
   }
 }

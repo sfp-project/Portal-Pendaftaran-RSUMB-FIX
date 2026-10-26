@@ -20,7 +20,8 @@ import {
   Check,
   Stethoscope,
   Sparkles,
-  UserPlus
+  UserPlus,
+  Users
 } from 'lucide-react';
 import {
   DoctorSchedule,
@@ -1761,18 +1762,19 @@ interface DatePickerFieldProps {
   label: string;
   value: string;
   onChange: (val: string) => void;
-  accentColor: 'red' | 'emerald';
+  accentColor?: 'red' | 'emerald' | 'amber';
 }
 
 const DatePickerField: React.FC<DatePickerFieldProps> = ({
   label,
   value,
   onChange,
-  accentColor
+  accentColor = 'red'
 }) => {
   const [isManualEdit, setIsManualEdit] = useState(false);
   const isoVal = parseIndonesianToIso(value);
   const isRed = accentColor === 'red';
+  const isAmber = accentColor === 'amber';
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawIso = e.target.value;
@@ -1781,10 +1783,23 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
     onChange(formatted);
   };
 
+  const labelColor = isRed ? 'text-red-700' : isAmber ? 'text-amber-800' : 'text-emerald-700';
+  const inputBorder = isRed
+    ? 'border-red-200 focus:ring-2 focus:ring-red-400 text-slate-800'
+    : isAmber
+    ? 'border-amber-300 focus:ring-2 focus:ring-amber-400 text-slate-800'
+    : 'border-emerald-200 focus:ring-2 focus:ring-emerald-400 text-slate-800';
+
+  const wrapperBorder = isRed
+    ? 'border-red-200 focus-within:ring-2 focus-within:ring-red-400'
+    : isAmber
+    ? 'border-amber-300 focus-within:ring-2 focus-within:ring-amber-400'
+    : 'border-emerald-200 focus-within:ring-2 focus-within:ring-emerald-400';
+
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className={`block text-[11px] font-bold ${isRed ? 'text-red-700' : 'text-emerald-700'}`}>
+        <label className={`block text-[11px] font-bold ${labelColor}`}>
           {label}
         </label>
         <button
@@ -1802,20 +1817,10 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Contoh: 4 September 2026"
-          className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border bg-white outline-none ${
-            isRed
-              ? 'border-red-200 focus:ring-2 focus:ring-red-400 text-slate-800'
-              : 'border-emerald-200 focus:ring-2 focus:ring-emerald-400 text-slate-800'
-          }`}
+          className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border bg-white outline-none ${inputBorder}`}
         />
       ) : (
-        <div
-          className={`relative flex items-center border rounded-xl overflow-hidden bg-white transition-all ${
-            isRed
-              ? 'border-red-200 focus-within:ring-2 focus-within:ring-red-400'
-              : 'border-emerald-200 focus-within:ring-2 focus-within:ring-emerald-400'
-          }`}
-        >
+        <div className={`relative flex items-center border rounded-xl overflow-hidden bg-white transition-all ${wrapperBorder}`}>
           <input
             type="date"
             value={isoVal}
@@ -1836,7 +1841,11 @@ const DatePickerField: React.FC<DatePickerFieldProps> = ({
       {value && (
         <div className="mt-1">
           <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-md ${
-            isRed ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
+            isRed
+              ? 'bg-red-100 text-red-800'
+              : isAmber
+              ? 'bg-amber-100 text-amber-900 border border-amber-300'
+              : 'bg-emerald-100 text-emerald-800'
           }`}>
             📅 {value}
           </span>
@@ -2175,6 +2184,13 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
     return findDoctorScheduleForDay(doctorName, dayName, allSchedules);
   };
 
+  // Helper to format clean poliklinik name
+  const formatPoliName = (p: string) => {
+    if (!p || !p.trim()) return 'Poliklinik';
+    const trimmed = p.trim();
+    return trimmed.toLowerCase().startsWith('poli') ? trimmed : `Poli ${trimmed}`;
+  };
+
   const handleUpdateItem = (index: number, field: keyof DoctorLeaveItem, value: any) => {
     setJadwalList((prev) => {
       const next = [...prev];
@@ -2205,19 +2221,71 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
         }
       }
 
+      // Auto-generate notification note when switching to BATAS_KUOTA or when quota / date changes
+      if (field === 'tipe' && value === 'BATAS_KUOTA') {
+        if (!updated.batasKuota) updated.batasKuota = 25;
+        if (!updated.tglSpesifik) updated.tglSpesifik = updated.tglLibur || '30 Oktober 2026';
+        if (!updated.tglLibur) updated.tglLibur = updated.tglSpesifik;
+        const targetDate = updated.tglSpesifik || updated.tglLibur || '';
+        const quota = updated.batasKuota || 25;
+        const poliLabel = formatPoliName(poli);
+        updated.keterangan = targetDate
+          ? `${poliLabel} tgl ${targetDate} kuota dibatasi maksimal ${quota} pasien`
+          : `${poliLabel} kuota dibatasi maksimal ${quota} pasien`;
+      } else if (updated.tipe === 'BATAS_KUOTA' && (field === 'batasKuota' || field === 'tglSpesifik' || field === 'tglLibur')) {
+        const targetDate = field === 'tglSpesifik' ? value : (updated.tglSpesifik || updated.tglLibur || '');
+        const quota = field === 'batasKuota' ? value : (updated.batasKuota || 25);
+        const poliLabel = formatPoliName(poli);
+        updated.keterangan = targetDate
+          ? `${poliLabel} tgl ${targetDate} kuota dibatasi maksimal ${quota} pasien`
+          : `${poliLabel} kuota dibatasi maksimal ${quota} pasien`;
+      }
+
       next[index] = updated;
       return next;
     });
   };
 
+  const handlePoliChange = (newPoli: string) => {
+    setPoli(newPoli);
+    setJadwalList((prev) =>
+      prev.map((item) => {
+        if (item.tipe === 'BATAS_KUOTA') {
+          const targetDate = item.tglSpesifik || item.tglLibur || '';
+          const quota = item.batasKuota || 25;
+          const poliLabel = formatPoliName(newPoli);
+          return {
+            ...item,
+            keterangan: targetDate
+              ? `${poliLabel} tgl ${targetDate} kuota dibatasi maksimal ${quota} pasien`
+              : `${poliLabel} kuota dibatasi maksimal ${quota} pasien`
+          };
+        }
+        return item;
+      })
+    );
+  };
+
   const handleSelectDoctor = (selectedDoctor: string, doctorPoli?: string) => {
     setDpjp(selectedDoctor);
+    const newPoli = doctorPoli || poli;
     if (doctorPoli) {
       setPoli(doctorPoli);
     }
-    // Auto-prefill schedule for any session item that already has tglMasuk and is MAJU
+    // Auto-prefill schedule for any session item that already has tglMasuk and is MAJU or BATAS_KUOTA
     setJadwalList((prev) =>
       prev.map((item) => {
+        if (item.tipe === 'BATAS_KUOTA') {
+          const targetDate = item.tglSpesifik || item.tglLibur || '';
+          const quota = item.batasKuota || 25;
+          const poliLabel = formatPoliName(newPoli);
+          return {
+            ...item,
+            keterangan: targetDate
+              ? `${poliLabel} tgl ${targetDate} kuota dibatasi maksimal ${quota} pasien`
+              : `${poliLabel} kuota dibatasi maksimal ${quota} pasien`
+          };
+        }
         if (item.tglMasuk && (item.tipe === 'MAJU' || !item.jamPraktikBaru)) {
           const matched = getDoctorScheduleForTargetDate(selectedDoctor, item.tglMasuk);
           if (matched) {
@@ -2264,7 +2332,17 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
       poli,
       jadwal: jadwalList.map((item) => {
         const isMaju = item.tipe === 'MAJU';
-        const defaultKet = isMaju
+        const isBatasKuota = item.tipe === 'BATAS_KUOTA';
+        const poliLabel = formatPoliName(poli);
+        const targetDate = item.tglSpesifik || item.tglLibur || '';
+        const quota = Number(item.batasKuota) || 25;
+        const autoBatasKuotaKet = targetDate
+          ? `${poliLabel} tgl ${targetDate} kuota dibatasi maksimal ${quota} pasien`
+          : `${poliLabel} kuota dibatasi maksimal ${quota} pasien`;
+
+        const defaultKet = isBatasKuota
+          ? (item.keterangan || autoBatasKuotaKet)
+          : isMaju
           ? 'JADWAL MAJU'
           : item.tipe === 'CUTI'
           ? 'CUTI TAHUNAN'
@@ -2278,9 +2356,11 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
 
         return {
           keterangan: item.keterangan || defaultKet,
-          tglLibur: item.tglLibur || 'Sesuai Pengumuman',
-          tglMasuk: item.tglMasuk || 'Konfirmasi Poliklinik',
+          tglLibur: isBatasKuota ? (targetDate || 'Sesuai Jadwal') : (item.tglLibur || 'Sesuai Pengumuman'),
+          tglMasuk: isBatasKuota ? '-' : (item.tglMasuk || 'Konfirmasi Poliklinik'),
           tipe: item.tipe,
+          batasKuota: isBatasKuota ? quota : undefined,
+          tglSpesifik: isBatasKuota ? targetDate : undefined,
           jamPraktikBaru: jPraktik,
           jamHfisBaru: jHfis,
           jamCetakBaru: jCetak
@@ -2340,7 +2420,7 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
               type="text"
               required
               value={poli}
-              onChange={(e) => setPoli(e.target.value)}
+              onChange={(e) => handlePoliChange(e.target.value)}
               placeholder="Contoh: Jantung, Urologi, Paru, Penyakit Dalam, Obgyn"
               className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-slate-50/50"
             />
@@ -2379,12 +2459,17 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
                         className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
                           item.tipe === 'MAJU'
                             ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : item.tipe === 'CUTI'
+                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                            : item.tipe === 'BATAS_KUOTA'
+                            ? 'bg-amber-50 text-amber-800 border-amber-300'
                             : 'bg-red-50 text-red-700 border-red-200'
-                        } outline-none`}
+                        } outline-none cursor-pointer`}
                       >
                         <option value="LIBUR">LIBUR PRAKTIK</option>
                         <option value="MAJU">JADWAL MAJU</option>
                         <option value="CUTI">CUTI TAHUNAN</option>
+                        <option value="BATAS_KUOTA">KUOTA DIBATASI</option>
                       </select>
 
                       {jadwalList.length > 1 && (
@@ -2400,21 +2485,112 @@ export const LeaveModal: React.FC<LeaveModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <DatePickerField
-                      label="Tgl Libur / Semula"
-                      value={item.tglLibur}
-                      onChange={(val) => handleUpdateItem(index, 'tglLibur', val)}
-                      accentColor="red"
-                    />
+                  {item.tipe === 'BATAS_KUOTA' ? (
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <DatePickerField
+                          label="Tanggal Spesifik Pembatasan"
+                          value={item.tglSpesifik || item.tglLibur || ''}
+                          onChange={(val) => {
+                            handleUpdateItem(index, 'tglSpesifik', val);
+                            handleUpdateItem(index, 'tglLibur', val);
+                          }}
+                          accentColor="amber"
+                        />
 
-                    <DatePickerField
-                      label="Tgl Masuk / Pengganti"
-                      value={item.tglMasuk}
-                      onChange={(val) => handleUpdateItem(index, 'tglMasuk', val)}
-                      accentColor="emerald"
-                    />
-                  </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-amber-800 mb-1 flex items-center justify-between">
+                            <span className="flex items-center gap-1">
+                              <Users className="w-3.5 h-3.5 text-amber-600" />
+                              <span>Batas Maksimal Pasien</span>
+                            </span>
+                            <span className="text-[10px] text-amber-700 font-semibold bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">
+                              {item.batasKuota || 25} Pasien
+                            </span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              required
+                              value={item.batasKuota ?? 25}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1);
+                                handleUpdateItem(index, 'batasKuota', val);
+                              }}
+                              placeholder="Misal: 25"
+                              className="w-full px-3 py-2 text-xs font-bold text-slate-800 border border-amber-300 rounded-xl focus:ring-2 focus:ring-amber-400 outline-none bg-white"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">
+                              pasien
+                            </span>
+                          </div>
+                          {/* Quick Preset Buttons for Quota */}
+                          <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                            <span className="text-[10px] text-slate-400 font-semibold">Preset:</span>
+                            {[15, 20, 25, 30, 35, 40].map((q) => (
+                              <button
+                                key={q}
+                                type="button"
+                                onClick={() => handleUpdateItem(index, 'batasKuota', q)}
+                                className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-colors cursor-pointer ${
+                                  (item.batasKuota || 25) === q
+                                    ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                                    : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50'
+                                }`}
+                              >
+                                {q}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Live Generated Announcement Preview */}
+                      <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10.5px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Teks Pengumuman Banner (Otomatis)</span>
+                          </span>
+                          <span className="text-[10px] font-bold bg-amber-200/90 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                            Auto-Generate
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-white border border-amber-300/80 font-semibold text-slate-900 text-xs shadow-2xs flex items-start gap-2">
+                          <span className="text-amber-600 text-sm leading-none mt-0.5">📢</span>
+                          <span className="leading-snug">
+                            {item.keterangan ||
+                              `${formatPoliName(poli)} tgl ${
+                                item.tglSpesifik || item.tglLibur || '30 Oktober 2026'
+                              } kuota dibatasi maksimal ${item.batasKuota || 25} pasien`}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-amber-800/80 leading-normal">
+                          Teks ini otomatis ditayangkan pada papan pengumuman kartu dokter, modal poster, dan jadwal operasional poliklinik.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <DatePickerField
+                          label="Tgl Libur / Semula"
+                          value={item.tglLibur}
+                          onChange={(val) => handleUpdateItem(index, 'tglLibur', val)}
+                          accentColor="red"
+                        />
+
+                        <DatePickerField
+                          label="Tgl Masuk / Pengganti"
+                          value={item.tglMasuk}
+                          onChange={(val) => handleUpdateItem(index, 'tglMasuk', val)}
+                          accentColor="emerald"
+                        />
+                      </div>
+                    </>
+                  )}
 
                   {/* Conditional Time Inputs for JADWAL MAJU */}
                   {item.tipe === 'MAJU' && (() => {

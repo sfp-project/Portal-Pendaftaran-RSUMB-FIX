@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, ChevronDown, Filter, X, RefreshCw, Sparkles } from 'lucide-react';
+import { Search, ChevronDown, Filter, X, RefreshCw } from 'lucide-react';
 
 interface FilterBarProps {
   searchTerm: string;
@@ -152,19 +152,6 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {onOpenPosterModal && (
-            <button
-              type="button"
-              id="filterbar-btn-poster"
-              onClick={onOpenPosterModal}
-              className="text-xs font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all cursor-pointer shadow-2xs active:scale-95"
-              title="Buka Generator Poster Jadwal Harian Resmi RSUMB"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Poster Hari Ini</span>
-            </button>
-          )}
-
           {hasActiveFilters && (
             <button
               onClick={onReset}

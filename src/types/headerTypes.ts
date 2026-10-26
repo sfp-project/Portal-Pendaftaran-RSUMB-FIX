@@ -17,7 +17,8 @@ export type NotificationSubCategory =
   | 'Jadwal DPJP'
   | 'Kuota BPJS'
   | 'Handover Shift'
-  | 'Broadcast Gagal';
+  | 'Broadcast Gagal'
+  | 'Scan QR Mandiri';
 
 export interface SystemNotification {
   id: string;

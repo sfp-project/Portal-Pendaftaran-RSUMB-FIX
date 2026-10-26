@@ -25,7 +25,8 @@ import {
   DoctorSchedule,
   DoctorLeaveAnnouncement,
   PatientQueueItem,
-  JasaRaharjaItem
+  JasaRaharjaItem,
+  PatientSelfRegistrationItem
 } from '../types';
 import { ElectiveSurgerySchedule } from '../data/surgeryData';
 import { KhitanParticipant } from '../data/khitanData';
@@ -41,6 +42,11 @@ import {
 } from '../types/patientNotesTypes';
 import { KuponMohat } from '../types/mohatTypes';
 import { RequirementChecklistItem, MissingDocumentSlip } from '../types/requirementTypes';
+import {
+  addScanQrHeaderNotification,
+  markAllScanQrHeaderNotificationsAsRead,
+  removeHeaderNotification
+} from '../data/headerData';
 
 // Collection Constants
 export const COLLECTIONS = {
@@ -61,6 +67,8 @@ export const COLLECTIONS = {
   MEDICAL_LETTERS: 'medical_letters',
   REQUIREMENTS_CHECKLIST: 'requirements_checklist',
   REQUIREMENTS_SLIPS: 'requirements_slips',
+  REKAP_PENDAFTARAN: 'rekap_pendaftaran',
+  PATIENT_SELF_REGISTRATIONS: 'patient_self_registrations',
   SYSTEM_SETTINGS: 'system_settings'
 } as const;
 
@@ -455,4 +463,224 @@ export async function saveMissingDocSlipDoc(item: MissingDocumentSlip) {
 
 export async function deleteMissingDocSlipDoc(id: string) {
   await removeDoc(COLLECTIONS.REQUIREMENTS_SLIPS, id);
+}
+
+// ---------------------------------------------------------------------------
+// 14. REKAP PENDAFTARAN
+// ---------------------------------------------------------------------------
+export interface RekapPendaftaranDoc {
+  id: string;
+  nomorUrut: string;
+  namaPasien: string;
+  noHp: string;
+  noBpjs?: string;
+  jenisPembayaran?: string;
+  createdAt: any;
+}
+
+export function subscribeRekapPendaftaran(callback: (items: RekapPendaftaranDoc[]) => void) {
+  return subscribeCollection<RekapPendaftaranDoc>(COLLECTIONS.REKAP_PENDAFTARAN, callback);
+}
+
+export async function addRekapPendaftaranDoc(data: Omit<RekapPendaftaranDoc, 'id' | 'createdAt'>) {
+  await addDoc(collection(db, COLLECTIONS.REKAP_PENDAFTARAN), {
+    ...data,
+    createdAt: serverTimestamp()
+  });
+}
+
+export async function deleteRekapPendaftaranDoc(id: string) {
+  await deleteDoc(doc(db, COLLECTIONS.REKAP_PENDAFTARAN, id));
+}
+
+// ---------------------------------------------------------------------------
+// 15. PENDAFTARAN MANDIRI PASIEN (SELF-SERVICE SCAN QR)
+// ---------------------------------------------------------------------------
+const LOCAL_STORAGE_SELF_REG = 'rsumb_patient_self_registrations_v1';
+const LOCAL_STORAGE_READ_REG = 'rsumb_read_self_reg_ids_v1';
+
+export const INITIAL_PATIENT_SELF_REGISTRATIONS: PatientSelfRegistrationItem[] = [
+  {
+    id: 'reg-demo-1',
+    statusPasien: 'Baru',
+    namaPasien: 'Ahmad Fauzi Ridwan',
+    nik: '3524051208940003',
+    tempatLahir: 'Lamongan',
+    tanggalLahir: '12/08/1994',
+    jenisKelamin: 'L',
+    alamat: 'Desa Moropelang RT 02 / RW 01, Babat, Lamongan',
+    noHp: '081234567890',
+    namaPenanggungJawab: 'Hj. Siti Mariyam',
+    hubunganKeluarga: 'Ibu Kandung',
+    jenisPembayaran: 'BPJS Kesehatan',
+    waktuDaftar: 'Hari ini, 07.45 WIB'
+  },
+  {
+    id: 'reg-demo-2',
+    statusPasien: 'Lama',
+    namaPasien: 'Nur Aini Rahmawati',
+    nik: '3524055503980002',
+    tempatLahir: 'Babat',
+    tanggalLahir: '15/03/1998',
+    jenisKelamin: 'P',
+    alamat: 'Jl. Raya Babat - Surabaya No. 45, Babat',
+    noHp: '085712345678',
+    namaPenanggungJawab: 'Bambang Trianto',
+    hubunganKeluarga: 'Suami',
+    jenisPembayaran: 'UMUM',
+    waktuDaftar: 'Hari ini, 08.10 WIB'
+  }
+];
+
+export function loadLocalPatientSelfRegistrations(): PatientSelfRegistrationItem[] {
+  try {
+    const saved = localStorage.getItem(LOCAL_STORAGE_SELF_REG);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    } else {
+      // First initial mount: seed default demo registrations and mark them read so bell doesn't blink
+      localStorage.setItem(LOCAL_STORAGE_SELF_REG, JSON.stringify(INITIAL_PATIENT_SELF_REGISTRATIONS));
+      saveReadSelfRegIds(INITIAL_PATIENT_SELF_REGISTRATIONS.map((i) => i.id));
+      return INITIAL_PATIENT_SELF_REGISTRATIONS;
+    }
+  } catch {}
+  return [];
+}
+
+export function saveLocalPatientSelfRegistrations(items: PatientSelfRegistrationItem[]) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_SELF_REG, JSON.stringify(items));
+    window.dispatchEvent(new CustomEvent('rsumb_self_registration_updated'));
+  } catch {}
+}
+
+export function getReadSelfRegIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_READ_REG);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed);
+      }
+    }
+  } catch {}
+  return new Set();
+}
+
+export function saveReadSelfRegIds(ids: Set<string> | string[]) {
+  try {
+    const arr = Array.from(ids);
+    localStorage.setItem(LOCAL_STORAGE_READ_REG, JSON.stringify(arr));
+    window.dispatchEvent(new CustomEvent('rsumb_self_reg_read_status_changed'));
+  } catch {}
+}
+
+export function getUnreadSelfRegCount(): number {
+  const current = loadLocalPatientSelfRegistrations();
+  const readIds = getReadSelfRegIds();
+  return current.filter((item) => !readIds.has(item.id)).length;
+}
+
+export function markAllSelfRegistrationsAsRead(): void {
+  const current = loadLocalPatientSelfRegistrations();
+  const readIds = getReadSelfRegIds();
+  current.forEach((item) => readIds.add(item.id));
+  saveReadSelfRegIds(readIds);
+
+  // Tandai juga notifikasi scan QR di headerData sebagai sudah dibaca
+  markAllScanQrHeaderNotificationsAsRead();
+
+  window.dispatchEvent(new CustomEvent('rsumb_self_reg_read_status_changed'));
+  window.dispatchEvent(new CustomEvent('rsumb_header_notifications_updated'));
+}
+
+export function subscribePatientSelfRegistrations(callback: (items: PatientSelfRegistrationItem[]) => void) {
+  // 1. Zero-latency instant initial load from local storage
+  try {
+    const local = loadLocalPatientSelfRegistrations();
+    callback(local);
+  } catch (err) {
+    console.warn('Initial local self-registration load error:', err);
+  }
+
+  // 2. Real-time Firestore Subscription
+  const unsubscribe = subscribeCollection<PatientSelfRegistrationItem>(
+    COLLECTIONS.PATIENT_SELF_REGISTRATIONS,
+    (items) => {
+      if (Array.isArray(items)) {
+        saveLocalPatientSelfRegistrations(items);
+        callback(items);
+      } else {
+        const local = loadLocalPatientSelfRegistrations();
+        callback(local);
+      }
+    }
+  );
+
+  // 3. Local window event listener fallback for instant intra-window sync
+  const handleLocalUpdate = () => {
+    callback(loadLocalPatientSelfRegistrations());
+  };
+  window.addEventListener('rsumb_self_registration_updated', handleLocalUpdate);
+
+  return () => {
+    unsubscribe();
+    window.removeEventListener('rsumb_self_registration_updated', handleLocalUpdate);
+  };
+}
+
+export async function savePatientSelfRegistrationDoc(item: PatientSelfRegistrationItem) {
+  // Update local storage first for zero-latency response
+  const current = loadLocalPatientSelfRegistrations();
+  const filtered = current.filter((i) => i.id !== item.id);
+  const updated = [item, ...filtered];
+  saveLocalPatientSelfRegistrations(updated);
+
+  // Pastikan ID pasien baru belum berstatus dibaca agar memicu blinking indicator lonceng
+  const readIds = getReadSelfRegIds();
+  readIds.delete(item.id);
+  saveReadSelfRegIds(readIds);
+
+  // Tambahkan entri notifikasi lonceng di header
+  addScanQrHeaderNotification(item);
+
+  // Broadcast events
+  window.dispatchEvent(new CustomEvent('rsumb_self_registration_updated'));
+  window.dispatchEvent(new CustomEvent('rsumb_self_reg_read_status_changed'));
+  window.dispatchEvent(new CustomEvent('rsumb_header_notifications_updated'));
+
+  try {
+    await saveDoc(COLLECTIONS.PATIENT_SELF_REGISTRATIONS, item.id, {
+      ...item,
+      createdAt: serverTimestamp()
+    });
+  } catch (e) {
+    console.warn('Firestore save self registration warning (local saved):', e);
+  }
+}
+
+export async function deletePatientSelfRegistrationDoc(id: string) {
+  const current = loadLocalPatientSelfRegistrations();
+  const updated = current.filter((i) => i.id !== id);
+  saveLocalPatientSelfRegistrations(updated);
+
+  // Hapus dari daftar ID read jika ada
+  const readIds = getReadSelfRegIds();
+  readIds.delete(id);
+  saveReadSelfRegIds(readIds);
+
+  // Hapus notifikasi terkait dari header
+  removeHeaderNotification(`notif-scan-${id}`);
+
+  // Broadcast events ke seluruh komponen
+  window.dispatchEvent(new CustomEvent('rsumb_self_registration_updated'));
+  window.dispatchEvent(new CustomEvent('rsumb_self_reg_read_status_changed'));
+  window.dispatchEvent(new CustomEvent('rsumb_header_notifications_updated'));
+
+  try {
+    await removeDoc(COLLECTIONS.PATIENT_SELF_REGISTRATIONS, id);
+  } catch (e) {
+    console.warn('Firestore delete self registration warning (local deleted):', e);
+  }
 }

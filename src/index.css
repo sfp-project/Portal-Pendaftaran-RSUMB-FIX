@@ -82,7 +82,83 @@
   pointer-events: none;
 }
 
+/* =========================================================================
+   DEDICATED @MEDIA PRINT OFFICIAL RSUMB REPORT HEADER SECTION
+   Automatically formats and presents the official hospital letterhead Kop
+   with RSUMB logo, date-stamped document title, and meta info for all reports
+   ========================================================================= */
+.rsumb-print-header,
+.print-header-section,
+.print-header-kop {
+  display: none;
+}
+
 @media print {
+  .rsumb-print-header,
+  .print-header-section,
+  .print-header-kop {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    margin-bottom: 12pt !important;
+    padding-bottom: 4pt !important;
+    background: #ffffff !important;
+    color: #0b1c30 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .rsumb-print-header img,
+  .print-header-kop img,
+  .rsumb-logo {
+    display: block !important;
+    visibility: visible !important;
+    width: 52px !important;
+    height: 52px !important;
+    object-fit: contain !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .rsumb-print-header-title {
+    font-size: 13.5pt !important;
+    font-weight: 800 !important;
+    color: #047857 !important;
+    text-transform: uppercase !important;
+    letter-spacing: -0.01em !important;
+    line-height: 1.25 !important;
+    margin-top: 2pt !important;
+    margin-bottom: 2pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .rsumb-print-header-divider {
+    border-bottom: 2pt solid #047857 !important;
+    padding-bottom: 8pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .rsumb-print-header-subdivider {
+    border-bottom: 0.5pt solid #0f172a !important;
+    margin-top: 2pt !important;
+    margin-bottom: 6pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .rsumb-print-header-meta {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    font-size: 8.5pt !important;
+    color: #334155 !important;
+    padding: 2pt 0 !important;
+    font-weight: 500 !important;
+  }
+
   @page {
     size: auto;
     margin: 0mm;

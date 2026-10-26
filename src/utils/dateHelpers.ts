@@ -80,6 +80,10 @@ export function extractTimestampsFromText(text: string): number[] {
  * Prioritizes tglLibur first, and uses tglMasuk as fallback.
  */
 export function getScheduleItemEarliestTimestamp(item: DoctorLeaveItem): number {
+  if (item.tglSpesifik) {
+    const tsSpesifik = extractTimestampsFromText(item.tglSpesifik);
+    if (tsSpesifik.length > 0) return Math.min(...tsSpesifik);
+  }
   const tsLibur = extractTimestampsFromText(item.tglLibur || '');
   if (tsLibur.length > 0) return Math.min(...tsLibur);
   const tsMasuk = extractTimestampsFromText(item.tglMasuk || '');
@@ -112,13 +116,14 @@ export function normalizeDoctorName(dpjp: string): string {
  * 2. Doctor cards in order of their closest date
  */
 /**
- * Returns all distinct timestamps found for a schedule item (checking tglLibur, tglMasuk, and keterangan).
+ * Returns all distinct timestamps found for a schedule item (checking tglLibur, tglMasuk, keterangan, and tglSpesifik).
  */
 export function getAllScheduleItemTimestamps(item: DoctorLeaveItem): number[] {
   const ts1 = extractTimestampsFromText(item.tglLibur || '');
   const ts2 = extractTimestampsFromText(item.tglMasuk || '');
   const ts3 = extractTimestampsFromText(item.keterangan || '');
-  return Array.from(new Set([...ts1, ...ts2, ...ts3]));
+  const ts4 = extractTimestampsFromText(item.tglSpesifik || '');
+  return Array.from(new Set([...ts1, ...ts2, ...ts3, ...ts4]));
 }
 
 /**
@@ -1038,23 +1043,63 @@ export function getJamCetak(
 }
 
 /**
+ * Mengambil angka kuota maksimal dokter secara bersih khusus untuk keperluan ekspor & cetak dokumen resmi.
+ * Hanya menampilkan angka kuota maksimal saja (contoh: "30" atau format angka 30),
+ * menghilangkan total format pecahan sisa/terpakai (seperti "0/40", "15/15") serta menghapus
+ * teks status di dalam kurung seperti "(Tersedia)" atau "(Penuh)" khusus pada dokumen hasil ekspor/cetak.
+ */
+export function getCleanDoctorQuota(sch: Partial<DoctorSchedule> | null | undefined): string {
+  if (!sch) return '-';
+  const anySch = sch as any;
+
+  // 1. Cek langsung properti kuota total / kapasitas maksimal numerik
+  const directLimit =
+    sch.kuotaTotal ??
+    anySch.kuota_total ??
+    anySch.kuota_maksimal ??
+    anySch.kuotaMaksimal ??
+    anySch.kuota_bpjs ??
+    anySch.kuotaBpjs ??
+    anySch.bpjsQuota;
+
+  if (directLimit !== undefined && directLimit !== null && directLimit !== '') {
+    const num = Number(directLimit);
+    if (!isNaN(num) && num > 0) {
+      return String(num);
+    }
+  }
+
+  // 2. Jika nilai berupa teks/string (misal "0/40 (Tersedia)", "30 (Tersedia)", "Kuota 30")
+  const rawText = String(anySch.kuota || anySch.kuota_bpjs_str || anySch.kuotaTerisi || '').trim();
+  if (rawText && rawText !== '-' && rawText !== 'undefined' && rawText !== 'null') {
+    // Hapus kurung status misal (Tersedia), (Penuh), (Libur)
+    const withoutParens = rawText.replace(/\([^\)]*\)/g, '').trim();
+
+    // Jika berformat pecahan "sisa/maksimal" misal "0/40", ambil angka maksimal di kanan slash
+    if (withoutParens.includes('/')) {
+      const parts = withoutParens.split('/');
+      const maxPart = parts[1] || parts[0];
+      const match = maxPart.match(/\d+/);
+      if (match) return match[0];
+    }
+
+    // Ambil angka murni pertama yang ada
+    const match = withoutParens.match(/\d+/);
+    if (match) return match[0];
+  }
+
+  return '30';
+}
+
+/**
  * Formats doctor quota capacity displaying the maximum daily limit (e.g. "70 Slot" or "Maks. 70 Pasien").
  * Connects directly to hospital SIMRS capacity properties: kuota_maksimal, kuota_bpjs, kuota_total, or kuotaTotal.
  */
 export function formatDoctorQuota(sch: Partial<DoctorSchedule> | null | undefined): string {
   if (!sch) return '-';
-  const anySch = sch as any;
-  const capacity =
-    anySch.kuota_maksimal ??
-    anySch.kuota_bpjs ??
-    anySch.kuotaBpjs ??
-    anySch.kuotaMaksimal ??
-    anySch.kuota_total ??
-    sch.kuotaTotal ??
-    anySch.kuota;
-
-  if (capacity !== undefined && capacity !== null && capacity !== '' && !isNaN(Number(capacity))) {
-    return `${capacity} Slot`;
+  const clean = getCleanDoctorQuota(sch);
+  if (clean !== '-' && clean !== '') {
+    return `${clean} Slot`;
   }
   return '-';
 }

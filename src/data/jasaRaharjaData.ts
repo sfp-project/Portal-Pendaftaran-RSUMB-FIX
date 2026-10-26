@@ -29,7 +29,25 @@ export function subscribeJasaRaharjaList(callback: (items: JasaRaharjaItem[]) =>
 export function loadJasaRaharjaData(): JasaRaharjaItem[] {
   if (typeof window === 'undefined') return [];
 
-  const allKeys = [LOCAL_STORAGE_KEY, ...FALLBACK_STORAGE_KEYS];
+  // 1. Cek apakah ada penanda data sudah di-reset/dikosongkan
+  if (localStorage.getItem('kll_data_cleared') === 'true') {
+    return [];
+  }
+
+  // 2. Jika tidak cleared, prioritaskan kunci 'jasa_raharja_patients'
+  const primarySaved = localStorage.getItem('jasa_raharja_patients');
+  if (primarySaved && typeof primarySaved === 'string') {
+    try {
+      const parsed = JSON.parse(primarySaved.trim());
+      if (Array.isArray(parsed)) {
+        if (parsed.length === 0) return [];
+        const activeOnly = parsed.filter((i: any) => i && typeof i === 'object' && !i.is_deleted && !i.isDeleted);
+        if (activeOnly.length > 0) return activeOnly;
+      }
+    } catch {}
+  }
+
+  const allKeys = [LOCAL_STORAGE_KEY, ...FALLBACK_STORAGE_KEYS, 'rsumb_kll_patients'];
 
   for (const key of allKeys) {
     try {
@@ -38,7 +56,8 @@ export function loadJasaRaharjaData(): JasaRaharjaItem[] {
         const trimmed = saved.trim();
         if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
           const parsed = JSON.parse(trimmed);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
+            if (parsed.length === 0) return [];
             const activeOnly = parsed.filter((i: any) => i && typeof i === 'object' && !i.is_deleted && !i.isDeleted);
             if (activeOnly.length > 0) {
               return activeOnly;
@@ -53,14 +72,23 @@ export function loadJasaRaharjaData(): JasaRaharjaItem[] {
     }
   }
 
-  return [];
+  // HANYA gunakan data bawaan jika belum pernah di-reset
+  return initialJasaRaharjaData;
 }
 
 export function saveJasaRaharjaData(data: JasaRaharjaItem[]): void {
   if (typeof window === 'undefined') return;
   const validData = Array.isArray(data) ? data : [];
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(validData));
+    if (validData.length === 0) {
+      localStorage.setItem('kll_data_cleared', 'true');
+      localStorage.setItem('jasa_raharja_patients', JSON.stringify([]));
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
+    } else {
+      localStorage.removeItem('kll_data_cleared');
+      localStorage.setItem('jasa_raharja_patients', JSON.stringify(validData));
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(validData));
+    }
   } catch (err) {
     console.warn('Peringatan: Gagal menyimpan data Jasa Raharja ke storage:', err);
   }

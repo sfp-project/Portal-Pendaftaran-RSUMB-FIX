@@ -40,11 +40,15 @@ import {
   CheckCheck,
   AlertCircle,
   BookmarkCheck,
-  Pencil
+  Pencil,
+  Type,
+  RotateCcw,
+  Stethoscope
 } from 'lucide-react';
 import { parseSpriText, formatPesananKamarWA } from '../../data/inpatientOrderData';
 import { SaveShiftModal } from './SaveShiftModal';
 import { ShiftArchiveModal } from './ShiftArchiveModal';
+import { SpriIcdCodingAssistantTab } from './SpriIcdCodingAssistantTab';
 import {
   ShiftArchiveItem,
   getStoredArchives,
@@ -59,10 +63,10 @@ import {
   saveStickyNoteDoc,
   batchSaveStickyNotes
 } from '../../services/firestoreSync';
-import { StickyColorTheme, StickyNoteItem } from '../../types/inpatientOrderTypes';
+import { StickyColorTheme, StickyNoteItem, StickyFontSize } from '../../types/inpatientOrderTypes';
 import { htmlToCleanWhatsAppText } from '../../utils/inpatientWaFormat';
 
-export type { StickyColorTheme, StickyNoteItem };
+export type { StickyColorTheme, StickyNoteItem, StickyFontSize };
 export { htmlToCleanWhatsAppText };
 
 interface InpatientOrderManagementViewProps {
@@ -157,6 +161,7 @@ const DEFAULT_NOTES: StickyNoteItem[] = [
     subtitle: 'Ruang Rawat Inap Lt. 4 (JN, JF)',
     headerCode: 'LT 4',
     theme: 'blue',
+    fontSize: 'sm',
     updatedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     contentHtml: ''
   },
@@ -166,6 +171,7 @@ const DEFAULT_NOTES: StickyNoteItem[] = [
     subtitle: 'Ruang Rawat Inap Lt. 5 (JM)',
     headerCode: 'LT 5',
     theme: 'green',
+    fontSize: 'sm',
     updatedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     contentHtml: ''
   },
@@ -175,6 +181,7 @@ const DEFAULT_NOTES: StickyNoteItem[] = [
     subtitle: 'Ruang Bersalin / Kebidanan / Nifas',
     headerCode: 'VK',
     theme: 'pink',
+    fontSize: 'sm',
     updatedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     contentHtml: ''
   },
@@ -184,6 +191,7 @@ const DEFAULT_NOTES: StickyNoteItem[] = [
     subtitle: 'Rekap Ketersediaan Bed Per Shift',
     headerCode: 'BED KOSONG',
     theme: 'cream',
+    fontSize: 'sm',
     updatedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     contentHtml: `<div><b>KETERSEDIAAN BED KOSONG (RSUMB):</b></div><br><div><b>• LANTAI 4 (JN / JF):</b></div><div>&nbsp;&nbsp;- Kls 1 (Anak): Siap Pakai</div><div>&nbsp;&nbsp;- Kls 2: Siap Pakai</div><div>&nbsp;&nbsp;- Kls 3: Siap Pakai</div><br><div><b>• LANTAI 5 (JM):</b></div><div>&nbsp;&nbsp;- VIP: Siap Pakai</div><div>&nbsp;&nbsp;- Kls 2: Siap Pakai</div><div>&nbsp;&nbsp;- Kls 3: Siap Pakai</div><br><div><b>• VK (DARUSSALAM / NIFAS):</b></div><div>&nbsp;&nbsp;- Ruang Nifas Kls 3: Siap Pakai</div><div>&nbsp;&nbsp;- Ruang Bersalin: Siap Pakai</div><br><div><b>• ICU:</b></div><div>&nbsp;&nbsp;- Siap Pakai</div>`
   }
@@ -219,6 +227,7 @@ export const InpatientOrderManagementView: React.FC<InpatientOrderManagementView
   // State Feedback Copy
   const [copiedNoteId, setCopiedNoteId] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'sticky' | 'spri'>('sticky');
 
   // ----------------------------------------------------
   // ARSIP OPERAN SHIFT STATE & HANDLERS
@@ -449,6 +458,50 @@ BPJS KLS 3`);
     });
   };
 
+  // Handler Update Ukuran Font Catatan
+  const handleUpdateNoteFontSize = (noteId: string, newFontSize: StickyFontSize) => {
+    setNotes((prevNotes) => {
+      const nextNotes = prevNotes.map((note) =>
+        note.id === noteId ? { ...note, fontSize: newFontSize } : note
+      );
+      const target = nextNotes.find((n) => n.id === noteId);
+      if (target) {
+        saveStickyNoteDoc(target).catch((err) => console.warn(err));
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextNotes));
+      } catch (e) {
+        console.error(e);
+      }
+      return nextNotes;
+    });
+  };
+
+  // Handler Update Dimensi Ukuran Catatan (Lebar & Tinggi Resizable)
+  const handleUpdateNoteSize = (noteId: string, width?: number, height?: number) => {
+    setNotes((prevNotes) => {
+      const nextNotes = prevNotes.map((note) =>
+        note.id === noteId ? { ...note, customWidth: width, customHeight: height } : note
+      );
+      const target = nextNotes.find((n) => n.id === noteId);
+      if (target) {
+        saveStickyNoteDoc(target).catch((err) => console.warn(err));
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextNotes));
+      } catch (e) {
+        console.error(e);
+      }
+      return nextNotes;
+    });
+  };
+
+  // Handler Reset Ukuran Standar (Default)
+  const handleResetNoteSize = (noteId: string) => {
+    handleUpdateNoteSize(noteId, undefined, undefined);
+    triggerToast('Ukuran catatan dikembalikan ke ukuran standar');
+  };
+
   // Salin Teks Tunggal Sticky Note ke WhatsApp
   const handleCopyNoteWA = async (note: StickyNoteItem) => {
     try {
@@ -532,12 +585,13 @@ BPJS KLS 3`);
     const nama = parsedSpriData.nama || 'PASIEN BARU';
     const umur = parsedSpriData.umur || '-';
     const dx = parsedSpriData.diagnosa || 'DIAGNOSA AWAL';
-    const icd = parsedSpriData.kodeIcd10 ? ` (${parsedSpriData.kodeIcd10})` : '';
     const dpjp = parsedSpriData.dpjp || 'dr. DPJP';
-    const bayar = parsedSpriData.caraBayar || 'BPJS KLS 3';
+    const bayar = parsedSpriData.caraBayar || 'BPJS';
+    const kls = parsedSpriData.kelasKamar || '3';
 
     // HTML Snippet Pasien Baru dengan Highlight Soft Red untuk status Inden (Belum Dapat Kamar)
-    const newSnippet = `<br><div><b>${nama} / ${umur}</b></div><div>- ${dx}${icd}</div><div>- ${dpjp}</div><div><span style="background-color: #fecdd3; padding: 2px 6px; border-radius: 4px; font-weight: 500;">- ${bayar} ( &nbsp; )</span></div>`;
+    // Sesuai format SPRI presisi 100%: NAMA (UMUR), - DIAGNOSA, - DPJP : ..., - CARA_BAYAR KELAS ( )
+    const newSnippet = `<br><div><b>${nama} (${umur})</b></div><div>- ${dx}</div><div>- DPJP : ${dpjp}</div><div><span style="background-color: #fecdd3; padding: 2px 6px; border-radius: 4px; font-weight: 500;">- ${bayar} ${kls} ( &nbsp; )</span></div>`;
 
     const updatedContent = targetNote.contentHtml
       ? `${targetNote.contentHtml}${newSnippet}`
@@ -549,11 +603,43 @@ BPJS KLS 3`);
   };
 
   return (
-    <div className="flex flex-col gap-2.5 w-full max-w-full print:p-0">
+    <div className="flex flex-col gap-3 w-full max-w-full print:p-0">
       {/* ==================================================== */}
-      {/* 1. HEADER UTAMA: STICKY NOTES OPERAN SHIFT (KOMPAK)  */}
+      {/* SISTEM TAB MENU NAVIGASI UTAMA                     */}
       {/* ==================================================== */}
-      <div className="bg-white rounded-xl shadow-xs border border-slate-200/90 py-1.5 px-3 sm:px-4 transition-all">
+      <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-slate-200 shadow-xs">
+        <button
+          onClick={() => setActiveTab('sticky')}
+          className={`flex-1 py-2 px-4 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'sticky'
+              ? 'bg-[#005d42] text-white shadow-md'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <StickyNote className="w-4 h-4" />
+          <span>Tab 1: Sticky Notes Operan & Inden</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('spri')}
+          className={`flex-1 py-2 px-4 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'spri'
+              ? 'bg-[#005d42] text-white shadow-md'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Stethoscope className="w-4 h-4" />
+          <span>Tab 2: Asisten SPRI & ICD-10 Coding</span>
+        </button>
+      </div>
+
+      {activeTab === 'spri' ? (
+        <SpriIcdCodingAssistantTab showToast={triggerToast} />
+      ) : (
+        <>
+          {/* ==================================================== */}
+          {/* 1. HEADER UTAMA: STICKY NOTES OPERAN SHIFT (KOMPAK)  */}
+          {/* ==================================================== */}
+          <div className="bg-white rounded-xl shadow-xs border border-slate-200/90 py-1.5 px-3 sm:px-4 transition-all">
         <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2">
           {/* Sisi Kiri: Judul Ringkas, Badge Auto-Save & Badge Terakhir Disimpan Sejajar */}
           <div className="flex items-center flex-wrap gap-2 min-w-0">
@@ -668,6 +754,19 @@ BPJS KLS 3`);
               <span className="hidden sm:inline">Reset</span>
             </button>
 
+            {/* Tombol Tata Ukuran (Kembalikan ke 4 Kolom Default) */}
+            <button
+              onClick={() => {
+                notes.forEach((n) => handleResetNoteSize(n.id));
+                triggerToast('Seluruh ukuran kartu Sticky Notes dikembalikan ke standar.');
+              }}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg text-slate-600 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+              title="Kembalikan seluruh ukuran Sticky Notes ke posisi standar (4 kolom rapi)"
+            >
+              <RotateCcw className="w-3 h-3 text-slate-500" />
+              <span className="hidden md:inline">Tata Ukuran</span>
+            </button>
+
             {/* Tombol Kosongkan Catatan */}
             <button
               onClick={handleClearAllNotes}
@@ -757,13 +856,32 @@ BPJS KLS 3`);
             <div className="lg:col-span-6 flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
                 <span>Tempel Teks Mentah SPRI (Copy dari SIMRS / Dokter):</span>
-                <span className="text-[11px] text-slate-500 font-normal">Format otomatis terbaca</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-500 font-normal">Format otomatis</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRawSpriInput(`064707
+KARMANI. NY
+PEREMPUAN
+65 Th
+Ma\`wa Kelas 3
+DYSPNEU S ADHF KODE ICD 10 (I50.9)
+Dokter DPJP : dr. Ilma Alfia Isaridha, Sp.JP
+BPJS`);
+                      triggerToast('Contoh teks formulir SPRI berhasil dimuat.');
+                    }}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                  >
+                    Contoh SPRI
+                  </button>
+                </div>
               </label>
               <textarea
                 value={rawSpriInput}
                 onChange={(e) => setRawSpriInput(e.target.value)}
                 rows={5}
-                placeholder="Tempel teks SPRI di sini..."
+                placeholder="Tempel teks formulir SPRI di sini..."
                 className="w-full text-xs font-mono p-3 rounded-xl border border-indigo-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-400 text-slate-800"
               />
             </div>
@@ -771,11 +889,27 @@ BPJS KLS 3`);
             {/* Hasil Ekstraksi & Tombol Masukkan ke Note */}
             <div className="lg:col-span-6 flex flex-col justify-between gap-3 bg-white/80 p-4 rounded-xl border border-indigo-200">
               <div>
-                <span className="text-xs font-bold text-slate-800 block mb-1">
-                  Format Hasil Ekstraksi:
-                </span>
-                <div className="text-xs font-mono bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-slate-700 whitespace-pre-line leading-relaxed">
-                  {formattedSpriWA}
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-800">
+                    Format Hasil Ekstraksi:
+                  </span>
+                  {formattedSpriWA && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(formattedSpriWA);
+                        triggerToast('Hasil ekstraksi SPRI disalin ke clipboard!');
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-100 hover:bg-indigo-200 rounded-md transition cursor-pointer"
+                      title="Salin hasil ekstraksi ini"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Salin</span>
+                    </button>
+                  )}
+                </div>
+                <div className="text-xs font-mono bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-slate-700 whitespace-pre-line leading-relaxed select-all">
+                  {formattedSpriWA || 'Tempel teks SPRI di sebelah kiri untuk melihat hasil ekstraksi otomatis.'}
                 </div>
               </div>
 
@@ -815,7 +949,7 @@ BPJS KLS 3`);
       {/* ==================================================== */}
       {/* 3. LAYOUT MULTI-KOLOM (4 STICKY NOTES BERSAMPINGAN)   */}
       {/* ==================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 items-stretch w-full">
+      <div className="flex flex-wrap gap-4 sm:gap-5 items-start w-full">
         {notes.map((note) => (
           <SingleStickyNoteCard
             key={`${note.id}-${editorVersion}`}
@@ -823,6 +957,9 @@ BPJS KLS 3`);
             isCopied={copiedNoteId === note.id}
             onCopy={() => handleCopyNoteWA(note)}
             onContentChange={(newHtml) => handleUpdateNoteContent(note.id, newHtml)}
+            onFontSizeChange={(newFontSize) => handleUpdateNoteFontSize(note.id, newFontSize)}
+            onSizeChange={(w, h) => handleUpdateNoteSize(note.id, w, h)}
+            onResetSize={() => handleResetNoteSize(note.id)}
             onAppendPatientTemplate={() => {
               let template = '';
               if (note.id === 'kamar_kosong') {
@@ -863,6 +1000,8 @@ BPJS KLS 3`);
         onUpdateArchive={handleUpdateArchive}
         showToast={triggerToast}
       />
+        </>
+      )}
     </div>
   );
 };
@@ -876,21 +1015,41 @@ interface SingleStickyNoteCardProps {
   isCopied: boolean;
   onCopy: () => void;
   onContentChange: (newHtml: string) => void;
+  onFontSizeChange: (newFontSize: StickyFontSize) => void;
+  onSizeChange: (width?: number, height?: number) => void;
+  onResetSize: () => void;
   onAppendPatientTemplate: () => void;
   onClearNote: () => void;
 }
+
+const FONT_SIZE_CONFIG: Record<
+  StickyFontSize,
+  { label: string; px: string; className: string }
+> = {
+  xs: { label: 'Kecil (12px)', px: '12px', className: 'text-xs' },
+  sm: { label: 'Normal (14px)', px: '14px', className: 'text-sm' },
+  base: { label: 'Sedang (16px)', px: '16px', className: 'text-base' },
+  lg: { label: 'Besar (18px)', px: '18px', className: 'text-lg' }
+};
 
 const SingleStickyNoteCard: React.FC<SingleStickyNoteCardProps> = ({
   note,
   isCopied,
   onCopy,
   onContentChange,
+  onFontSizeChange,
+  onSizeChange,
+  onResetSize,
   onAppendPatientTemplate,
   onClearNote
 }) => {
   const styles = THEME_STYLES[note.theme];
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const currentFontSize: StickyFontSize = note.fontSize || 'sm';
+  const fontConfig = FONT_SIZE_CONFIG[currentFontSize] || FONT_SIZE_CONFIG.sm;
 
   // Set initial innerHTML saat pertama mount atau saat data berubah dari luar (Restore/Reset/Clear)
   useEffect(() => {
@@ -898,6 +1057,65 @@ const SingleStickyNoteCard: React.FC<SingleStickyNoteCardProps> = ({
       editorRef.current.innerHTML = note.contentHtml || '';
     }
   }, [note.contentHtml]);
+
+  // Handler Tarik Resize Bebas (Mouse Drag Handle di pojok kanan bawah)
+  const handleMouseDownResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const cardEl = cardRef.current;
+    if (!cardEl) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = cardEl.offsetWidth;
+    const startHeight = cardEl.offsetHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(260, startWidth + (moveEvent.clientX - startX));
+      const newHeight = Math.max(380, startHeight + (moveEvent.clientY - startY));
+      cardEl.style.width = `${newWidth}px`;
+      cardEl.style.height = `${newHeight}px`;
+      cardEl.style.flex = 'none';
+    };
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      const finalWidth = Math.max(260, startWidth + (upEvent.clientX - startX));
+      const finalHeight = Math.max(380, startHeight + (upEvent.clientY - startY));
+      onSizeChange(finalWidth, finalHeight);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Sinkronisasi otomatis jika pengguna me-resize lewat handle native browser
+  useEffect(() => {
+    const cardEl = cardRef.current;
+    if (!cardEl || typeof ResizeObserver === 'undefined') return;
+
+    let timeoutId: NodeJS.Timeout | null = null;
+    const ro = new ResizeObserver(() => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        const curW = Math.round(cardEl.offsetWidth);
+        const curH = Math.round(cardEl.offsetHeight);
+        if (
+          (note.customWidth && Math.abs(curW - note.customWidth) > 6) ||
+          (note.customHeight && Math.abs(curH - note.customHeight) > 6)
+        ) {
+          onSizeChange(curW, curH);
+        }
+      }, 350);
+    });
+
+    ro.observe(cardEl);
+    return () => {
+      ro.disconnect();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [note.customWidth, note.customHeight, onSizeChange]);
 
   // Eksekusi formatting rich text standar
   const execCmd = (cmd: string, val: string = '') => {
@@ -1055,10 +1273,16 @@ const SingleStickyNoteCard: React.FC<SingleStickyNoteCardProps> = ({
 
   return (
     <div
-      className={`flex flex-col h-[calc(100vh-80px)] min-h-[1000px] rounded-2xl overflow-hidden border ${styles.bodyBorder} shadow-sm hover:shadow-md transition-all duration-200 ${styles.ringColor}`}
+      ref={cardRef}
+      className={`flex flex-col rounded-2xl overflow-hidden border ${styles.bodyBorder} shadow-sm hover:shadow-md transition-shadow duration-200 ${styles.ringColor} relative group`}
       style={{
-        minHeight: '1000px',
-        height: 'calc(100vh - 80px)'
+        width: note.customWidth ? `${note.customWidth}px` : undefined,
+        height: note.customHeight ? `${note.customHeight}px` : 'calc(100vh - 120px)',
+        minWidth: '260px',
+        minHeight: '420px',
+        maxWidth: '100%',
+        flex: note.customWidth ? 'none' : '1 1 280px',
+        resize: 'both'
       }}
     >
       {/* -------------------------------------------------- */}
@@ -1090,6 +1314,18 @@ const SingleStickyNoteCard: React.FC<SingleStickyNoteCardProps> = ({
 
         {/* Tombol Header: Salin WA & Opsi */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Tombol Reset Ukuran (Jika ukuran pernah diubah) */}
+          {(note.customWidth || note.customHeight) && (
+            <button
+              type="button"
+              onClick={onResetSize}
+              className={`p-1.5 rounded-lg text-xs font-semibold ${styles.buttonHover} bg-white/70 ${styles.headerText} cursor-pointer active:scale-95 transition-all`}
+              title="Kembalikan ukuran kolom ini ke standar"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           <button
             onClick={onCopy}
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer ${
@@ -1140,10 +1376,11 @@ const SingleStickyNoteCard: React.FC<SingleStickyNoteCardProps> = ({
           suppressContentEditableWarning
           onInput={(e) => onContentChange(e.currentTarget.innerHTML)}
           onPaste={handlePaste}
-          className="flex-1 w-full text-[13px] font-sans leading-relaxed text-slate-800 focus:outline-hidden overflow-y-auto pb-4 pr-1 scrollbar-thin scrollbar-thumb-slate-300"
+          className={`flex-1 w-full ${fontConfig.className} font-sans leading-relaxed text-slate-800 focus:outline-hidden overflow-y-auto pb-4 pr-1 scrollbar-thin scrollbar-thumb-slate-300`}
           style={{
             wordBreak: 'break-word',
-            whiteSpace: 'pre-wrap'
+            whiteSpace: 'pre-wrap',
+            fontSize: fontConfig.px
           }}
           data-placeholder="Ketik catatan di sini... (tekan Ctrl+V untuk menempelkan screenshot gambar)"
         />
@@ -1164,7 +1401,27 @@ const SingleStickyNoteCard: React.FC<SingleStickyNoteCardProps> = ({
       <div
         className={`px-2 py-1.5 ${styles.toolbarBg} border-t ${styles.toolbarBorder} flex items-center justify-between gap-1 select-none shrink-0 mt-auto`}
       >
-        <div className="flex items-center gap-0.5 flex-wrap">
+        <div className="flex items-center gap-1 flex-wrap">
+          {/* Dropdown Pemilih Ukuran Font (Font Size Selector) */}
+          <div
+            className="flex items-center gap-1 bg-white/75 hover:bg-white px-1.5 py-0.5 rounded-md border border-slate-300/80 shadow-2xs transition-colors"
+            title="Pilih ukuran font catatan (Kecil 12px, Normal 14px, Sedang 16px, Besar 18px)"
+          >
+            <Type className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <select
+              value={currentFontSize}
+              onChange={(e) => onFontSizeChange(e.target.value as StickyFontSize)}
+              className="text-[11px] font-bold text-slate-700 bg-transparent border-none outline-none cursor-pointer py-0.5 pr-0.5"
+            >
+              <option value="xs">Kecil (12px)</option>
+              <option value="sm">Normal (14px)</option>
+              <option value="base">Sedang (16px)</option>
+              <option value="lg">Besar (18px)</option>
+            </select>
+          </div>
+
+          <span className="w-px h-4 bg-slate-300/80 mx-0.5" />
+
           {/* Bold */}
           <button
             type="button"
@@ -1284,9 +1541,40 @@ const SingleStickyNoteCard: React.FC<SingleStickyNoteCardProps> = ({
           </button>
         </div>
 
-        {/* Info Indikator Update */}
-        <div className="text-[10px] opacity-70 shrink-0 text-right pr-1">
-          {note.updatedAt}
+        {/* Sisi Kanan Toolbar: Info Waktu, Reset & Drag Resize Handle */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          {/* Info Indikator Update */}
+          <div className="text-[10px] opacity-70 text-right pr-0.5">
+            {note.updatedAt}
+          </div>
+
+          {/* Tombol Cepat Reset Ukuran Catatan */}
+          {(note.customWidth || note.customHeight) && (
+            <button
+              type="button"
+              onClick={onResetSize}
+              className="p-1 rounded-md hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+              title="Kembalikan ukuran ke default"
+            >
+              <RotateCcw className="w-3 h-3" />
+            </button>
+          )}
+
+          {/* Handler Tarik Resize Jelas (Resize Handle di Pojok Kanan Bawah) */}
+          <div
+            onMouseDown={handleMouseDownResize}
+            className="w-5 h-5 flex items-end justify-end p-0.5 cursor-se-resize text-slate-400 hover:text-slate-700 active:text-blue-600 transition-colors select-none -mr-0.5"
+            title="Tarik sudut ini untuk mengatur lebar & tinggi catatan (Resize Note)"
+          >
+            <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 fill-current">
+              <circle cx="8" cy="8" r="1" />
+              <circle cx="5" cy="8" r="1" />
+              <circle cx="8" cy="5" r="1" />
+              <circle cx="2" cy="8" r="1" />
+              <circle cx="5" cy="5" r="1" />
+              <circle cx="8" cy="2" r="1" />
+            </svg>
+          </div>
         </div>
       </div>
     </div>

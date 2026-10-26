@@ -1,5 +1,6 @@
 import React from 'react';
 import { getIndonesianCurrentDate } from '../utils/exportHelpers';
+import { RSUMB_LOGO_BASE64 } from '../assets/logoRsumbBase64';
 
 interface PrintHeaderKopProps {
   title: string;
@@ -19,19 +20,19 @@ export const PrintHeaderKop: React.FC<PrintHeaderKopProps> = ({
   const { dateStr, timeStr } = getIndonesianCurrentDate();
 
   return (
-    <div className="hidden print:block w-full text-slate-900 bg-white mb-4 pb-2">
+    <div className="hidden print:block w-full text-slate-900 bg-white mb-4 pb-2 rsumb-print-header print-header-kop print-header-section">
       {/* Kop Resmi Rumah Sakit */}
-      <div className="flex items-center gap-4 border-b-2 border-[#047857] pb-3 text-left">
+      <div className="flex items-center gap-4 border-b-2 border-[#047857] rsumb-print-header-divider pb-3 text-left">
         <img
-          src="/logo-rsumb.png"
+          src={RSUMB_LOGO_BASE64}
           alt="Logo RSUMB"
-          className="w-14 h-14 object-contain shrink-0"
+          className="w-14 h-14 object-contain shrink-0 rsumb-logo"
         />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-bold text-slate-700 uppercase tracking-widest leading-none">
             RSU MUHAMMADIYAH BABAT
           </p>
-          <h1 className="text-base font-black text-[#047857] uppercase tracking-tight mt-1 leading-tight">
+          <h1 className="rsumb-print-header-title text-base font-black text-[#047857] uppercase tracking-tight mt-1 leading-tight">
             {title}
           </h1>
           <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
@@ -41,10 +42,10 @@ export const PrintHeaderKop: React.FC<PrintHeaderKopProps> = ({
       </div>
 
       {/* Garis Ganda Tipis */}
-      <div className="h-[1px] bg-slate-900 mt-[1.5px] mb-2.5" />
+      <div className="rsumb-print-header-subdivider h-[1px] bg-slate-900 mt-[1.5px] mb-2.5" />
 
       {/* Baris Meta Info (Tanggal, Filter, Total Data) */}
-      <div className="flex items-center justify-between text-[11px] text-slate-700 py-1 font-medium">
+      <div className="rsumb-print-header-meta flex items-center justify-between text-[11px] text-slate-700 py-1 font-medium">
         <div>
           {subtitle && <span className="font-semibold text-slate-800">{subtitle}</span>}
           {extraInfo && <span className="ml-2 text-slate-500">({extraInfo})</span>}
@@ -55,8 +56,8 @@ export const PrintHeaderKop: React.FC<PrintHeaderKopProps> = ({
               {totalDataLabel || `Total: ${totalDataCount} Data`}
             </span>
           )}
-          <span className="text-slate-500">
-            Dicetak: {dateStr}, {timeStr}
+          <span className="text-slate-600 font-medium">
+            Dicetak pada: <strong className="text-slate-800 font-bold">{dateStr}, {timeStr}</strong>
           </span>
         </div>
       </div>

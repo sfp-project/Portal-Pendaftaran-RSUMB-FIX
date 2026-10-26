@@ -28,6 +28,7 @@ export const PatientQueueView: React.FC<PatientQueueViewProps> = ({
   const [search, setSearch] = useState('');
   const [poliFilter, setPoliFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [selectedPatientIds, setSelectedPatientIds] = useState<string[]>([]);
 
   const filteredQueue = queueList.filter((item) => {
     const matchesSearch =
@@ -54,6 +55,59 @@ export const PatientQueueView: React.FC<PatientQueueViewProps> = ({
       msg.lang = 'id-ID';
       window.speechSynthesis.speak(msg);
     }
+  };
+
+  const togglePatientSelection = (id: string) => {
+    setSelectedPatientIds((prev) =>
+      prev.includes(id) ? prev.filter((pid) => pid !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkPrint = (format: 'F4' | 'Thermal') => {
+    const selectedPatients = filteredQueue.filter((item) => selectedPatientIds.includes(item.id));
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const isThermal = format === 'Thermal';
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Laporan Bulk ${format}</title>
+          <style>
+            @media print {
+              .no-print { display: none; }
+              ${isThermal ? '@page { size: 80mm auto; margin: 2mm; }' : '@page { size: 215mm 330mm; margin: 15mm; }'}
+            }
+            body { font-family: ${isThermal ? 'monospace' : 'sans-serif'}; padding: ${isThermal ? '2px' : '20px'}; width: ${isThermal ? '72mm' : 'auto'}; }
+            .header { text-align: center; ${isThermal ? 'border-bottom: 1px dashed #000; font-size: 10px;' : 'border-bottom: 2px solid #000; margin-bottom: 20px; padding-bottom: 10px;'} }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="no-print">
+            <button onclick="window.print()">🖨️ Cetak Ulang</button>
+            <button onclick="window.close()">❌ Tutup Tab</button>
+          </div>
+          <div class="header">
+            <h1>RSU MUHAMMADIYAH BABAT</h1>
+            <div style="font-weight: bold;">DAFTAR PASIEN ANTREAN (BULK)</div>
+          </div>
+          ${isThermal ? `
+            ${selectedPatients.map(p => `<div style="border-bottom: 1px dashed #000; padding: 5px;">${p.nomorAntrean} - ${p.namaPasien}</div>`).join('')}
+          ` : `
+            <table>
+              <thead><tr><th>No</th><th>Nama</th><th>Penjamin</th></tr></thead>
+              <tbody>${selectedPatients.map(p => `<tr><td>${p.nomorAntrean}</td><td>${p.namaPasien}</td><td>${p.jenisPembayaran}</td></tr>`).join('')}</tbody>
+            </table>
+          `}
+          <script>window.onload = function() { setTimeout(() => { window.print(); }, 500); };</script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   return (
@@ -130,6 +184,13 @@ export const PatientQueueView: React.FC<PatientQueueViewProps> = ({
           </select>
         </div>
 
+        {selectedPatientIds.length > 0 && (
+          <div className="flex gap-2">
+            <button onClick={() => handleBulkPrint('F4')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">Cetak F4</button>
+            <button onClick={() => handleBulkPrint('Thermal')} className="px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold">Cetak Thermal</button>
+          </div>
+        )}
+
         <button
           onClick={onOpenBookModal}
           className="px-4 py-2 bg-[#005d42] hover:bg-emerald-800 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors shrink-0"
@@ -155,6 +216,9 @@ export const PatientQueueView: React.FC<PatientQueueViewProps> = ({
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider border-b border-slate-200">
+                <th className="py-3.5 px-5">
+                  <input type="checkbox" onChange={(e) => setSelectedPatientIds(e.target.checked ? filteredQueue.map(i => i.id) : [])} />
+                </th>
                 <th className="py-3.5 px-5">No Antrean</th>
                 <th className="py-3.5 px-5">Nama Pasien</th>
                 <th className="py-3.5 px-5">Poliklinik & Dokter</th>
@@ -167,7 +231,7 @@ export const PatientQueueView: React.FC<PatientQueueViewProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredQueue.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     Tidak ada data antrean pasien yang sesuai filter.
                   </td>
                 </tr>
@@ -175,6 +239,9 @@ export const PatientQueueView: React.FC<PatientQueueViewProps> = ({
                 filteredQueue.map((item) => {
                   return (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3.5 px-5">
+                        <input type="checkbox" checked={selectedPatientIds.includes(item.id)} onChange={() => togglePatientSelection(item.id)} />
+                      </td>
                       <td className="py-3.5 px-5 font-mono font-bold text-[#005d42]">
                         {item.nomorAntrean}
                       </td>
