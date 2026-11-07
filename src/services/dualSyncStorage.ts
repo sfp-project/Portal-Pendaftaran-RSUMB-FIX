@@ -34,6 +34,7 @@ export const MONITORED_STORAGE_KEYS = [
   'rsumb_document_repository_v1',
   'rsumb_document_categories_v1',
   'rsumb_master_documents_v1',
+  'rsumb_master_documents',
   'rsumb_patient_notes_v1',
   'rsumb_khitan_patients_v1',
   'rsumb_khitan_participants_v1',

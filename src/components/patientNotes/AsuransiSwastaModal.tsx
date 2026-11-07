@@ -4,6 +4,11 @@ import {
   PatientAsuransiSwastaRecord,
   StatusKlaimAsuransi
 } from '../../types/patientNotesTypes';
+import {
+  usePatientNotesAutoSave,
+  AutoSaveRestoreBanner,
+  AutoSaveFooterStatus
+} from './usePatientNotesAutoSave';
 
 interface AsuransiSwastaModalProps {
   isOpen: boolean;
@@ -54,6 +59,42 @@ export const AsuransiSwastaModal: React.FC<AsuransiSwastaModalProps> = ({
     initialData ? Boolean(initialData.isResolved) : false
   );
 
+  const resetForm = () => {
+    setNamaPasien('');
+    setNoRm('');
+    setNamaAsuransi('Prudential');
+    setStatusKlaim('Menunggu Guarantee Letter');
+    setCatatanHandover('');
+    setIsResolved(false);
+  };
+
+  const autoSave = usePatientNotesAutoSave({
+    storageKey: 'rsumb_draft_patient_notes_asuransi',
+    formData: {
+      namaPasien,
+      noRm,
+      namaAsuransi,
+      statusKlaim,
+      catatanHandover,
+      isResolved
+    },
+    isOpen,
+    isEditing: Boolean(initialData),
+    isEmpty: (data) =>
+      !data.namaPasien.trim() &&
+      !data.noRm.trim() &&
+      !data.catatanHandover.trim(),
+    onRestore: (draft) => {
+      if (draft.namaPasien) setNamaPasien(draft.namaPasien);
+      if (draft.noRm) setNoRm(draft.noRm);
+      if (draft.namaAsuransi) setNamaAsuransi(draft.namaAsuransi);
+      if (draft.statusKlaim) setStatusKlaim(draft.statusKlaim);
+      if (draft.catatanHandover) setCatatanHandover(draft.catatanHandover);
+      if (typeof draft.isResolved === 'boolean') setIsResolved(draft.isResolved);
+    },
+    onReset: resetForm
+  });
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -75,6 +116,7 @@ export const AsuransiSwastaModal: React.FC<AsuransiSwastaModalProps> = ({
       updatedAt: new Date().toISOString()
     };
 
+    autoSave.clearDraft();
     onSave(record);
     onClose();
   };
@@ -104,6 +146,14 @@ export const AsuransiSwastaModal: React.FC<AsuransiSwastaModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Auto-Save Restore Banner */}
+        <AutoSaveRestoreBanner
+          wasRestored={autoSave.wasRestored}
+          restoredTime={autoSave.restoredTime}
+          onDiscard={autoSave.discardDraft}
+          onDismiss={() => autoSave.setWasRestored(false)}
+        />
 
         {/* Form Content */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
@@ -209,22 +259,28 @@ export const AsuransiSwastaModal: React.FC<AsuransiSwastaModalProps> = ({
         </form>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="px-5 py-2 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
-          >
-            <Check className="w-4 h-4" />
-            {initialData ? 'Simpan Perubahan' : 'Tambah Asuransi'}
-          </button>
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <AutoSaveFooterStatus
+            isSaving={autoSave.isSaving}
+            lastSavedTime={autoSave.lastSavedTime}
+          />
+          <div className="flex items-center gap-3 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="px-5 py-2 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              {initialData ? 'Simpan Perubahan' : 'Tambah Asuransi'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

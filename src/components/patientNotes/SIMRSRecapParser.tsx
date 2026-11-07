@@ -15,7 +15,11 @@ import {
   Search,
   User,
   Printer,
-  ChevronDown
+  ChevronDown,
+  LayoutGrid,
+  Star,
+  Tag,
+  ChevronRight
 } from 'lucide-react';
 import {
   subscribeRekapPendaftaran,
@@ -110,8 +114,9 @@ export const ALL_DOKTER_LIST: string[] = Array.from(
 // Alias untuk kompatibilitas ke belakang
 export const LIST_DOKTER: string[] = ALL_DOKTER_LIST;
 
-// Kategori Grouping untuk Searchable Dropdown
+// Kategori Grouping untuk Modal Grid Google Keep
 export const CATEGORY_GROUPS = [
+  { id: 'all', label: 'Semua', icon: '📋' },
   { id: 'kontrol_jadwal', label: 'Kontrol & Jadwal', icon: '📅' },
   { id: 'bpjs_jkn', label: 'BPJS & JKN', icon: '🛡️' },
   { id: 'lab_berkas', label: 'Hasil Lab & Berkas', icon: '🧪' },
@@ -128,6 +133,61 @@ export const getNormalizedCategory = (
   if (cat === 'lab_berkas') return 'lab_berkas';
   if (cat === 'kendala_off' || cat === 'khusus') return 'kendala_off';
   return 'kontrol_jadwal';
+};
+
+// Styling helper untuk Kartu Catatan ala Google Keep
+export const getKeepCardStyle = (category?: string) => {
+  const norm = getNormalizedCategory(category);
+  switch (norm) {
+    case 'kontrol_jadwal':
+      return {
+        bg: 'bg-[#fffdf2] dark:bg-amber-950/20',
+        border: 'border-amber-300/80 dark:border-amber-700/60 hover:border-amber-500',
+        badge: 'bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700',
+        icon: '📅',
+        label: 'Kontrol & Jadwal'
+      };
+    case 'bpjs_jkn':
+      return {
+        bg: 'bg-[#f4f9ff] dark:bg-blue-950/20',
+        border: 'border-sky-300/80 dark:border-blue-700/60 hover:border-blue-500',
+        badge: 'bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-200 border-blue-300 dark:border-blue-700',
+        icon: '🛡️',
+        label: 'BPJS & JKN'
+      };
+    case 'lab_berkas':
+      return {
+        bg: 'bg-[#f2faf5] dark:bg-emerald-950/20',
+        border: 'border-emerald-300/80 dark:border-emerald-700/60 hover:border-emerald-500',
+        badge: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700',
+        icon: '🧪',
+        label: 'Hasil Lab & Berkas'
+      };
+    case 'kendala_off':
+      return {
+        bg: 'bg-[#fff5f5] dark:bg-rose-950/20',
+        border: 'border-rose-300/80 dark:border-rose-700/60 hover:border-rose-500',
+        badge: 'bg-rose-100 dark:bg-rose-900/50 text-rose-900 dark:text-rose-200 border-rose-300 dark:border-rose-700',
+        icon: '⚠️',
+        label: 'Kendala & Poli Off'
+      };
+    case 'custom':
+      return {
+        bg: 'bg-[#faf5ff] dark:bg-purple-950/20',
+        border: 'border-purple-300/80 dark:border-purple-700/60 hover:border-purple-500',
+        badge: 'bg-purple-100 dark:bg-purple-900/50 text-purple-900 dark:text-purple-200 border-purple-300 dark:border-purple-700',
+        icon: '✏️',
+        label: 'Template Kustom'
+      };
+    default:
+      return {
+        bg: 'bg-slate-50/80 dark:bg-slate-900/20',
+        border: 'border-slate-300 dark:border-gray-700 hover:border-slate-500',
+        badge: 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-gray-700',
+        icon: '📝',
+        label: 'Umum'
+      };
+  }
 };
 
 // 5 Template Favorit (Quick Access Shortcut Buttons)
@@ -491,6 +551,32 @@ Pendaftaran dan pelayanan tetap berjalan secara semi-manual. Kami memohon maaf j
 
 Terima kasih atas kesabaran dan pengertian Bapak/Ibu.
 Wassalamu'alaikum Wr. Wb.`
+  },
+  {
+    id: 'konfirmasi_kehadiran_janji',
+    label: 'KONFIRMASI KEHADIRAN KUNJUNGAN POLI',
+    category: 'kontrol_jadwal',
+    text: `Assalamualaikum Wr. Wb.
+Yth. Bapak/Ibu [NAMA_PASIEN], kami dari Admin Pendaftaran RSU Muhammadiyah Babat mohon konfirmasi kesediaan kehadiran Anda untuk pemeriksaan di [NAMA_POLI] bersama [NAMA_DOKTER].
+
+Mohon berkenan membalas pesan ini:
+• Ketik: YA (Jika Hadir)
+• Ketik: BATAL (Jika Berhalangan / Reschedule)
+
+Kehadiran tepat waktu sangat membantu ketertiban antrean dan kenyamanan bersama. Terima kasih atas kerja samanya.
+Wassalamu'alaikum Wr. Wb.`
+  },
+  {
+    id: 'hasil_lab_rontgen_selesai',
+    label: 'HASIL LAB & RADIOLOGI SELESAI',
+    category: 'lab_berkas',
+    text: `Assalamualaikum Wr. Wb.
+Yth. Bapak/Ibu [NAMA_PASIEN], kami dari RSU Muhammadiyah Babat menginformasikan bahwa hasil pemeriksaan diagnostik (Laboratorium / Radiologi) Anda telah SELESAI divalidasi oleh Dokter Spesialis.
+
+Hasil cetak fisik dapat diambil di Loket Pengambilan Hasil Rawat Jalan atau langsung dikonsultasikan kembali ke dokter DPJP ([NAMA_DOKTER]) pada jadwal praktik poliklinik berikutnya.
+
+Semoga Bapak/Ibu senantiasa diberikan kesembuhan dan kesehatan.
+Wassalamu'alaikum Wr. Wb.`
   }
 ];
 
@@ -732,82 +818,57 @@ export const SIMRSRecapParser: React.FC = () => {
     });
   };
 
-  // 2. SEARCH & FILTER CATEGORIES
-  // Searchable Dropdown State & Click-outside logic
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [dropdownSearch, setDropdownSearch] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  // 2. MODAL GRID KARTU ALA GOOGLE KEEP (29 TEMPLATE)
+  const [isKeepModalOpen, setIsKeepModalOpen] = useState(false);
+  const [keepSearch, setKeepSearch] = useState('');
+  const [keepCategoryFilter, setKeepCategoryFilter] = useState<string>('all');
+  const keepSearchInputRef = useRef<HTMLInputElement>(null);
 
-  // Focus search input when dropdown opens
+  // Focus search input when Keep modal opens
   useEffect(() => {
-    if (isDropdownOpen) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
+    if (isKeepModalOpen) {
+      const timer = setTimeout(() => {
+        keepSearchInputRef.current?.focus();
       }, 50);
+      return () => clearTimeout(timer);
     }
-  }, [isDropdownOpen]);
+  }, [isKeepModalOpen]);
 
-  // Close dropdown on click outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    };
-    if (isDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isDropdownOpen]);
-
-  // Close dropdown on Escape key
+  // Global shortcut: Ctrl+K / Cmd+K to toggle Google Keep modal & Escape to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isDropdownOpen) {
-        setIsDropdownOpen(false);
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setKeepSearch('');
+        setIsKeepModalOpen((prev) => !prev);
+      } else if (e.key === 'Escape' && isKeepModalOpen) {
+        setIsKeepModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDropdownOpen]);
+  }, [isKeepModalOpen]);
 
-  // Matching templates based on search query in dropdown
-  const matchingTemplates = useMemo(() => {
-    if (!dropdownSearch.trim()) return allTemplates;
-    const q = dropdownSearch.toLowerCase().trim();
-    return allTemplates.filter(
-      (t) => t.label.toLowerCase().includes(q) || t.text.toLowerCase().includes(q)
-    );
-  }, [allTemplates, dropdownSearch]);
+  // Matching templates for Google Keep Grid
+  const filteredKeepTemplates = useMemo(() => {
+    const q = keepSearch.toLowerCase().trim();
+    return allTemplates.filter((t) => {
+      const norm = getNormalizedCategory(t.category);
+      const matchCat =
+        keepCategoryFilter === 'all' ||
+        (keepCategoryFilter === 'custom' && t.isCustom) ||
+        norm === keepCategoryFilter;
 
-  // Group templates by 4 main categories + custom templates
-  const groupedTemplates = useMemo(() => {
-    const groups: Record<string, WaTemplate[]> = {
-      kontrol_jadwal: [],
-      bpjs_jkn: [],
-      lab_berkas: [],
-      kendala_off: [],
-      custom: []
-    };
+      if (!matchCat) return false;
+      if (!q) return true;
 
-    matchingTemplates.forEach((t) => {
-      if (t.isCustom) {
-        groups.custom.push(t);
-      } else {
-        const cat = getNormalizedCategory(t.category);
-        if (groups[cat]) {
-          groups[cat].push(t);
-        } else {
-          groups.kontrol_jadwal.push(t);
-        }
-      }
+      return (
+        t.label.toLowerCase().includes(q) ||
+        t.text.toLowerCase().includes(q) ||
+        (t.category && t.category.toLowerCase().includes(q))
+      );
     });
-
-    return groups;
-  }, [matchingTemplates]);
+  }, [allTemplates, keepSearch, keepCategoryFilter]);
 
   // Quick Access 5 Templates
   const favoriteTemplates = useMemo(() => {
@@ -1372,7 +1433,12 @@ export const SIMRSRecapParser: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveMainTab('template')}
+          onClick={() => {
+            setActiveMainTab('template');
+            setKeepSearch('');
+            setKeepCategoryFilter('all');
+            setIsKeepModalOpen(true);
+          }}
           className={`flex-1 py-3 px-6 font-bold text-sm md:text-base rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
             activeMainTab === 'template'
               ? 'bg-blue-600 text-white shadow-md'
@@ -1386,7 +1452,7 @@ export const SIMRSRecapParser: React.FC = () => {
               activeMainTab === 'template' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700'
             }`}
           >
-            {allTemplates.length} Template
+            {allTemplates.length} Template (Google Keep Grid)
           </span>
         </button>
       </div>
@@ -1714,206 +1780,28 @@ export const SIMRSRecapParser: React.FC = () => {
                 })}
               </div>
 
-              {/* Searchable Dropdown / Select Kompak */}
-              <div className="relative shrink-0" ref={dropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsDropdownOpen((prev) => !prev)}
-                  className="w-full md:w-auto px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-xs md:text-sm font-semibold text-slate-800 shadow-2xs flex items-center justify-between gap-2.5 transition cursor-pointer min-w-[220px] max-w-full"
-                  title="Klik untuk membuka & mencari seluruh template pesan"
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-blue-600">📋</span>
-                    <span className="truncate max-w-[180px] md:max-w-[220px] font-bold">
-                      {currentTemplate ? currentTemplate.label : 'Pilih Template...'}
-                    </span>
-                  </div>
-                  <ChevronDown
-                    size={15}
-                    className={`text-slate-400 transition-transform duration-200 shrink-0 ${
-                      isDropdownOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-
-                {/* Popover Dropdown dengan Pencarian & Kategori Optgroup */}
-                {isDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 z-50 w-full sm:w-[360px] md:w-[400px] bg-white rounded-2xl shadow-xl border border-slate-200 p-3 space-y-2.5 animate-in fade-in zoom-in-95 duration-100">
-                    {/* Kotak Input Pencarian di dalam Dropdown */}
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        autoFocus
-                        value={dropdownSearch}
-                        onChange={(e) => setDropdownSearch(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'ArrowDown') {
-                            e.preventDefault();
-                            const items = dropdownRef.current?.querySelectorAll('button[role="menuitem"]');
-                            if (items && items.length > 0) {
-                              (items[0] as HTMLButtonElement).focus();
-                            }
-                          }
-                        }}
-                        placeholder="Ketik kata kunci (misal: BPJS, Libur, Kontrol, Lab)..."
-                        className="w-full pl-8.5 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition"
-                      />
-                      {dropdownSearch && (
-                        <button
-                          type="button"
-                          onClick={() => setDropdownSearch('')}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center text-[10px] transition cursor-pointer"
-                          title="Hapus pencarian"
-                        >
-                          <X size={10} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Header Info Hasil Pencarian */}
-                    <div className="flex items-center justify-between px-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      <span>Kategori Template</span>
-                      <span>{matchingTemplates.length} Template</span>
-                    </div>
-
-                    {/* Daftar Template per Kategori (Optgroup) */}
-                    <div className="max-h-64 overflow-y-auto space-y-3 pr-1 scrollbar-thin">
-                      {CATEGORY_GROUPS.map((grp) => {
-                        const items = groupedTemplates[grp.id] || [];
-                        if (items.length === 0) return null;
-
-                        return (
-                          <div key={grp.id} className="space-y-1">
-                            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100/80 rounded-lg flex items-center gap-1.5">
-                              <span>{grp.icon}</span>
-                              <span>{grp.label} ({items.length})</span>
-                            </div>
-                            <div className="space-y-0.5">
-                              {items.map((t) => {
-                                const isSelected = activeTemplateId === t.id;
-                                return (
-                                  <button
-                                    key={t.id}
-                                    type="button"
-                                    role="menuitem"
-                                    onKeyDown={(e) => {
-                                      const allItems = Array.from(dropdownRef.current?.querySelectorAll('button[role="menuitem"]') || []);
-                                      const currentIndex = allItems.indexOf(e.currentTarget);
-                                      
-                                      if (e.key === 'ArrowDown') {
-                                        e.preventDefault();
-                                        if (currentIndex < allItems.length - 1) {
-                                          (allItems[currentIndex + 1] as HTMLButtonElement).focus();
-                                        }
-                                      } else if (e.key === 'ArrowUp') {
-                                        e.preventDefault();
-                                        if (currentIndex > 0) {
-                                          (allItems[currentIndex - 1] as HTMLButtonElement).focus();
-                                        } else {
-                                          searchInputRef.current?.focus();
-                                        }
-                                      } else if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        handleSelectTemplate(t);
-                                        setIsDropdownOpen(false);
-                                        setDropdownSearch('');
-                                      }
-                                    }}
-                                    onClick={() => {
-                                      handleSelectTemplate(t);
-                                      setIsDropdownOpen(false);
-                                      setDropdownSearch('');
-                                    }}
-                                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
-                                      isSelected
-                                        ? 'bg-blue-600 text-white font-bold shadow-2xs'
-                                        : 'hover:bg-slate-100 text-slate-700'
-                                    }`}
-                                  >
-                                    <span className="truncate">{t.label}</span>
-                                    {isSelected && <Check size={14} className="shrink-0 text-white ml-2" />}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {/* Template Kustom Petugas (Jika Ada) */}
-                      {groupedTemplates.custom && groupedTemplates.custom.length > 0 && (
-                        <div className="space-y-1">
-                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 rounded-lg flex items-center justify-between">
-                            <span className="flex items-center gap-1.5">
-                              <span>✏️</span>
-                              <span>Template Kustom ({groupedTemplates.custom.length})</span>
-                            </span>
-                          </div>
-                          <div className="space-y-0.5">
-                            {groupedTemplates.custom.map((t) => {
-                              const isSelected = activeTemplateId === t.id;
-                              return (
-                                <div
-                                  key={t.id}
-                                  className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
-                                    isSelected
-                                      ? 'bg-blue-600 text-white font-bold shadow-2xs'
-                                      : 'hover:bg-slate-100 text-slate-700'
-                                  }`}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      handleSelectTemplate(t);
-                                      setIsDropdownOpen(false);
-                                      setDropdownSearch('');
-                                    }}
-                                    className="flex-1 text-left truncate cursor-pointer"
-                                  >
-                                    {t.label}
-                                  </button>
-                                  <div className="flex items-center gap-1 ml-2">
-                                    {isSelected && <Check size={14} className="shrink-0 text-white" />}
-                                    <button
-                                      type="button"
-                                      onClick={(e) => handleDeleteCustomTemplate(t.id, e)}
-                                      className={`p-1 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer ${
-                                        isSelected ? 'text-white/80' : 'text-slate-400'
-                                      }`}
-                                      title="Hapus template kustom"
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Keadaan Ketika Tidak Ada Template yang Cocok */}
-                      {matchingTemplates.length === 0 && (
-                        <div className="py-6 px-4 text-center space-y-1.5 bg-slate-50/70 rounded-xl border border-dashed border-slate-200">
-                          <p className="text-xs font-semibold text-slate-600">Tidak ada template yang cocok</p>
-                          <p className="text-[11px] text-slate-400">
-                            Coba gunakan kata kunci lain (misal: "BPJS", "Libur", "Kontrol", atau "Lab").
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setDropdownSearch('')}
-                            className="mt-1 text-xs font-bold text-blue-600 hover:underline cursor-pointer"
-                          >
-                            Reset Pencarian
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Tombol Pemilih Template (Buka Modal Grid Kartu Google Keep) */}
+              <button
+                type="button"
+                id="btn-open-keep-template-modal"
+                onClick={() => {
+                  setKeepSearch('');
+                  setKeepCategoryFilter('all');
+                  setIsKeepModalOpen(true);
+                }}
+                className="w-full md:w-auto px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:from-blue-800 active:to-indigo-800 text-white rounded-xl text-xs md:text-sm font-bold shadow-xs hover:shadow-md flex items-center justify-between gap-2.5 transition cursor-pointer group"
+                title="Buka seluruh 29 template dalam tampilan Grid Kartu ala Google Keep"
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <LayoutGrid size={16} className="text-blue-200 group-hover:scale-110 transition-transform shrink-0" />
+                  <span className="truncate max-w-[200px] font-bold">
+                    {currentTemplate ? currentTemplate.label : 'Pilih Template...'}
+                  </span>
+                </div>
+                <span className="px-2 py-0.5 bg-white/20 text-white rounded-md text-[10.5px] font-extrabold uppercase shrink-0">
+                  {allTemplates.length} Kartu Keep
+                </span>
+              </button>
             </div>
 
             {/* 4. KOTAK AREA TEKS TEMPLATE (EDITOR PERSIS DI BAWAH PILIHAN TEMPLATE) */}
@@ -2098,6 +1986,252 @@ export const SIMRSRecapParser: React.FC = () => {
                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-sm cursor-pointer"
               >
                 Simpan Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL GRID KARTU ALA GOOGLE KEEP (29 TEMPLATE WHATSAPP)
+          ======================================================== */}
+      {isKeepModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-slate-950/75 backdrop-blur-md animate-in fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsKeepModalOpen(false);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col border border-slate-200 dark:border-gray-700 overflow-hidden animate-in zoom-in-95">
+            {/* Header Modal */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-gray-800 bg-gradient-to-r from-slate-50 via-white to-blue-50/40 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-xl shadow-xs shrink-0">
+                  <LayoutGrid size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="font-black text-slate-900 dark:text-white text-base sm:text-lg tracking-tight">
+                      Katalog Template WhatsApp (Grid Kartu Google Keep)
+                    </h2>
+                    <span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 font-black text-[10.5px] rounded-full uppercase border border-blue-200 dark:border-blue-700">
+                      {allTemplates.length} Catatan Tersedia
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Pilih template catatan pesan resmi untuk kontrol dokter, BPJS, hasil lab, dan kendala poli. Klik kartu mana saja untuk langsung menyalin ke editor pesan.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-gray-700">
+                  <kbd>ESC</kbd> untuk Batal
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsKeepModalOpen(false)}
+                  className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  title="Tutup (Tekan ESC)"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Kolom Pencarian & Filter Kategori Mendatar */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-gray-800 bg-white dark:bg-slate-900 space-y-3 shrink-0">
+              {/* Search Bar Besar dengan Autofocus */}
+              <div className="relative">
+                <Search size={18} className="text-blue-600 dark:text-blue-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  ref={keepSearchInputRef}
+                  type="text"
+                  placeholder="Ketik untuk mencari template (contoh: Libur, BPJS, Kontrol, Jam Berubah, Lab)..."
+                  autoFocus
+                  value={keepSearch}
+                  onChange={(e) => setKeepSearch(e.target.value)}
+                  className="w-full pl-12 pr-12 py-3.5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-gray-700 focus:border-blue-600 rounded-xl text-sm sm:text-base font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-xs"
+                />
+                {keepSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setKeepSearch('')}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+                    title="Hapus pencarian"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {/* Tombol Filter Kategori Mendatar (Pill Buttons) */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs flex-1">
+                  {CATEGORY_GROUPS.map((grp) => {
+                    const isActive = keepCategoryFilter === grp.id;
+                    const count =
+                      grp.id === 'all'
+                        ? allTemplates.length
+                        : allTemplates.filter((t) => getNormalizedCategory(t.category) === grp.id).length;
+
+                    return (
+                      <button
+                        key={grp.id}
+                        type="button"
+                        onClick={() => setKeepCategoryFilter(grp.id)}
+                        className={`px-3.5 py-1.5 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 border text-xs ${
+                          isActive
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-500/20 scale-[1.02]'
+                            : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-gray-700'
+                        }`}
+                      >
+                        <span>{grp.icon}</span>
+                        <span>{grp.label}</span>
+                        <span
+                          className={`px-2 py-0.2 rounded-full text-[10px] font-black ${
+                            isActive
+                              ? 'bg-white/25 text-white'
+                              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden lg:flex items-center gap-2 text-xs text-slate-500 shrink-0 font-medium pl-3 border-l border-slate-200 dark:border-gray-700">
+                  <span>Hasil:</span>
+                  <span className="font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-gray-700">
+                    {filteredKeepTemplates.length} Catatan
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Container Grid Kartu Google Keep (Responsive Masonry / CSS Grid) */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-100/70 dark:bg-slate-950/40">
+              {filteredKeepTemplates.length === 0 ? (
+                <div className="text-center py-16 px-4 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-gray-700 space-y-3 max-w-md mx-auto my-6 shadow-sm">
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto border border-blue-200 dark:border-blue-700">
+                    <Search size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                      Template Tidak Ditemukan
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      Tidak ada catatan template yang cocok dengan kata kunci "{keepSearch}".
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKeepSearch('');
+                      setKeepCategoryFilter('all');
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    Tampilkan Seluruh {allTemplates.length} Template
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {filteredKeepTemplates.map((t) => {
+                    const isSelected = activeTemplateId === t.id;
+                    const style = getKeepCardStyle(t.category);
+
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() => {
+                          handleSelectTemplate(t);
+                          setIsKeepModalOpen(false);
+                        }}
+                        className={`p-4 rounded-xl border border-slate-300 dark:border-gray-700 transition-all duration-200 cursor-pointer flex flex-col justify-between group shadow-xs hover:shadow-xl hover:-translate-y-1 relative text-left ${
+                          style.bg
+                        } ${
+                          isSelected
+                            ? 'ring-2 ring-blue-600 border-blue-600 shadow-md'
+                            : style.border
+                        }`}
+                      >
+                        <div className="space-y-2.5">
+                          {/* Baris Atas: Kategori Badge & Tag */}
+                          <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${style.badge}`}
+                            >
+                              <span>{style.icon}</span>
+                              <span>{style.label}</span>
+                            </span>
+
+                            <div className="flex items-center gap-1">
+                              {t.isCustom && (
+                                <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md border border-purple-200">
+                                  Kustom
+                                </span>
+                              )}
+                              {isSelected && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-600 text-white font-bold text-[9.5px] shadow-2xs">
+                                  <Check size={12} className="text-blue-100" />
+                                  Aktif
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Judul Catatan dengan Font Tebal */}
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors leading-snug">
+                            {t.label}
+                          </h4>
+
+                          {/* Isi Teks / Cuplikan Pesan (Body Text) yang Nyaman Dibaca */}
+                          <div className="bg-white/90 dark:bg-slate-800/90 p-3 rounded-lg border border-black/5 dark:border-white/5 shadow-2xs text-xs text-slate-700 dark:text-slate-300 font-sans whitespace-pre-line line-clamp-4 leading-relaxed select-none">
+                            {t.text}
+                          </div>
+                        </div>
+
+                        {/* Footer Kartu: Jumlah Karakter & Interaktif Hover */}
+                        <div className="pt-2.5 mt-2.5 border-t border-black/5 dark:border-white/10 flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400 dark:text-slate-500 font-medium">
+                            {t.text.length} karakter
+                          </span>
+                          <span
+                            className={`font-bold flex items-center gap-1 transition-all ${
+                              isSelected
+                                ? 'text-blue-600 dark:text-blue-400'
+                                : 'text-slate-600 dark:text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5'
+                            }`}
+                          >
+                            <span>{isSelected ? '✓ Sedang Dipakai' : 'Pilih Catatan'}</span>
+                            <ChevronRight size={14} />
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 border-t border-slate-200 dark:border-gray-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[11.5px]">
+                  💡 <strong>Tip Cepat:</strong> Klik kartu catatan untuk langsung menerapkan teks ke editor pesan dan menutup jendela ini. Tekan <kbd className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-gray-700 rounded text-[10.5px] font-mono">ESC</kbd> untuk membatalkan.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsKeepModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
+              >
+                Tutup Katalog (ESC)
               </button>
             </div>
           </div>

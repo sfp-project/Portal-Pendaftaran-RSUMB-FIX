@@ -17,10 +17,11 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot,
+  writeBatch,
   db,
   auth
 } from './firebase';
-export { serverTimestamp, db, auth, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot };
+export { serverTimestamp, db, auth, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, writeBatch };
 import {
   DoctorSchedule,
   DoctorLeaveAnnouncement,
@@ -45,8 +46,13 @@ import { RequirementChecklistItem, MissingDocumentSlip } from '../types/requirem
 import {
   addScanQrHeaderNotification,
   markAllScanQrHeaderNotificationsAsRead,
-  removeHeaderNotification
+  removeHeaderNotification,
+  loadActiveStaff
 } from '../data/headerData';
+import { syncDatabaseToGas, isGasConnected } from './googleSheetsGasService';
+import { collectLocalDatabaseSnapshot } from './dualSyncStorage';
+import { logSystemActivity } from '../data/auditLogData';
+
 
 // Collection Constants
 export const COLLECTIONS = {
@@ -91,6 +97,35 @@ export async function deleteScheduleDoc(scheduleId: string) {
 
 export async function batchSaveSchedules(schedules: DoctorSchedule[]) {
   await batchSaveCollection(COLLECTIONS.SCHEDULES, schedules);
+}
+
+/**
+ * Mutlak menimpa total seluruh jadwal di Firestore (Mode Ganti Total / Overwrite):
+ * 1. Menghapus seluruh dokumen jadwal lama yang ada di Firestore
+ * 2. Menyimpan HANYA jadwal baru hasil unggahan master Excel
+ */
+export async function replaceAllSchedulesInFirestore(newSchedules: DoctorSchedule[]): Promise<void> {
+  try {
+    const existing = await fetchCollection<DoctorSchedule>(COLLECTIONS.SCHEDULES);
+    if (existing.length > 0) {
+      const chunkSize = 400;
+      for (let i = 0; i < existing.length; i += chunkSize) {
+        const chunk = existing.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach((item) => {
+          if (item.id) {
+            batch.delete(doc(db, COLLECTIONS.SCHEDULES, item.id));
+          }
+        });
+        await batch.commit();
+      }
+    }
+    if (newSchedules.length > 0) {
+      await batchSaveSchedules(newSchedules);
+    }
+  } catch (err) {
+    console.error('[replaceAllSchedulesInFirestore] error:', err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -684,3 +719,270 @@ export async function deletePatientSelfRegistrationDoc(id: string) {
     console.warn('Firestore delete self registration warning (local deleted):', e);
   }
 }
+
+// ---------------------------------------------------------------------------
+// AUTO-BACKUP FIRESTORE SETIAP 24 JAM KE GOOGLE SHEETS (REDUNDANSI CADANGAN)
+// ---------------------------------------------------------------------------
+export const FIRESTORE_LAST_BACKUP_KEY = 'rsumb_firestore_last_backup_time';
+export const FIRESTORE_BACKUP_META_KEY = 'rsumb_firestore_backup_meta';
+export const FIRESTORE_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 Jam (86.400.000 ms)
+
+export interface FirestoreBackupMeta {
+  lastBackupTime: string;
+  totalCollections: number;
+  totalDocuments: number;
+  status: 'success' | 'failed' | 'in_progress';
+  message: string;
+  source: string;
+  nextScheduledTime: string;
+}
+
+export interface AutoBackupFirestoreResult {
+  success: boolean;
+  timestamp: string;
+  totalCollections: number;
+  totalRecords: number;
+  message: string;
+  isDue: boolean;
+  offlineFallback?: boolean;
+}
+
+export const getFirestoreBackupMeta = (): FirestoreBackupMeta | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(FIRESTORE_BACKUP_META_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+export const isFirestoreBackupDue = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const lastBackup = localStorage.getItem(FIRESTORE_LAST_BACKUP_KEY);
+    if (!lastBackup) return true;
+    const lastTime = new Date(lastBackup).getTime();
+    if (isNaN(lastTime)) return true;
+    return Date.now() - lastTime >= FIRESTORE_BACKUP_INTERVAL_MS;
+  } catch {
+    return true;
+  }
+};
+
+/**
+ * Mengambil snapshot komprehensif dari seluruh koleksi aktif di Firestore
+ */
+export async function collectFirestoreDatabaseSnapshot(): Promise<{
+  collections: Record<string, any[]>;
+  totalCollections: number;
+  totalDocuments: number;
+}> {
+  const collectionNames = Object.values(COLLECTIONS);
+  const collectionsData: Record<string, any[]> = {};
+  let totalDocs = 0;
+  let activeColCount = 0;
+
+  await Promise.all(
+    collectionNames.map(async (colName) => {
+      try {
+        const items = await fetchCollection(colName);
+        if (items && Array.isArray(items) && items.length > 0) {
+          collectionsData[colName] = items;
+          totalDocs += items.length;
+          activeColCount++;
+        }
+      } catch (err) {
+        console.warn(`[FirestoreSnapshot] Skip collection ${colName} (offline or empty):`, err);
+      }
+    })
+  );
+
+  return {
+    collections: collectionsData,
+    totalCollections: activeColCount,
+    totalDocuments: totalDocs
+  };
+}
+
+/**
+ * Fungsi: autoBackupFirestore
+ * Secara otomatis melakukan snapshot data dari Firestore ke Google Sheets setiap 24 jam
+ * untuk menjaga redundansi data cadangan portal pendaftaran RSUMB.
+ * @param force Jika true, langsung lakukan snapshot cadangan saat ini tanpa menunggu siklus 24 jam.
+ */
+export async function autoBackupFirestore(
+  force: boolean = false
+): Promise<AutoBackupFirestoreResult> {
+  const nowIso = new Date().toISOString();
+  const due = isFirestoreBackupDue();
+
+  if (!force && !due) {
+    const meta = getFirestoreBackupMeta();
+    return {
+      success: true,
+      timestamp: meta?.lastBackupTime || nowIso,
+      totalCollections: meta?.totalCollections || 0,
+      totalRecords: meta?.totalDocuments || 0,
+      isDue: false,
+      message: `Cadangan Firestore masih dalam siklus 24 jam (Terakhir: ${
+        meta?.lastBackupTime ? new Date(meta.lastBackupTime).toLocaleString('id-ID') : 'Belum tercatat'
+      }).`
+    };
+  }
+
+  // Nama staf aktif untuk pencatatan jejak audit
+  let staffName = 'Sistem Auto-Backup 24 Jam RSUMB';
+  try {
+    const active = loadActiveStaff();
+    if (active?.name) staffName = `${active.name} (Auto-Backup Firestore)`;
+  } catch {}
+
+  try {
+    // 1. Ambil snapshot data live dari seluruh koleksi Firestore
+    const firestoreSnapshot = await collectFirestoreDatabaseSnapshot();
+
+    // 2. Ambil snapshot lokal sebagai redundansi tambahan
+    let localSnapshot: Record<string, any> = {};
+    try {
+      localSnapshot = collectLocalDatabaseSnapshot();
+    } catch (e) {
+      console.warn('[AutoBackup] Local database snapshot notice:', e);
+    }
+
+    // 3. Susun payload redundansi lengkap untuk Google Sheets
+    const combinedPayload = {
+      ...localSnapshot,
+      _firestore_backup_meta: {
+        source: 'FIRESTORE_DATABASE',
+        databaseId: 'ai-studio-portalpendaftara-21a36b17-5987-42de-b51e-51d49cc4bfe0',
+        backupType: 'AUTO_24H_FIRESTORE_TO_SHEETS',
+        timestamp: nowIso,
+        totalCollections: firestoreSnapshot.totalCollections,
+        totalDocuments: firestoreSnapshot.totalDocuments,
+        staffName: staffName
+      },
+      _firestore_collections: firestoreSnapshot.collections
+    };
+
+    // 4. Kirim (Push) snapshot ke Google Sheets via GAS Web App
+    const syncRes = await syncDatabaseToGas(combinedPayload, staffName);
+
+    if (!syncRes.success) {
+      throw new Error(syncRes.message || 'Gagal mengirim snapshot Firestore ke Google Sheets.');
+    }
+
+    // 5. Perbarui metadata snapshot 24 jam di LocalStorage
+    const nextTime = new Date(Date.now() + FIRESTORE_BACKUP_INTERVAL_MS).toISOString();
+    const backupMeta: FirestoreBackupMeta = {
+      lastBackupTime: nowIso,
+      totalCollections: firestoreSnapshot.totalCollections,
+      totalDocuments: firestoreSnapshot.totalDocuments,
+      status: 'success',
+      message: `Snapshot Firestore berhasil dicadangkan ke Google Sheets (${firestoreSnapshot.totalDocuments} dokumen).`,
+      source: 'Firestore (ai-studio-portalpendaftara-21a36b17-5987-42de-b51e-51d49cc4bfe0)',
+      nextScheduledTime: nextTime
+    };
+
+    try {
+      localStorage.setItem(FIRESTORE_LAST_BACKUP_KEY, nowIso);
+      localStorage.setItem(FIRESTORE_BACKUP_META_KEY, JSON.stringify(backupMeta));
+    } catch {}
+
+    // 6. Catat riwayat audit
+    try {
+      logSystemActivity(
+        'Auto-Backup Firestore 24 Jam',
+        `Snapshot redundansi Firestore (${firestoreSnapshot.totalDocuments} dokumen dari ${firestoreSnapshot.totalCollections} koleksi) berhasil disimpan ke Google Sheets.`,
+        staffName,
+        'SINKRONISASI',
+        'Google Sheets Redundancy'
+      );
+    } catch {}
+
+    // 7. Siarkan event ke antarmuka aplikasi
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('rsumb_firestore_backup_completed', {
+          detail: backupMeta
+        })
+      );
+    }
+
+    console.info(
+      `[AutoBackup Firestore] Berhasil! ${firestoreSnapshot.totalDocuments} dokumen dari ${firestoreSnapshot.totalCollections} koleksi Firestore dicadangkan ke Google Sheets (${nowIso}).`
+    );
+
+    return {
+      success: true,
+      timestamp: nowIso,
+      totalCollections: firestoreSnapshot.totalCollections,
+      totalRecords: firestoreSnapshot.totalDocuments,
+      isDue: true,
+      message: `Snapshot Firestore berhasil dicadangkan ke Google Sheets (${firestoreSnapshot.totalDocuments} dokumen dari ${firestoreSnapshot.totalCollections} koleksi).`
+    };
+  } catch (err: any) {
+    const errorMsg = err?.message || 'Terjadi gangguan koneksi saat mencadangkan Firestore.';
+    console.warn('[AutoBackup Firestore] Gagal:', err);
+
+    const failMeta: FirestoreBackupMeta = {
+      lastBackupTime: nowIso,
+      totalCollections: 0,
+      totalDocuments: 0,
+      status: 'failed',
+      message: errorMsg,
+      source: 'Firestore',
+      nextScheduledTime: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    };
+
+    try {
+      localStorage.setItem(FIRESTORE_BACKUP_META_KEY, JSON.stringify(failMeta));
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('rsumb_firestore_backup_completed', {
+          detail: failMeta
+        })
+      );
+    }
+
+    return {
+      success: false,
+      timestamp: nowIso,
+      totalCollections: 0,
+      totalRecords: 0,
+      isDue: true,
+      message: `Gagal auto-backup Firestore ke Google Sheets: ${errorMsg}`
+    };
+  }
+}
+
+/**
+ * Inisialisasi proses background pengecekan auto-backup Firestore 24 jam secara otomatis.
+ */
+export function initAutoBackupFirestore(): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  // 1. Pengecekan awal saat aplikasi dibuka (tunda 4 detik agar boot lancar)
+  const initialTimer = setTimeout(() => {
+    autoBackupFirestore(false).catch((err) => {
+      console.info('[AutoBackup Firestore] Initial check notice:', err?.message || err);
+    });
+  }, 4000);
+
+  // 2. Interval pengecekan berkala setiap 30 menit
+  const CHECK_INTERVAL_MS = 30 * 60 * 1000;
+  const intervalId = setInterval(() => {
+    autoBackupFirestore(false).catch((err) => {
+      console.warn('[AutoBackup Firestore] Periodic check notice:', err);
+    });
+  }, CHECK_INTERVAL_MS);
+
+  return () => {
+    clearTimeout(initialTimer);
+    clearInterval(intervalId);
+  };
+}
+

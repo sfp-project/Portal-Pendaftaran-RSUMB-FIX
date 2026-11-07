@@ -127,6 +127,208 @@ export function getAllScheduleItemTimestamps(item: DoctorLeaveItem): number[] {
 }
 
 /**
+ * Mengambil timestamp akhir / tanggal masuk kembali (tglMasuk) dari satu item jadwal dokter.
+ * Prioritas:
+ * 1. Tanggal pada tglMasuk (tanggal kembali praktik / ganti) jika bukan '-' atau 'Konfirmasi'.
+ * 2. Tanggal terbesar pada tglLibur atau tglSpesifik jika tglMasuk kosong / tidak memuat tanggal valid.
+ * 3. Tanggal terbesar pada keterangan sebagai fallback.
+ */
+export function getDoctorLeaveItemEndTimestamp(item: DoctorLeaveItem): number | null {
+  if (!item) return null;
+
+  // 1. Cek tanggal Masuk / Kembali Praktik (tglMasuk)
+  if (item.tglMasuk && item.tglMasuk.trim() !== '-' && !item.tglMasuk.toLowerCase().includes('konfirmasi')) {
+    const tsMasuk = extractTimestampsFromText(item.tglMasuk);
+    if (tsMasuk.length > 0) {
+      const maxTs = Math.max(...tsMasuk);
+      const d = new Date(maxTs);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    }
+  }
+
+  // 2. Jika tglMasuk tidak berisi tanggal (misal '-' atau belum ditentukan), gunakan batas akhir tglLibur / tglSpesifik
+  const otherTimestamps = [
+    ...extractTimestampsFromText(item.tglLibur || ''),
+    ...extractTimestampsFromText(item.tglSpesifik || '')
+  ];
+
+  if (otherTimestamps.length > 0) {
+    const maxTs = Math.max(...otherTimestamps);
+    const d = new Date(maxTs);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  // 3. Fallback ke keterangan
+  const ketTimestamps = extractTimestampsFromText(item.keterangan || '');
+  if (ketTimestamps.length > 0) {
+    const maxTs = Math.max(...ketTimestamps);
+    const d = new Date(maxTs);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  return null;
+}
+
+/**
+ * Batas waktu kadaluarsa otomatis: 3 hari (3 x 24 jam)
+ */
+export const DOCTOR_LEAVE_EXPIRY_THRESHOLD_DAYS = 3;
+export const DOCTOR_LEAVE_EXPIRY_THRESHOLD_MS = DOCTOR_LEAVE_EXPIRY_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
+
+/**
+ * Mengecek apakah satu sesi pengumuman libur / perubahan jadwal dokter sudah kadaluarsa.
+ * Kriteria: Jika tanggal "Masuk/Ganti" (atau tanggal akhir perubahan/libur) sudah
+ * terlewat lebih dari 3 hari dari tanggal sistem hari ini (refDate).
+ * Contoh: Masuk 10 Nov -> setelah lewat 13 Nov (10 + 3 hari), yaitu mulai 14 Nov = EXPIRED (true).
+ */
+export function isDoctorLeaveItemExpired(
+  item: DoctorLeaveItem,
+  refDate?: string | Date | number
+): boolean {
+  if (!item) return true;
+  const endTimestamp = getDoctorLeaveItemEndTimestamp(item);
+  if (endTimestamp === null) {
+    // Jika tidak ada tanggal yang dapat dideteksi, pertahankan (jangan hapus sepihak)
+    return false;
+  }
+
+  const todayStart = getReferenceStartOfDayTimestamp(refDate);
+  // Terlewat lebih dari 3 hari (todayStart - endTimestamp > 3 hari dalam milidetik)
+  return (todayStart - endTimestamp) > DOCTOR_LEAVE_EXPIRY_THRESHOLD_MS;
+}
+
+/**
+ * Mengecek apakah seluruh pengumuman libur seorang dokter sudah kadaluarsa.
+ * Kartu dokter kadaluarsa jika semua sesi jadwal di dalamnya sudah lewat > 3 hari.
+ */
+export function isDoctorLeaveAnnouncementExpired(
+  doc: DoctorLeaveAnnouncement,
+  refDate?: string | Date | number
+): boolean {
+  if (!doc) return true;
+  if (!doc.jadwal || !Array.isArray(doc.jadwal) || doc.jadwal.length === 0) {
+    const legacyItem: DoctorLeaveItem = {
+      keterangan: (doc as any).keterangan || '',
+      tglLibur: (doc as any).tglLibur || (doc as any).tanggalLibur || '',
+      tglMasuk: (doc as any).tglMasuk || (doc as any).tanggalMasuk || '',
+      tipe: (doc as any).tipe || 'LIBUR'
+    };
+    return isDoctorLeaveItemExpired(legacyItem, refDate);
+  }
+
+  return doc.jadwal.every((item) => isDoctorLeaveItemExpired(item, refDate));
+}
+
+/**
+ * Menyaring daftar pengumuman dokter secara otomatis:
+ * - Menyingkirkan sesi jadwal yang sudah lewat > 3 hari pasca tanggal masuk.
+ * - Menghapus kartu dokter seutuhnya jika seluruh sesi jadwalnya sudah kadaluarsa.
+ */
+export function filterExpiredDoctorLeaves(
+  leaves: DoctorLeaveAnnouncement[],
+  refDate?: string | Date | number
+): DoctorLeaveAnnouncement[] {
+  if (!Array.isArray(leaves)) return [];
+
+  const nonExpired: DoctorLeaveAnnouncement[] = [];
+
+  for (const doc of leaves) {
+    if (!doc || !doc.dpjp) continue;
+
+    // Filter jadwal di dalam kartu
+    const validJadwal = (doc.jadwal || []).filter(
+      (item) => !isDoctorLeaveItemExpired(item, refDate)
+    );
+
+    if (validJadwal.length > 0) {
+      nonExpired.push({
+        ...doc,
+        jadwal: validJadwal
+      });
+    } else if (!doc.jadwal || doc.jadwal.length === 0) {
+      const legacyItem: DoctorLeaveItem = {
+        keterangan: (doc as any).keterangan || '',
+        tglLibur: (doc as any).tglLibur || (doc as any).tanggalLibur || '',
+        tglMasuk: (doc as any).tglMasuk || (doc as any).tanggalMasuk || '',
+        tipe: (doc as any).tipe || 'LIBUR'
+      };
+      if (!isDoctorLeaveItemExpired(legacyItem, refDate)) {
+        nonExpired.push(doc);
+      }
+    }
+  }
+
+  return nonExpired;
+}
+
+/**
+ * Melakukan auto-cleanup permanen pada penyimpanan lokal (localStorage 'medcentral_leaves_v5')
+ * untuk menghapus pengumuman libur dokter yang sudah kadaluarsa (> 3 hari).
+ */
+export function purgeExpiredDoctorLeavesFromStorage(
+  refDate?: string | Date | number
+): {
+  cleanedCount: number;
+  remainingCount: number;
+  expiredDoctorNames: string[];
+} {
+  const storageKey = 'medcentral_leaves_v5';
+  let cleanedCount = 0;
+  const expiredDoctorNames: string[] = [];
+
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
+    if (!raw) return { cleanedCount: 0, remainingCount: 0, expiredDoctorNames: [] };
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return { cleanedCount: 0, remainingCount: 0, expiredDoctorNames: [] };
+    }
+
+    const remaining: DoctorLeaveAnnouncement[] = [];
+
+    for (const doc of parsed) {
+      if (!doc) continue;
+
+      const validJadwal = (doc.jadwal || []).filter(
+        (item: DoctorLeaveItem) => !isDoctorLeaveItemExpired(item, refDate)
+      );
+
+      if (validJadwal.length > 0) {
+        remaining.push({
+          ...doc,
+          jadwal: validJadwal
+        });
+        if (validJadwal.length < (doc.jadwal || []).length) {
+          cleanedCount++;
+        }
+      } else {
+        // Seluruh kartu dokter ini kadaluarsa (> 3 hari)
+        cleanedCount++;
+        if (doc.dpjp) expiredDoctorNames.push(doc.dpjp);
+      }
+    }
+
+    if (cleanedCount > 0 && typeof window !== 'undefined') {
+      localStorage.setItem(storageKey, JSON.stringify(remaining));
+      console.log(`[Auto-Cleanup Libur Dokter] Berhasil membersihkan ${cleanedCount} item/kartu libur kadaluarsa (> 3 hari). Sisa aktif: ${remaining.length}`);
+    }
+
+    return {
+      cleanedCount,
+      remainingCount: remaining.length,
+      expiredDoctorNames
+    };
+  } catch (err) {
+    console.warn('[Auto-Cleanup Libur Dokter] Error saat memeriksa kadaluarsa:', err);
+    return { cleanedCount: 0, remainingCount: 0, expiredDoctorNames: [] };
+  }
+}
+
+/**
  * Normalizes any reference date (string, Date, or timestamp number) to start of day timestamp (00:00:00).
  * Defaults to current local date if not provided.
  */
@@ -269,7 +471,10 @@ export function consolidateAndSortDoctorLeaves(
   const doctorMap = new Map<string, DoctorLeaveAnnouncement>();
   const refTimestamp = getReferenceStartOfDayTimestamp(referenceDate);
 
-  for (const leave of leaves) {
+  // AUTO-CLEANUP: Saring dahulu pengumuman/sesi libur yang sudah kadaluarsa (> 3 hari pasca tanggal masuk/kembali)
+  const nonExpiredLeaves = filterExpiredDoctorLeaves(leaves, referenceDate);
+
+  for (const leave of nonExpiredLeaves) {
     if (!leave.dpjp) continue;
     const key = normalizeDoctorName(leave.dpjp);
 
@@ -937,6 +1142,23 @@ export function formatDoctorScheduleTime(
   }
 
   return clean;
+}
+
+/**
+ * Menyaring data jamHfis secara ketat khusus untuk cetak popup / ekspor PDF:
+ * Menghilangkan tag HTML (<small>, <span>, dll.), teks instruksi cetak, dan elemen dekorasi.
+ */
+export function sanitizeHfisPrintTime(rawTime?: string | null): string {
+  if (!rawTime || rawTime.trim() === '' || rawTime.trim() === '-') return '-';
+  // 1. Hilangkan seluruh tag HTML (<small>, <span>, <div>, dll.)
+  let clean = rawTime.replace(/<[^>]*>/g, ' ').trim();
+  // 2. Hilangkan kata instruksi cetak beserta tanda kurungnya
+  clean = clean.replace(/\(?\s*cetak[^\)]*\)?/gi, '').trim();
+  clean = clean.replace(/1 jam sebelum[^\.]*/gi, '').trim();
+  // 3. Normalisasi spasi berlebih
+  clean = clean.replace(/\s{2,}/g, ' ').trim();
+  // 4. Format jam standar
+  return formatHfisTime(clean, false);
 }
 
 export const formatScheduleTime = formatDoctorScheduleTime;

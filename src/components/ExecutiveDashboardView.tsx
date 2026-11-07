@@ -24,6 +24,7 @@ import {
   Printer,
   QrCode,
   Inbox,
+  Filter,
   ExternalLink as ExternalLinkIcon
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -91,6 +92,11 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   const [isIncomingDataModalOpen, setIsIncomingDataModalOpen] = useState(false);
   const [incomingCount, setIncomingCount] = useState<number>(0);
   const [selectedPatientForSlip, setSelectedPatientForSlip] = useState<any>(null);
+
+  // State Filter & Pencarian Widget "Ringkasan Praktik Hari Ini"
+  const [todayWidgetSearch, setTodayWidgetSearch] = useState('');
+  const [todayWidgetStatus, setTodayWidgetStatus] = useState<'all' | 'active' | 'leave'>('all');
+  const [todayWidgetPoli, setTodayWidgetPoli] = useState<string>('all');
 
   // Helper URL Pendaftaran Mandiri Pasien (Bebas 403 Forbidden & Mendukung Dynamic Origin / Override)
   const getCleanPublicFormUrl = (): string => {
@@ -209,6 +215,40 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   const kuotaPercentage = totalKuotaKapasitasHariIni > 0
     ? Math.min(100, Math.round((totalKuotaTerisiHariIni / totalKuotaKapasitasHariIni) * 100))
     : 0;
+
+  // Daftar poliklinik unik yang memiliki jadwal dokter hari ini
+  const todayAvailablePolis = useMemo(() => {
+    const set = new Set<string>();
+    schedulesToday.forEach((s) => {
+      if (s.poli) set.add(s.poli);
+    });
+    return Array.from(set).sort();
+  }, [schedulesToday]);
+
+  // Data filter dokter hari ini untuk widget "Ringkasan Praktik Hari Ini"
+  const filteredSchedulesToday = useMemo(() => {
+    return schedulesToday.filter((s) => {
+      const normDpjp = normalizeDoctorName(s.dpjp);
+      const isOnLeave = doctorsOnLeaveTodaySet.has(normDpjp);
+
+      if (todayWidgetStatus === 'active' && isOnLeave) return false;
+      if (todayWidgetStatus === 'leave' && !isOnLeave) return false;
+
+      if (todayWidgetPoli !== 'all' && s.poli !== todayWidgetPoli) return false;
+
+      if (todayWidgetSearch.trim()) {
+        const q = todayWidgetSearch.toLowerCase().trim();
+        const matchDoctor = s.dpjp.toLowerCase().includes(q);
+        const matchPoli = s.poli.toLowerCase().includes(q);
+        const matchCatatan = (s.catatan || '').toLowerCase().includes(q);
+        const matchJam = (s.jamPraktik || s.jadwal || '').toLowerCase().includes(q);
+        const matchHfis = (s.jamHfis || s.hfis || '').toLowerCase().includes(q);
+        if (!matchDoctor && !matchPoli && !matchCatatan && !matchJam && !matchHfis) return false;
+      }
+
+      return true;
+    });
+  }, [schedulesToday, doctorsOnLeaveTodaySet, todayWidgetStatus, todayWidgetPoli, todayWidgetSearch]);
 
   // 4.5 Aggregations for Daily Huddle Teaser & Report
   const actualSurgeries = useMemo(() => {
@@ -874,6 +914,436 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
             <span>Buka Laporan Huddle</span>
             <ChevronRight className="w-4 h-4 text-[#005d42] group-hover:translate-x-0.5 transition-transform" />
           </button>
+        </div>
+      </div>
+
+      {/* 2.8 WIDGET: RINGKASAN PRAKTIK HARI INI */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 transition-all hover:shadow-md">
+        {/* Header Widget */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-[#005d42] border border-emerald-200 flex items-center justify-center shrink-0">
+                <Stethoscope className="w-5 h-5" />
+              </div>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+                Ringkasan Praktik Hari Ini
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                {currentDayName}, {formatYMDToIndonesian(todayYMD, true)}
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Daftar seluruh dokter spesialis yang memiliki jadwal pelayanan rawat jalan hari ini beserta waktu praktik, jam HFIS, kuota BPJS, dan status kehadiran.
+            </p>
+          </div>
+
+          {/* Quick Counter Badges & Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200">
+              <Users className="w-3.5 h-3.5 text-slate-500" />
+              <span>{schedulesToday.length} Terdaftar</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{activeDoctorsToday.length} Aktif</span>
+            </span>
+            {todayLeaves.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                <span>{todayLeaves.length} Cuti/Libur</span>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsThermalSlipModalOpen(true)}
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#005d42] border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              title="Cetak struk jadwal praktik hari ini pada printer thermal"
+            >
+              <Printer className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="hidden sm:inline">Cetak Slip</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateToSchedules()}
+              className="px-3.5 py-1.5 bg-[#005d42] hover:bg-emerald-800 active:bg-emerald-950 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+              title="Buka tabel jadwal dokter lengkap"
+            >
+              <span>Tabel Lengkap</span>
+              <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Controls Bar */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mt-4 pt-1">
+          {/* Search Box */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={todayWidgetSearch}
+              onChange={(e) => setTodayWidgetSearch(e.target.value)}
+              placeholder="Cari dokter, spesialisasi, atau jam praktik hari ini..."
+              className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all outline-hidden text-slate-800 placeholder-slate-400"
+            />
+            {todayWidgetSearch && (
+              <button
+                type="button"
+                onClick={() => setTodayWidgetSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Filter Status Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+            <button
+              type="button"
+              onClick={() => setTodayWidgetStatus('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                todayWidgetStatus === 'all'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+            >
+              Semua ({schedulesToday.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTodayWidgetStatus('active')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                todayWidgetStatus === 'active'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
+              }`}
+            >
+              <span>Aktif</span>
+              <span className="text-[10px] px-1 rounded-full bg-white/20">
+                {activeDoctorsToday.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTodayWidgetStatus('leave')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                todayWidgetStatus === 'leave'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+              }`}
+            >
+              <span>Cuti/Libur</span>
+              <span className="text-[10px] px-1 rounded-full bg-white/20">
+                {todayLeaves.length}
+              </span>
+            </button>
+
+            {/* Poli Dropdown */}
+            {todayAvailablePolis.length > 0 && (
+              <div className="relative shrink-0 ml-1">
+                <select
+                  value={todayWidgetPoli}
+                  onChange={(e) => setTodayWidgetPoli(e.target.value)}
+                  className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl px-2.5 py-1.5 pr-6 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-emerald-300"
+                >
+                  <option value="all">Semua Poliklinik</option>
+                  {todayAvailablePolis.map((poli) => (
+                    <option key={poli} value={poli}>
+                      Poli {poli}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Content Table & Mobile Cards */}
+        <div className="mt-4">
+          {filteredSchedulesToday.length > 0 ? (
+            <>
+              {/* Desktop View Table */}
+              <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 shadow-2xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 uppercase tracking-wider text-[11px] font-extrabold">
+                      <th className="py-3 px-3.5 w-12 text-center">No</th>
+                      <th className="py-3 px-4">Dokter & Poliklinik</th>
+                      <th className="py-3 px-3.5">Jam Praktik</th>
+                      <th className="py-3 px-3.5">Jam HFIS</th>
+                      <th className="py-3 px-3.5 text-center">Kuota BPJS</th>
+                      <th className="py-3 px-4">Status & Catatan</th>
+                      <th className="py-3 px-3.5 text-right w-24">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredSchedulesToday.map((item, idx) => {
+                      const normDpjp = normalizeDoctorName(item.dpjp);
+                      const leaveInfo = todayLeaves.find(
+                        (l) => normalizeDoctorName(l.dpjp) === normDpjp
+                      );
+                      const isOnLeave = Boolean(leaveInfo);
+                      const activeJadwal = leaveInfo?.jadwal?.[0];
+
+                      const kuotaTotal =
+                        Number(item.kuotaBpjs) ||
+                        Number(item.kuotaTotal) ||
+                        Number(item.kuota) ||
+                        40;
+                      const kuotaTerisi = Number(item.kuotaTerisi) || 0;
+                      const pct = Math.min(100, Math.round((kuotaTerisi / (kuotaTotal || 1)) * 100));
+
+                      return (
+                        <tr
+                          key={`${item.id || idx}-${item.dpjp}`}
+                          className={`hover:bg-slate-50/80 transition-colors ${
+                            isOnLeave ? 'bg-amber-50/25' : ''
+                          }`}
+                        >
+                          <td className="py-3 px-3.5 text-center font-bold text-slate-500">
+                            {idx + 1}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-extrabold text-slate-900 text-sm leading-tight flex items-center gap-1.5">
+                              <span>{item.dpjp}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <span
+                                onClick={() => onSelectClinicFilter(item.poli)}
+                                className="inline-block px-2 py-0.5 rounded-md font-semibold text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 cursor-pointer transition-colors"
+                                title={`Saring jadwal Poli ${item.poli}`}
+                              >
+                                Poli {item.poli}
+                              </span>
+                              {item.ruangan && (
+                                <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">
+                                  {item.ruangan}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3.5">
+                            {/* Gaya teks jam praktik biru tua */}
+                            <span className="text-blue-800 font-bold bg-blue-50/90 px-2.5 py-1 rounded-lg border border-blue-200 inline-flex items-center gap-1 font-mono tracking-tight text-xs">
+                              <Clock className="w-3.5 h-3.5 text-blue-800 shrink-0" />
+                              <span>{formatDoctorScheduleTime(item)}</span>
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5">
+                            {/* Gaya teks jam HFIS tebal dan merah tua */}
+                            <span className="font-bold text-red-800 bg-red-50/90 px-2.5 py-1 rounded-lg border border-red-200 inline-flex items-center gap-1 font-mono tracking-tight text-xs">
+                              <Clock className="w-3.5 h-3.5 text-red-800 shrink-0" />
+                              <span>{item.jamHfis || item.hfis || '-'}</span>
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5 text-center">
+                            {/* Gaya angka kuota BPJS berukuran tebal dan berwarna hitam pekat */}
+                            <div className="font-bold text-gray-900 text-sm">
+                              {kuotaTerisi} <span className="text-xs text-gray-500 font-normal">/ {kuotaTotal}</span>
+                            </div>
+                            <div className="w-16 mx-auto bg-slate-100 rounded-full h-1.5 mt-1 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  pct >= 90
+                                    ? 'bg-rose-500'
+                                    : pct >= 70
+                                    ? 'bg-amber-500'
+                                    : 'bg-[#005d42]'
+                                }`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            {isOnLeave ? (
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                                  <AlertCircle className="w-3 h-3 text-amber-700" />
+                                  <span>
+                                    {activeJadwal?.tipe === 'MAJU'
+                                      ? 'Maju Praktik'
+                                      : activeJadwal?.tipe === 'CUTI'
+                                      ? 'Cuti'
+                                      : 'Libur / Penyesuaian'}
+                                  </span>
+                                </span>
+                                {activeJadwal?.keterangan && (
+                                  <p className="text-[11px] text-amber-900 font-medium line-clamp-1">
+                                    {activeJadwal.keterangan}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                                  <span>Aktif Praktik</span>
+                                </span>
+                                {item.catatan && (
+                                  <p className="text-[11px] text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 line-clamp-1 italic">
+                                    &ldquo;{item.catatan}&rdquo;
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => onNavigateToSchedules(item.dpjp)}
+                              className="px-2.5 py-1 text-xs font-bold text-[#005d42] hover:text-white bg-emerald-50 hover:bg-[#005d42] rounded-lg border border-emerald-200 transition-all cursor-pointer inline-flex items-center gap-1"
+                              title="Buka jadwal dokter ini di tabel utama"
+                            >
+                              <span>Lihat</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile View Cards */}
+              <div className="grid grid-cols-1 gap-3 md:hidden">
+                {filteredSchedulesToday.map((item, idx) => {
+                  const normDpjp = normalizeDoctorName(item.dpjp);
+                  const leaveInfo = todayLeaves.find(
+                    (l) => normalizeDoctorName(l.dpjp) === normDpjp
+                  );
+                  const isOnLeave = Boolean(leaveInfo);
+                  const activeJadwal = leaveInfo?.jadwal?.[0];
+
+                  const kuotaTotal =
+                    Number(item.kuotaBpjs) ||
+                    Number(item.kuotaTotal) ||
+                    Number(item.kuota) ||
+                    40;
+                  const kuotaTerisi = Number(item.kuotaTerisi) || 0;
+
+                  return (
+                    <div
+                      key={`mob-${item.id || idx}-${item.dpjp}`}
+                      className={`p-3.5 rounded-xl border transition-all ${
+                        isOnLeave
+                          ? 'bg-amber-50/40 border-amber-200'
+                          : 'bg-white border-slate-200 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span
+                            onClick={() => onSelectClinicFilter(item.poli)}
+                            className="inline-block px-2 py-0.5 rounded-md font-semibold text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 cursor-pointer"
+                          >
+                            Poli {item.poli}
+                          </span>
+                          <h4 className="font-extrabold text-slate-900 text-sm mt-1 leading-snug">
+                            {item.dpjp}
+                          </h4>
+                        </div>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                            isOnLeave
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          }`}
+                        >
+                          {isOnLeave ? 'Libur/Cuti' : 'Aktif Praktik'}
+                        </span>
+                      </div>
+
+                      {/* Detail Jam Praktik, HFIS, & Kuota */}
+                      <div className="grid grid-cols-2 gap-2 mt-3 pt-2.5 border-t border-slate-100 text-xs">
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-500 block">
+                            Jam Praktik:
+                          </span>
+                          <span className="text-blue-800 font-bold bg-blue-50/90 px-2 py-0.5 rounded border border-blue-200 inline-block font-mono text-[11px] mt-0.5">
+                            {formatDoctorScheduleTime(item)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-500 block">
+                            Jam HFIS:
+                          </span>
+                          <span className="font-bold text-red-800 bg-red-50/90 px-2 py-0.5 rounded border border-red-200 inline-block font-mono text-[11px] mt-0.5">
+                            {item.jamHfis || item.hfis || '-'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-slate-500 font-medium">Kuota BPJS:</span>
+                          <span className="font-bold text-gray-900">
+                            {kuotaTerisi} / {kuotaTotal}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onNavigateToSchedules(item.dpjp)}
+                          className="text-xs font-bold text-[#005d42] hover:underline flex items-center gap-0.5"
+                        >
+                          <span>Buka Jadwal</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {item.catatan && (
+                        <p className="mt-2 text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-200 italic">
+                          &ldquo;{item.catatan}&rdquo;
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="py-8 px-4 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-center">
+              <Stethoscope className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+              <h4 className="font-bold text-slate-700 text-sm">
+                Tidak ada jadwal dokter yang cocok
+              </h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                {todayWidgetSearch || todayWidgetStatus !== 'all' || todayWidgetPoli !== 'all'
+                  ? 'Tidak ditemukan dokter dengan kriteria pencarian yang Anda masukkan. Coba atur ulang kata kunci atau filter.'
+                  : `Tidak ada data jadwal dokter yang terdaftar pada hari ${currentDayName} di master SIMRS.`}
+              </p>
+              {(todayWidgetSearch || todayWidgetStatus !== 'all' || todayWidgetPoli !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTodayWidgetSearch('');
+                    setTodayWidgetStatus('all');
+                    setTodayWidgetPoli('all');
+                  }}
+                  className="mt-3 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-300 shadow-2xs transition-colors cursor-pointer"
+                >
+                  Reset Filter Hari Ini
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer info banner */}
+        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-500">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>
+              Menampilkan <strong>{filteredSchedulesToday.length}</strong> dari{' '}
+              <strong>{schedulesToday.length}</strong> jadwal dokter hari ini ({currentDayName})
+            </span>
+          </div>
+          <span className="font-medium text-slate-400 hidden sm:inline">
+            RSU Muhammadiyah Babat &bull; Data Terpadu SIMRS & HFIS BPJS
+          </span>
         </div>
       </div>
 

@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar,
   UserPlus,
@@ -14,6 +15,8 @@ import {
   Sparkles,
   CalendarCheck,
   CheckCircle2,
+  Check,
+  MessageSquare,
   X,
   RotateCcw,
   CalendarDays,
@@ -28,7 +31,9 @@ import {
   DoorOpen,
   Stethoscope,
   UserCheck,
-  Filter
+  Filter,
+  FileSpreadsheet,
+  History
 } from 'lucide-react';
 import { DoctorSchedule, DoctorLeaveAnnouncement } from '../types';
 import {
@@ -38,6 +43,7 @@ import {
   formatYMDToIndonesian,
   formatDoctorScheduleTime,
   formatHfisTime,
+  sanitizeHfisPrintTime,
   getJamCetak,
   formatDoctorQuota,
   getCleanDoctorQuota,
@@ -50,7 +56,18 @@ import { PrintSignatureBlock } from './PrintSignatureBlock';
 import { exportToExcel, exportToPdf, getIndonesianCurrentDate } from '../utils/exportHelpers';
 import { DoctorSchedulePreviewModal } from './DoctorSchedulePreviewModal';
 import { BulkEditScheduleModal } from './BulkEditScheduleModal';
+import { UploadMasterScheduleModal } from './UploadMasterScheduleModal';
+import { ScheduleNoteAuditModal } from './ScheduleNoteAuditModal';
+import { logSystemActivity } from '../data/auditLogData';
 import { requestAdminAction, getIsAdminUnlocked } from '../services/adminAuthService';
+import * as XLSX from 'xlsx';
+import {
+  normalizePoliCanonical,
+  inferPoliFromDoctor,
+  normalizeDoctorCanonicalName,
+  inferRoomLocation,
+  sanitizeAndDeduplicateSchedules
+} from '../data/masterSchedulesData';
 
 interface ScheduleTableProps {
   schedules: DoctorSchedule[];
@@ -68,6 +85,7 @@ interface ScheduleTableProps {
   onBookPatient: (sch: DoctorSchedule) => void;
   onExport?: () => void;
   onPrint: () => void;
+  cetakPDF?: () => void;
   onExportExcel?: () => void | Promise<void>;
   onExportPdf?: () => void | Promise<void>;
   showToast?: (message: string) => void;
@@ -80,6 +98,12 @@ interface ScheduleTableProps {
   onOpenLeavePoster?: (leave: DoctorLeaveAnnouncement) => void;
   onBulkUpdateSchedules?: (ids: string[], updates: Partial<DoctorSchedule>) => void;
   onBulkDeleteSchedules?: (ids: string[]) => void;
+  onUploadMasterSchedules?: (newSchedules: DoctorSchedule[]) => Promise<void> | void;
+  onUploadMasterAman?: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onResetMasterSchedules?: () => Promise<void> | void;
+  onUpdateScheduleNote?: (scheduleId: string, newNote: string) => void;
+  onUpdateScheduleTime?: (scheduleId: string, newTime: string) => void;
+  onNavigateToFullAudit?: () => void;
   highlightedDoctor?: string | null;
 }
 
@@ -99,6 +123,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
   onBookPatient,
   onExport,
   onPrint,
+  cetakPDF,
   onExportExcel,
   onExportPdf,
   showToast,
@@ -111,12 +136,247 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
   onOpenLeavePoster,
   onBulkUpdateSchedules,
   onBulkDeleteSchedules,
+  onUploadMasterSchedules,
+  onUploadMasterAman,
+  onResetMasterSchedules,
+  onUpdateScheduleNote,
+  onUpdateScheduleTime,
+  onNavigateToFullAudit,
   highlightedDoctor
 }) => {
   // Local state fallback if not controlled by parent
   const [internalLeaveDate, setInternalLeaveDate] = useState('');
   const activeLeaveDate = selectedLeaveDate !== undefined ? selectedLeaveDate : internalLeaveDate;
   const [previewDoctor, setPreviewDoctor] = useState<DoctorSchedule | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
+  // State untuk Fitur Custom / Edit Kolom Catatan Jadwal (Inline & Modal)
+  const [editingNoteScheduleId, setEditingNoteScheduleId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState<string>('');
+  const [modalNoteSchedule, setModalNoteSchedule] = useState<DoctorSchedule | null>(null);
+  const [modalNoteText, setModalNoteText] = useState<string>('');
+  const [isNoteAuditModalOpen, setIsNoteAuditModalOpen] = useState(false);
+
+  const handleStartInlineEditNote = (sch: DoctorSchedule, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingNoteScheduleId(sch.id);
+    setEditingNoteText(sch.catatan || sch.catatanKhusus || '');
+  };
+
+  const handleCancelInlineEditNote = () => {
+    setEditingNoteScheduleId(null);
+    setEditingNoteText('');
+  };
+
+  const handleSaveInlineNote = (scheduleId: string, customText?: string) => {
+    const textToSave = (customText !== undefined ? customText : editingNoteText).trim();
+
+    // 1. Update parent state
+    if (onUpdateScheduleNote) {
+      onUpdateScheduleNote(scheduleId, textToSave);
+    } else {
+      const target = schedules.find((s) => s.id === scheduleId);
+      const oldNote = (target?.catatan || target?.catatanKhusus || '').trim();
+      if (oldNote !== textToSave && target) {
+        try {
+          const actionType =
+            !oldNote && textToSave
+              ? 'Tambah Catatan Jadwal'
+              : oldNote && !textToSave
+              ? 'Hapus Catatan Jadwal'
+              : 'Ubah Catatan Jadwal';
+
+          const details =
+            !oldNote && textToSave
+              ? `Menambahkan catatan jadwal dokter ${target.dpjp} (${target.poli}, Hari ${target.hari}): "${textToSave}".`
+              : oldNote && !textToSave
+              ? `Menghapus catatan jadwal dokter ${target.dpjp} (${target.poli}, Hari ${target.hari}) yang sebelumnya: "${oldNote}".`
+              : `Mengubah catatan jadwal dokter ${target.dpjp} (${target.poli}, Hari ${target.hari}) dari "${oldNote}" menjadi "${textToSave}".`;
+
+          logSystemActivity(
+            actionType,
+            details,
+            undefined,
+            'JADWAL_DOKTER',
+            'Jadwal Dokter',
+            {
+              scheduleId,
+              doctor: target.dpjp,
+              poli: target.poli,
+              hari: target.hari,
+              oldNote,
+              newNote: textToSave
+            }
+          );
+        } catch {}
+      }
+
+      if (onBulkUpdateSchedules) {
+        onBulkUpdateSchedules([scheduleId], {
+          catatan: textToSave,
+          catatanKhusus: textToSave,
+          status: /nonaktif|non-aktif/i.test(textToSave) ? 'Nonaktif' : undefined
+        });
+      }
+    }
+
+    // 2. Simpan langsung ke localStorage (rsumb_schedules & medcentral_schedules_v5)
+    try {
+      const stored = localStorage.getItem('rsumb_schedules');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.map((item: any) =>
+            item.id === scheduleId
+              ? {
+                  ...item,
+                  catatan: textToSave,
+                  catatanKhusus: textToSave,
+                  status: /nonaktif|non-aktif/i.test(textToSave)
+                    ? 'Nonaktif'
+                    : item.status === 'Nonaktif'
+                    ? ((item.kuotaTerisi || 0) >= (item.kuotaTotal || 50) ? 'Penuh' : 'Tersedia')
+                    : item.status
+                }
+              : item
+          );
+          localStorage.setItem('rsumb_schedules', JSON.stringify(updated));
+        }
+      }
+
+      const storedV5 = localStorage.getItem('medcentral_schedules_v5');
+      if (storedV5) {
+        const parsedV5 = JSON.parse(storedV5);
+        if (Array.isArray(parsedV5)) {
+          const updatedV5 = parsedV5.map((item: any) =>
+            item.id === scheduleId
+              ? {
+                  ...item,
+                  catatan: textToSave,
+                  catatanKhusus: textToSave,
+                  status: /nonaktif|non-aktif/i.test(textToSave)
+                    ? 'Nonaktif'
+                    : item.status === 'Nonaktif'
+                    ? ((item.kuotaTerisi || 0) >= (item.kuotaTotal || 50) ? 'Penuh' : 'Tersedia')
+                    : item.status
+                }
+              : item
+          );
+          localStorage.setItem('medcentral_schedules_v5', JSON.stringify(updatedV5));
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent('rsumb_schedules_saved'));
+    } catch (e) {
+      console.warn('Gagal menyimpan rsumb_schedules ke localStorage:', e);
+    }
+
+    if (!onUpdateScheduleNote && showToast) {
+      showToast(textToSave ? `Catatan "${textToSave}" berhasil disimpan ke sistem.` : 'Catatan jadwal berhasil dikosongkan.');
+    }
+
+    setEditingNoteScheduleId(null);
+    setEditingNoteText('');
+  };
+
+  const handleOpenModalEditNote = (sch: DoctorSchedule, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setModalNoteSchedule(sch);
+    setModalNoteText(sch.catatan || sch.catatanKhusus || '');
+  };
+
+  const handleCloseModalEditNote = () => {
+    setModalNoteSchedule(null);
+    setModalNoteText('');
+  };
+
+  const handleSaveModalNote = () => {
+    if (!modalNoteSchedule) return;
+    handleSaveInlineNote(modalNoteSchedule.id, modalNoteText);
+    handleCloseModalEditNote();
+  };
+
+  // State untuk Fitur Ubah Waktu Praktik Cepat (Inline Edit Kolom Jadwal Dokter)
+  const [editingTimeScheduleId, setEditingTimeScheduleId] = useState<string | null>(null);
+  const [editingTimeValue, setEditingTimeValue] = useState<string>('');
+
+  const handleStartInlineEditTime = (sch: DoctorSchedule, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingTimeScheduleId(sch.id);
+    const initialTime = sch.jamPraktik || sch.jadwal || formatDoctorScheduleTime(sch);
+    setEditingTimeValue(initialTime === '-' ? '' : initialTime);
+  };
+
+  const handleCancelInlineEditTime = () => {
+    setEditingTimeScheduleId(null);
+    setEditingTimeValue('');
+  };
+
+  const handleSaveInlineTime = (scheduleId: string, customTime?: string) => {
+    const timeToSave = (customTime !== undefined ? customTime : editingTimeValue).trim();
+    if (!timeToSave) {
+      handleCancelInlineEditTime();
+      return;
+    }
+
+    // 1. Update parent state
+    if (onUpdateScheduleTime) {
+      onUpdateScheduleTime(scheduleId, timeToSave);
+    } else if (onBulkUpdateSchedules) {
+      onBulkUpdateSchedules([scheduleId], {
+        jadwal: timeToSave,
+        jamPraktik: timeToSave
+      });
+    }
+
+    // 2. Simpan langsung ke localStorage (rsumb_schedules & medcentral_schedules_v5)
+    try {
+      const stored = localStorage.getItem('rsumb_schedules');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.map((item: any) =>
+            item.id === scheduleId
+              ? {
+                  ...item,
+                  jadwal: timeToSave,
+                  jamPraktik: timeToSave
+                }
+              : item
+          );
+          localStorage.setItem('rsumb_schedules', JSON.stringify(updated));
+        }
+      }
+
+      const storedV5 = localStorage.getItem('medcentral_schedules_v5');
+      if (storedV5) {
+        const parsedV5 = JSON.parse(storedV5);
+        if (Array.isArray(parsedV5)) {
+          const updatedV5 = parsedV5.map((item: any) =>
+            item.id === scheduleId
+              ? {
+                  ...item,
+                  jadwal: timeToSave,
+                  jamPraktik: timeToSave
+                }
+              : item
+          );
+          localStorage.setItem('medcentral_schedules_v5', JSON.stringify(updatedV5));
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent('rsumb_schedules_saved'));
+    } catch (e) {
+      console.warn('Gagal menyimpan rsumb_schedules ke localStorage:', e);
+    }
+
+    if (!onUpdateScheduleTime && showToast) {
+      showToast(`Waktu praktik berhasil diperbarui menjadi "${timeToSave}".`);
+    }
+
+    setEditingTimeScheduleId(null);
+    setEditingTimeValue('');
+  };
 
   const handleDateChange = (newDate: string) => {
     if (onLeaveDateChange) {
@@ -233,7 +493,13 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
   const quickPoliList = useMemo(() => {
     const list = new Set<string>();
     schedules.forEach((s) => {
-      if (s.poli) {
+      if (
+        s.poli &&
+        s.poli.trim() &&
+        s.poli.trim() !== '-' &&
+        s.poli.trim().toLowerCase() !== 'null' &&
+        s.poli.trim().toLowerCase() !== 'undefined'
+      ) {
         list.add(s.poli.replace(/^Poli\s+/i, '').trim());
       }
     });
@@ -439,12 +705,11 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         'HARI',
         'JAM PRAKTIK',
         'JAM HFIS',
-        'KUOTA BPJS'
+        'KUOTA BPJS',
+        'CATATAN'
       ];
       const data = sortedSchedules.map((s, idx) => {
-        const jamHfis = formatHfisTime(s.jamHfis);
-        const jamCetak = getJamCetak(s.jamHfis, s);
-        const jamHfisCombined = jamCetak ? `${jamHfis} (${jamCetak})` : jamHfis;
+        const jamHfis = sanitizeHfisPrintTime(s.jamHfis);
 
         return [
           idx + 1,
@@ -452,8 +717,9 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
           s.dpjp,
           s.hari,
           formatDoctorScheduleTime(s),
-          jamHfisCombined,
-          Number(getCleanDoctorQuota(s)) || getCleanDoctorQuota(s)
+          jamHfis,
+          Number(getCleanDoctorQuota(s)) || getCleanDoctorQuota(s),
+          s.catatan || s.catatanKhusus || ''
         ];
       });
 
@@ -472,7 +738,8 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
           'center',
           'center',
           'center',
-          'center'
+          'center',
+          'left'
         ]
       });
       showToast?.('Jadwal praktik dokter berhasil diekspor ke Excel (.xlsx).');
@@ -549,12 +816,11 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         'HARI',
         'JAM PRAKTIK',
         'JAM HFIS',
-        'KUOTA BPJS'
+        'KUOTA BPJS',
+        'CATATAN'
       ];
       const data = sortedSchedules.map((s, idx) => {
-        const jamHfis = formatHfisTime(s.jamHfis);
-        const jamCetak = getJamCetak(s.jamHfis, s);
-        const jamHfisCombined = jamCetak ? `${jamHfis}\n${jamCetak}` : jamHfis;
+        const jamHfis = sanitizeHfisPrintTime(s.jamHfis);
 
         return [
           String(idx + 1),
@@ -562,8 +828,9 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
           s.dpjp,
           s.hari,
           formatDoctorScheduleTime(s),
-          jamHfisCombined,
-          getCleanDoctorQuota(s)
+          jamHfis,
+          getCleanDoctorQuota(s),
+          s.catatan || s.catatanKhusus || '-'
         ];
       });
 
@@ -576,13 +843,31 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         data,
         orientation: 'landscape',
         columnStyles: {
-          0: { cellWidth: 12, halign: 'center' }, // NO
-          1: { cellWidth: 42, halign: 'left' },   // POLIKLINIK
-          2: { cellWidth: 78, halign: 'left' },   // DOKTER / DPJP
-          3: { cellWidth: 26, halign: 'center' }, // HARI
-          4: { cellWidth: 44, halign: 'center' }, // JAM PRAKTIK
-          5: { cellWidth: 40, halign: 'center' }, // JAM HFIS
-          6: { cellWidth: 35, halign: 'center' }  // KUOTA BPJS
+          0: { cellWidth: 10, halign: 'center' }, // NO
+          1: { cellWidth: 38, halign: 'left' },   // POLIKLINIK
+          2: { cellWidth: 65, halign: 'left' },   // DOKTER / DPJP
+          3: { cellWidth: 22, halign: 'center' }, // HARI
+          4: { cellWidth: 38, halign: 'center', textColor: [30, 64, 175], fontStyle: 'bold' }, // JAM PRAKTIK: #1e40af (Biru Tua)
+          5: { cellWidth: 35, halign: 'center', textColor: [153, 27, 27], fontStyle: 'bold' }, // JAM HFIS: #991b1b (Merah Tua Bold)
+          6: { cellWidth: 25, halign: 'center', textColor: [0, 0, 0], fontStyle: 'bold' },      // KUOTA BPJS: #000000 (Hitam Pekat Bold)
+          7: { cellWidth: 44, halign: 'left' }    // CATATAN
+        },
+        didParseCell: (hookData: any) => {
+          if (hookData.section === 'body') {
+            if (hookData.column.index === 4) {
+              // Kolom JAM PRAKTIK: Biru Tua (#1e40af)
+              hookData.cell.styles.textColor = [30, 64, 175];
+              hookData.cell.styles.fontStyle = 'bold';
+            } else if (hookData.column.index === 5) {
+              // Kolom JAM HFIS: Tebal (Bold) & Merah Tua (#991b1b)
+              hookData.cell.styles.textColor = [153, 27, 27];
+              hookData.cell.styles.fontStyle = 'bold';
+            } else if (hookData.column.index === 6) {
+              // Kolom KUOTA BPJS: Tebal (Bold) & Hitam Pekat (#000000)
+              hookData.cell.styles.textColor = [0, 0, 0];
+              hookData.cell.styles.fontStyle = 'bold';
+            }
+          }
         },
         signatureTitle: 'Petugas Verifikasi SIMRS & Rawat Jalan'
       });
@@ -709,7 +994,7 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
             )}
 
             <button
-              onClick={onPrint}
+              onClick={cetakPDF || onPrint}
               className="p-2 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 text-xs font-medium flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
               title="Cetak Jadwal (PDF / Printer)"
             >
@@ -722,6 +1007,18 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
               onExportExcel={handleExportExcel}
               onExportPdf={handleExportPdf}
             />
+
+            {/* Tombol Riwayat Log Audit Perubahan Catatan Jadwal Dokter */}
+            <button
+              type="button"
+              id="btn-schedule-note-audit-logs"
+              onClick={() => setIsNoteAuditModalOpen(true)}
+              className="px-3 py-2 text-slate-700 hover:text-teal-900 bg-white hover:bg-teal-50 rounded-lg border border-slate-200 hover:border-teal-300 text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+              title="Lihat Riwayat & Log Audit Perubahan Catatan Jadwal Dokter (Siapa Petugas & Kapan Perubahan Dilakukan)"
+            >
+              <History className="w-3.5 h-3.5 text-teal-600" />
+              <span className="hidden sm:inline">Riwayat Catatan</span>
+            </button>
 
             {isLeaveMode ? (
               <div className="flex items-center gap-1.5">
@@ -773,6 +1070,56 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
+                {/* BUTTON: Upload Master Jadwal (.xlsx) */}
+                <button
+                  type="button"
+                  id="btn-upload-master-schedule"
+                  onClick={() => requestAdminAction(() => setIsUploadModalOpen(true), 'Upload Master Jadwal Excel')}
+                  className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs hover:shadow-sm active:scale-95 transition-all cursor-pointer border border-emerald-500/30"
+                  title="Upload file Excel (.xlsx) master jadwal praktik dokter & kuota HFIS dari manajemen (Mode Ganti Total / Overwrite)"
+                >
+                  <FileSpreadsheet className="w-4 h-4 stroke-[2.2] text-emerald-200" />
+                  <span>Upload Master Jadwal (.xlsx)</span>
+                </button>
+
+                {onUploadMasterAman && (
+                  <input
+                    type="file"
+                    id="input-upload-master-aman-direct"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={(e) => {
+                      requestAdminAction(() => {
+                        onUploadMasterAman(e);
+                      }, 'Upload Master Jadwal Excel (Aman & Overwrite)');
+                    }}
+                    className="hidden"
+                  />
+                )}
+
+                {/* BUTTON: Reset Master (64 DPJP) */}
+                {onResetMasterSchedules && (
+                  <button
+                    type="button"
+                    id="btn-reset-master-schedule"
+                    onClick={() => {
+                      requestAdminAction(() => {
+                        if (
+                          window.confirm(
+                            'Apakah Anda yakin ingin mereset total seluruh jadwal ke data master resmi RSUMB (64 DPJP)? Tindakan ini akan menimpa total data dan membersihkan seluruh baris duplikat.'
+                          )
+                        ) {
+                          onResetMasterSchedules();
+                        }
+                      }, 'Reset Master Jadwal Resmi (64 DPJP)');
+                    }}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:shadow-xs active:scale-95 transition-all cursor-pointer"
+                    title="Reset total dan bersihkan duplikasi, sinkronkan ke 64 jadwal dokter resmi"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="hidden sm:inline">Reset Master (64 DPJP)</span>
+                  </button>
+                )}
+
                 {/* BUTTON A: + Tambah Dokter Baru (Primary Green Button) */}
                 <button
                   onClick={() => requestAdminAction(onAddNewDoctor || onAddNewSchedule, 'Tambah Dokter Spesialis Baru')}
@@ -1432,13 +1779,14 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                 </th>
 
                 <th className="px-4 py-3 text-center w-28">KUOTA BPJS</th>
+                <th className="px-4 py-3 text-left w-44">CATATAN</th>
                 <th className="px-4 py-3 text-right w-24 print:hidden no-print">AKSI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-sm">
               {displaySchedules.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-500">
+                  <td colSpan={10} className="py-16 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
                       <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
                         <AlertCircle className="w-6 h-6" />
@@ -1472,7 +1820,8 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                   </td>
                 </tr>
               ) : (
-                displaySchedules.map((sch, index) => {
+                <AnimatePresence mode="popLayout">
+                {displaySchedules.map((sch, index) => {
                   const isFull = sch.status === 'Penuh' || sch.kuotaTerisi >= sch.kuotaTotal;
                   const isRowSelected = selectedScheduleIds.has(sch.id);
 
@@ -1500,8 +1849,12 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                   );
 
                   return (
-                    <tr
+                    <motion.tr
                       key={sch.id}
+                      layout
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
                       id={`schedule-row-${sch.id}`}
                       data-doctor-row={normalize(sch.dpjp)}
                       className={`transition-all duration-300 ${
@@ -1585,87 +1938,302 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
                         </span>
                       </td>
 
-                      {/* Jadwal Praktik RS (Biru Muda Lembut, Sans-Serif Medium, Tanpa Border Tebal) */}
+                      {/* Jadwal Praktik RS (Dengan Dukungan Edit Cepat via Ikon Pensil) */}
                       <td className="px-4 py-3.5 whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 font-sans text-xs font-medium tracking-normal border border-blue-100/60">
-                          <Clock className="w-3.5 h-3.5 text-blue-500/80 shrink-0" />
-                          <span>{formatDoctorScheduleTime(sch)}</span>
-                        </div>
-                      </td>
+                        {editingTimeScheduleId === sch.id ? (
+                          <div className="flex flex-col gap-1.5 p-2 bg-blue-50/95 border border-blue-300 rounded-lg shadow-sm min-w-[210px] print:hidden no-print">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={editingTimeValue}
+                                onChange={(e) => setEditingTimeValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSaveInlineTime(sch.id);
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    handleCancelInlineEditTime();
+                                  }
+                                }}
+                                placeholder="e.g. 08.00 WIB - selesai"
+                                className="w-full text-xs px-2 py-1 bg-white border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-slate-800"
+                                title="Tekan Enter untuk simpan, Esc untuk batal"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSaveInlineTime(sch.id)}
+                                className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded cursor-pointer transition shadow-2xs shrink-0"
+                                title="Simpan Waktu Praktik (Enter)"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelInlineEditTime}
+                                className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer transition shrink-0"
+                                title="Batal (Esc)"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
 
-                      {/* Jam HFIS (Rose/Pink Muda Lembut, Sans-Serif Medium) & Keterangan Waktu Cetak */}
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <div className="flex flex-col items-start gap-1">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 font-sans text-xs font-medium tracking-normal border border-rose-100/60 shadow-2xs">
-                            <Clock className="w-3.5 h-3.5 text-rose-500/80 shrink-0" />
-                            <span>{formatHfisTime(sch.jamHfis)}</span>
+                            {/* Preset Cepat Pilihan Waktu */}
+                            <div className="flex flex-wrap items-center gap-1">
+                              {[
+                                '08.00 WIB - selesai',
+                                '14.00 WIB - selesai',
+                                '16.00 WIB - selesai',
+                                '19.00 WIB - selesai'
+                              ].map((timePreset) => (
+                                <button
+                                  key={timePreset}
+                                  type="button"
+                                  onClick={() => setEditingTimeValue(timePreset)}
+                                  className="px-1.5 py-0.5 text-[10px] font-semibold bg-white hover:bg-blue-100 text-blue-800 rounded border border-blue-200 transition cursor-pointer"
+                                >
+                                  {timePreset.replace(' WIB - selesai', ' Sls')}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                          {getJamCetak(sch.jamHfis, sch) && (
-                            <span className="text-xs text-slate-500 font-medium pl-0.5 tracking-tight">
-                              {getJamCetak(sch.jamHfis, sch)}
-                            </span>
-                          )}
-                        </div>
+                        ) : (
+                          <div className="group/time inline-flex items-center gap-1.5">
+                            <div
+                              onClick={(e) => handleStartInlineEditTime(sch, e)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 font-sans text-xs font-semibold tracking-normal border border-blue-200/80 shadow-2xs hover:bg-blue-100 hover:border-blue-300 transition cursor-pointer"
+                              title="Klik untuk mengubah jam praktik cepat"
+                            >
+                              <Clock className="w-3.5 h-3.5 text-blue-800 shrink-0" />
+                              <span className="font-semibold text-blue-800" style={{ color: '#1e40af' }}>
+                                {formatDoctorScheduleTime(sch)}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              id={`btn-edit-time-${sch.id}`}
+                              onClick={(e) => handleStartInlineEditTime(sch, e)}
+                              className="p-1 text-slate-400 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors opacity-70 group-hover/time:opacity-100 cursor-pointer print:hidden no-print"
+                              title="Ubah Waktu Praktik Cepat"
+                              aria-label={`Ubah Waktu Praktik ${sch.dpjp}`}
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                        <span
+                          className="hidden print:inline-block font-semibold text-blue-800 text-xs print-jam-praktik"
+                          style={{ color: '#1e40af' }}
+                        >
+                          {formatDoctorScheduleTime(sch)}
+                        </span>
                       </td>
 
-                      {/* Kuota BPJS (Total Batas Kapasitas Pasien per Hari) */}
+                      {/* Jam HFIS (Tebal / Bold & Berwarna Merah Tua #991b1b) */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <div className="flex flex-col items-start gap-1 print:hidden no-print">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 text-red-800 font-sans text-xs font-bold tracking-normal border border-red-200/80 shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 text-red-800 shrink-0" />
+                            <span className="font-bold text-red-800" style={{ color: '#991b1b' }}>
+                              {sanitizeHfisPrintTime(sch.jamHfis)}
+                            </span>
+                          </div>
+                        </div>
+                        {/* Khusus Cetak / Popup Print: Tebal (Bold) & Merah Tua */}
+                        <span
+                          className="hidden print:inline-block font-bold text-red-800 text-xs text-center print-jam-hfis"
+                          style={{ color: '#991b1b', fontWeight: 'bold' }}
+                        >
+                          {sanitizeHfisPrintTime(sch.jamHfis)}
+                        </span>
+                      </td>
+
+                      {/* Kuota BPJS (Angka Kuota Berukuran Tebal / Bold & Berwarna Hitam Pekat #000000) */}
                       <td className="px-4 py-3.5 text-center">
-                        <span className="inline-flex items-center justify-center font-semibold text-slate-700 text-xs whitespace-nowrap print:hidden no-print">
+                        <span
+                          className="inline-flex items-center justify-center font-bold text-gray-900 text-xs whitespace-nowrap print:hidden no-print"
+                          style={{ color: '#000000', fontWeight: 'bold' }}
+                        >
                           {formatDoctorQuota(sch)}
                         </span>
-                        <span className="hidden print:inline-block font-bold text-slate-900 text-xs">
+                        <span
+                          className="hidden print:inline-block font-bold text-gray-900 text-xs print-kuota-bpjs"
+                          style={{ color: '#000000', fontWeight: 'bold' }}
+                        >
                           {getCleanDoctorQuota(sch)}
                         </span>
                       </td>
 
-                      {/* Aksi */}
-                      <td className="px-4 py-3.5 text-right print:hidden no-print">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => onBookPatient(sch)}
-                            disabled={isFull}
-                            className={`p-1.5 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
-                              isFull
-                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                                : 'bg-teal-50 text-teal-700 hover:bg-teal-100 active:bg-teal-200 border border-teal-200 cursor-pointer'
-                            }`}
-                            title={isFull ? 'Kuota Penuh' : 'Daftarkan Pasien'}
-                          >
-                            <UserPlus className="w-3.5 h-3.5" />
-                            <span className="hidden xl:inline">Antrean</span>
-                          </button>
+                      {/* Catatan / Status Khusus (Dengan Dukungan Edit Inline Langsung & Modal) */}
+                      <td className="px-4 py-3.5 text-left w-56">
+                        <div className="print:hidden no-print">
+                          {editingNoteScheduleId === sch.id ? (
+                            <div className="flex flex-col gap-1.5 p-2 bg-teal-50/90 border border-teal-300 rounded-lg shadow-sm">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={editingNoteText}
+                                  onChange={(e) => setEditingNoteText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveInlineNote(sch.id);
+                                    } else if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      handleCancelInlineEditNote();
+                                    }
+                                  }}
+                                  placeholder="Ketik catatan jadwal..."
+                                  className="w-full text-xs px-2 py-1.5 bg-white border border-teal-400 rounded focus:outline-none focus:ring-1 focus:ring-teal-500 font-medium text-slate-800"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveInlineNote(sch.id)}
+                                  className="p-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded cursor-pointer transition shadow-2xs shrink-0"
+                                  title="Simpan Catatan (Enter)"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelInlineEditNote}
+                                  className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer transition shrink-0"
+                                  title="Batal (Esc)"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
 
-                          {/* Eye Icon Button (👁 Preview): Open Doctor Schedule Preview Modal */}
+                              {/* Quick Presets / Tags */}
+                              <div className="flex flex-wrap items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNoteText('JADWAL NONAKTIF')}
+                                  className="px-1.5 py-0.5 text-[10px] font-semibold bg-rose-100 hover:bg-rose-200 text-rose-800 rounded border border-rose-200 transition cursor-pointer"
+                                >
+                                  NONAKTIF
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNoteText('HFIS BKN JADWAL PRAKTIK')}
+                                  className="px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 hover:bg-amber-200 text-amber-800 rounded border border-amber-200 transition cursor-pointer"
+                                >
+                                  HFIS BKN
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNoteText('Sesuai Perjanjian')}
+                                  className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-100 hover:bg-blue-200 text-blue-800 rounded border border-blue-200 transition cursor-pointer"
+                                >
+                                  Perjanjian
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingNoteText('')}
+                                  className="px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-200 rounded border border-slate-200 transition cursor-pointer ml-auto"
+                                  title="Kosongkan catatan"
+                                >
+                                  Hapus
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="group/note flex items-center justify-between gap-1.5 min-h-[30px]">
+                              <div
+                                onClick={() => handleStartInlineEditNote(sch)}
+                                className="cursor-pointer flex-1"
+                                title="Klik untuk mengedit catatan"
+                              >
+                                {/HFIS B(UKAN|KN) JADWAL PRA(K)?TIK/i.test(sch.catatan || '') ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs hover:bg-amber-100 transition">
+                                    {sch.catatan}
+                                  </span>
+                                ) : /NONAKTIF|NON-AKTIF/i.test(sch.catatan || '') || sch.status === 'Nonaktif' ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs hover:bg-rose-100 transition">
+                                    JADWAL NONAKTIF
+                                  </span>
+                                ) : sch.catatan || sch.catatanKhusus ? (
+                                  <span className="text-xs text-slate-700 font-medium hover:text-teal-700 transition">
+                                    {sch.catatan || sch.catatanKhusus}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 group-hover/note:text-teal-600 border border-dashed border-slate-200 group-hover/note:border-teal-300 px-2 py-0.5 rounded transition">
+                                    <Plus className="w-3 h-3" />
+                                    <span>+ Tambah Catatan</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Tombol aksi edit catatan */}
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover/note:opacity-100 transition-opacity">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleStartInlineEditNote(sch, e)}
+                                  className="p-1 text-slate-400 hover:text-teal-700 hover:bg-slate-100 rounded transition cursor-pointer"
+                                  title="Edit catatan langsung (inline)"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenModalEditNote(sch, e)}
+                                  className="p-1 text-slate-400 hover:text-blue-700 hover:bg-blue-50 rounded transition cursor-pointer"
+                                  title="Edit catatan via modal dialog"
+                                >
+                                  <MessageSquare className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <span className="hidden print:inline-block text-xs font-medium text-slate-800">
+                          {sch.catatan || sch.catatanKhusus || '-'}
+                        </span>
+                      </td>
+
+                      {/* Aksi */}
+                      <td className="px-4 py-3.5 text-right print:hidden no-print whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* 1. Detail / Preview Jadwal (Mata) */}
                           <button
                             type="button"
                             onClick={() => setPreviewDoctor(sch)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 rounded-md transition cursor-pointer border border-transparent hover:border-emerald-200"
-                            title={`Preview Jadwal Lengkap ${sch.dpjp}`}
-                            aria-label={`Preview Jadwal Lengkap ${sch.dpjp}`}
+                            className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 rounded-lg transition-colors cursor-pointer border border-slate-200/80 hover:border-emerald-300 shadow-2xs"
+                            title={`Detail & Cetak Jadwal ${sch.dpjp}`}
+                            aria-label={`Detail & Cetak Jadwal ${sch.dpjp}`}
                           >
-                            <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                            <Eye className="w-4 h-4 text-emerald-600" />
                           </button>
 
+                          {/* 2. Edit Jadwal (Pensil) */}
                           <button
+                            type="button"
                             onClick={() => requestAdminAction(() => onEditSchedule(sch), 'Edit Jadwal Praktik Dokter')}
-                            className="p-1.5 text-slate-400 hover:text-teal-700 hover:bg-slate-100 rounded-md transition cursor-pointer"
-                            title="Edit Jadwal"
+                            className="p-1.5 text-slate-500 hover:text-teal-700 hover:bg-teal-50 active:bg-teal-100 rounded-lg transition-colors cursor-pointer border border-slate-200/80 hover:border-teal-300 shadow-2xs"
+                            title={`Edit Jadwal ${sch.dpjp}`}
+                            aria-label={`Edit Jadwal ${sch.dpjp}`}
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="w-4 h-4 text-teal-600" />
                           </button>
 
+                          {/* 3. Hapus Jadwal (Tempat Sampah) */}
                           <button
+                            type="button"
                             onClick={() => requestAdminAction(() => onDeleteSchedule(sch.id), 'Hapus Jadwal Dokter')}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
-                            title="Hapus Jadwal"
+                            className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 rounded-lg transition-colors cursor-pointer border border-slate-200/80 hover:border-rose-300 shadow-2xs"
+                            title={`Hapus Jadwal ${sch.dpjp}`}
+                            aria-label={`Hapus Jadwal ${sch.dpjp}`}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4 text-rose-500" />
                           </button>
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   );
-                })
+                })}
+                </AnimatePresence>
               )}
             </tbody>
           </table>
@@ -1706,6 +2274,148 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({
         }
         setSelectedScheduleIds(new Set());
       }}
+    />
+
+    {/* MODAL UPLOAD MASTER JADWAL EXCEL (.XLSX) */}
+    {isUploadModalOpen && onUploadMasterSchedules && (
+      <UploadMasterScheduleModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onApplyMasterSchedules={onUploadMasterSchedules}
+        onUploadMasterAman={onUploadMasterAman}
+        currentSchedulesCount={schedules.length}
+      />
+    )}
+
+    {/* MODAL EDIT CATATAN JADWAL DOKTER */}
+    {modalNoteSchedule && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          {/* Modal Header */}
+          <div className="px-5 py-4 bg-gradient-to-r from-teal-800 to-teal-700 text-white flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-teal-600/80 rounded-lg">
+                <MessageSquare className="w-5 h-5 text-teal-100" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-white">Edit Catatan Jadwal Dokter</h3>
+                <p className="text-xs text-teal-100/90">
+                  {modalNoteSchedule.dpjp} • {modalNoteSchedule.hari}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCloseModalEditNote}
+              className="p-1.5 text-white/80 hover:text-white hover:bg-teal-600 rounded-lg transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Modal Body */}
+          <div className="p-5 space-y-4">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5">
+              <div className="flex justify-between text-slate-600">
+                <span>Poliklinik:</span>
+                <span className="font-semibold text-slate-800">{modalNoteSchedule.poli}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Jadwal Praktik:</span>
+                <span className="font-semibold text-slate-800">{modalNoteSchedule.jadwal}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Jam HFIS BPJS:</span>
+                <span className="font-semibold text-rose-700">{modalNoteSchedule.jamHfis || '-'}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Isi Kolom Catatan / Keterangan:
+              </label>
+              <textarea
+                rows={3}
+                value={modalNoteText}
+                onChange={(e) => setModalNoteText(e.target.value)}
+                placeholder="Contoh: JADWAL NONAKTIF, HFIS BKN JADWAL PRAKTIK, Sesuai Perjanjian, dll..."
+                className="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-slate-800 font-medium"
+              />
+            </div>
+
+            {/* Template Rekomendasi Cepat */}
+            <div>
+              <span className="block text-[11px] font-semibold text-slate-500 mb-2">
+                Pilihan Cepat (Klik untuk memilih):
+              </span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setModalNoteText('JADWAL NONAKTIF')}
+                  className="p-2 text-left rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 font-semibold transition cursor-pointer text-xs"
+                >
+                  🔴 JADWAL NONAKTIF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalNoteText('HFIS BKN JADWAL PRAKTIK')}
+                  className="p-2 text-left rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold transition cursor-pointer text-xs"
+                >
+                  ⚠️ HFIS BKN JADWAL PRAKTIK
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalNoteText('Sesuai Perjanjian')}
+                  className="p-2 text-left rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 font-semibold transition cursor-pointer text-xs"
+                >
+                  📅 Sesuai Perjanjian
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalNoteText('Khusus Pasien Kontrol')}
+                  className="p-2 text-left rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold transition cursor-pointer text-xs"
+                >
+                  🩺 Khusus Pasien Kontrol
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalNoteText('')}
+                  className="col-span-2 p-2 text-center rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-600 transition cursor-pointer text-xs"
+                >
+                  🗑️ Kosongkan / Hapus Catatan
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Modal Footer */}
+          <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleCloseModalEditNote}
+              className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveModalNote}
+              className="px-4 py-2 text-xs font-bold text-white bg-teal-700 hover:bg-teal-800 active:bg-teal-900 rounded-lg transition cursor-pointer shadow-sm flex items-center gap-1.5"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Simpan Catatan</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* MODAL RIWAYAT & AUDIT LOG PERUBAHAN CATATAN JADWAL DOKTER */}
+    <ScheduleNoteAuditModal
+      isOpen={isNoteAuditModalOpen}
+      onClose={() => setIsNoteAuditModalOpen(false)}
+      onNavigateToFullAudit={onNavigateToFullAudit}
+      showToast={showToast}
     />
   </>
 );

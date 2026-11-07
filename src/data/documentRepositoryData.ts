@@ -1,6 +1,9 @@
 import { MasterDocumentItem, DEFAULT_DOCUMENT_CATEGORIES } from '../types/documentRepositoryTypes';
 
-const STORAGE_KEY = 'rsumb_document_repository_v1';
+export const PRIMARY_DOCS_KEY = 'rsumb_master_documents';
+export const LEGACY_DOCS_KEY = 'rsumb_document_repository_v1';
+export const V1_DOCS_KEY = 'rsumb_master_documents_v1';
+const STORAGE_KEY = PRIMARY_DOCS_KEY;
 const CATEGORIES_STORAGE_KEY = 'rsumb_document_categories_v1';
 
 export const loadStoredCategories = (): string[] => {
@@ -94,13 +97,39 @@ export const INITIAL_SEED_DOCUMENTS: MasterDocumentItem[] = [
 
 export const loadMasterDocuments = (): MasterDocumentItem[] => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+    // 1. Prioritaskan primary key 'rsumb_master_documents'
+    const savedPrimary = localStorage.getItem(PRIMARY_DOCS_KEY);
+    if (savedPrimary !== null && savedPrimary !== undefined && savedPrimary.trim() !== '') {
+      try {
+        const parsed = JSON.parse(savedPrimary);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (err) {
+        console.error('Error parsing rsumb_master_documents:', err);
       }
     }
+
+    // 2. Cek legacy key jika primary belum pernah diinisialisasi
+    const legacySaved = localStorage.getItem(LEGACY_DOCS_KEY) || localStorage.getItem(V1_DOCS_KEY);
+    if (legacySaved !== null && legacySaved !== undefined && legacySaved.trim() !== '') {
+      try {
+        const parsedLegacy = JSON.parse(legacySaved);
+        if (Array.isArray(parsedLegacy)) {
+          localStorage.setItem(PRIMARY_DOCS_KEY, JSON.stringify(parsedLegacy));
+          return parsedLegacy;
+        }
+      } catch (err) {
+        console.error('Error parsing legacy documents:', err);
+      }
+    }
+
+    // 3. Inisialisasi awal hanya jika storage benar-benar kosong
+    const initialJson = JSON.stringify(INITIAL_SEED_DOCUMENTS);
+    localStorage.setItem(PRIMARY_DOCS_KEY, initialJson);
+    localStorage.setItem(LEGACY_DOCS_KEY, initialJson);
+    localStorage.setItem(V1_DOCS_KEY, initialJson);
+    return INITIAL_SEED_DOCUMENTS;
   } catch (error) {
     console.error('Error loading master documents from storage:', error);
   }
@@ -108,17 +137,23 @@ export const loadMasterDocuments = (): MasterDocumentItem[] => {
 };
 
 export const saveMasterDocuments = (documents: MasterDocumentItem[]): void => {
+  const jsonStr = JSON.stringify(documents);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(documents));
+    localStorage.setItem(PRIMARY_DOCS_KEY, jsonStr);
+    localStorage.setItem(LEGACY_DOCS_KEY, jsonStr);
+    localStorage.setItem(V1_DOCS_KEY, jsonStr);
   } catch (error) {
     console.warn('LocalStorage save failed, attempting to save without large fileData payloads:', error);
     try {
       // If storage quota exceeded due to large base64 data, store metadata
-      const simplified = documents.map(doc => ({
+      const simplified = documents.map((doc) => ({
         ...doc,
         fileData: doc.fileData && doc.fileData.length > 500000 ? undefined : doc.fileData
       }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(simplified));
+      const simpleJson = JSON.stringify(simplified);
+      localStorage.setItem(PRIMARY_DOCS_KEY, simpleJson);
+      localStorage.setItem(LEGACY_DOCS_KEY, simpleJson);
+      localStorage.setItem(V1_DOCS_KEY, simpleJson);
     } catch (innerError) {
       console.error('Failed to save documents to storage:', innerError);
     }

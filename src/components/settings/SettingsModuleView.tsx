@@ -44,6 +44,7 @@ import {
   applyDatabaseSnapshotToLocalStorage,
   DualSyncState
 } from '../../services/dualSyncStorage';
+import { autoBackupFirestore } from '../../services/historyAndBackupService';
 import {
   getGasWebAppUrl,
   setGasWebAppUrl,
@@ -711,6 +712,22 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
       showToast?.('Snapshot cadangan database berhasil disimpan ke Google Sheets.', 'success');
     } catch (err: any) {
       showToast?.(`Gagal membuat snapshot: ${err?.message}`, 'error');
+    } finally {
+      setIsDriveOperating(false);
+    }
+  };
+
+  const handleBackupFirestoreToSheets = async () => {
+    setIsDriveOperating(true);
+    try {
+      const res = await autoBackupFirestore(true);
+      if (res.success) {
+        showToast?.(res.message, 'success');
+      } else {
+        showToast?.(res.message, 'error');
+      }
+    } catch (err: any) {
+      showToast?.(`Gagal backup Firestore: ${err?.message}`, 'error');
     } finally {
       setIsDriveOperating(false);
     }
@@ -1699,7 +1716,7 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
                       </div>
 
                       {/* Cloud Action Buttons */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
                         <button
                           type="button"
                           onClick={handleManualPushDrive}
@@ -1708,7 +1725,18 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
                           title="Kirim dan simpan data lokal saat ini ke Google Sheets"
                         >
                           <RefreshCw className={`w-4 h-4 ${isDriveOperating ? 'animate-spin' : ''}`} />
-                          <span>Kirim Data ke Sheets (Push)</span>
+                          <span>Kirim Data ke Sheets</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleBackupFirestoreToSheets}
+                          disabled={isDriveOperating}
+                          className="py-2.5 px-3.5 bg-gradient-to-r from-[#005d42] to-emerald-700 hover:from-[#004732] hover:to-emerald-800 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 border border-emerald-400/40 shadow-xs transition cursor-pointer disabled:opacity-60"
+                          title="Jalankan snapshot cadangan data Firestore ke Google Sheets (Siklus 24 Jam Redundansi)"
+                        >
+                          <Database className="w-4 h-4 text-emerald-300" />
+                          <span>Backup Firestore (24J)</span>
                         </button>
 
                         <button
@@ -1719,7 +1747,7 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
                           title="Tarik data terbaru dari Google Sheets dan pulihkan ke browser ini"
                         >
                           <RefreshCw className={`w-4 h-4 text-emerald-300 ${isDriveOperating ? 'animate-spin' : ''}`} />
-                          <span>{isDriveOperating ? 'Menarik Data...' : 'Tarik Data dari Sheets (Pull)'}</span>
+                          <span>{isDriveOperating ? 'Menarik...' : 'Tarik Data (Pull)'}</span>
                         </button>
 
                         <button
@@ -1729,7 +1757,7 @@ export const SettingsModuleView: React.FC<SettingsModuleViewProps> = ({
                           title="Lihat kode script dan detail koneksi"
                         >
                           <Code className="w-4 h-4 text-emerald-300" />
-                          <span>Kode Script (Code.gs)</span>
+                          <span>Script (Code.gs)</span>
                         </button>
                       </div>
                     </div>

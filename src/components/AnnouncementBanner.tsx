@@ -74,9 +74,16 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
                 <Sparkles className="w-3 h-3 text-emerald-600" />
                 <span>Urutan Terdekat Otomatis</span>
               </span>
+              <span
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-semibold bg-blue-50 text-blue-800 border border-blue-200/80 shadow-2xs"
+                title="Kartu informasi otomatis dihapus/disembunyikan dari dashboard jika telah lewat lebih dari 3 hari pasca tanggal masuk/ganti praktik"
+              >
+                <Clock className="w-3 h-3 text-blue-600" />
+                <span>Auto-Cleanup H+3 Masuk</span>
+              </span>
             </div>
             <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 leading-normal">
-              Perubahan jadwal & cuti praktik dokter spesialis otomatis diurutkan dari tanggal mendatang paling dekat agar penyesuaian darurat selalu berada di posisi paling depan
+              Perubahan jadwal & cuti dokter diurutkan dari tanggal terdekat dan kadaluarsa secara otomatis setelah lewat 3 hari pasca tanggal masuk praktik agar papan informasi tetap bersih dan hanya menampilkan jadwal aktif.
             </p>
           </div>
         </div>
@@ -406,6 +413,29 @@ export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
             </div>
           );
         })}
+
+        {/* Empty state bila tidak ada pengumuman libur aktif (atau semua telah kadaluarsa > 3 hari) */}
+        {displayLeaves.length === 0 && (
+          <div className="col-span-full py-8 px-4 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-200 flex flex-col items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-emerald-100/80 text-emerald-700 flex items-center justify-center mb-2.5 shadow-2xs">
+              <Sparkles className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div className="text-sm font-bold text-slate-800">
+              Semua Praktik Dokter Sesuai Jadwal Normal
+            </div>
+            <p className="text-xs text-slate-500 mt-1 max-w-md leading-relaxed">
+              Tidak ada pengumuman libur atau perubahan jadwal aktif. Papan informasi otomatis dibersihkan jika jadwal telah lewat lebih dari 3 hari pasca tanggal dokter masuk praktik.
+            </p>
+            <button
+              type="button"
+              onClick={onAddNewLeave}
+              className="mt-3.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-slate-50 active:bg-slate-100 text-teal-700 text-xs font-semibold rounded-lg border border-teal-300 shadow-2xs cursor-pointer transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Tambah Catatan Libur Baru</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

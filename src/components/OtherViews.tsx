@@ -19,7 +19,9 @@ interface ClinicsViewProps {
 }
 
 export const ClinicsView: React.FC<ClinicsViewProps> = ({ schedules, onSelectPoli }) => {
-  const poliList = Array.from(new Set(schedules.map((s) => s.poli)));
+  const poliList = Array.from(new Set(schedules.map((s) => s.poli))).filter(
+    (p) => Boolean(p) && p.trim() !== ''
+  );
 
   return (
     <div className="space-y-6">

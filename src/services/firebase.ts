@@ -24,7 +24,7 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 // CRITICAL: The app will break without specifying firestoreDatabaseId when custom database is used
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 export const auth = getAuth(app);
-export { serverTimestamp, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, getDocs, addDoc, updateDoc };
+export { serverTimestamp, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, getDocs, addDoc, updateDoc, writeBatch };
 signInAnonymously(auth).catch(() => {});
 
 export enum OperationType {
@@ -53,9 +53,32 @@ export interface FirestoreErrorInfo {
   };
 }
 
+let hasWarnedQuota = false;
+
+export function isFirestoreQuotaExceeded(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes('resource-exhausted') ||
+    msg.includes('Quota exceeded') ||
+    msg.includes('quota') ||
+    msg.includes('client is offline') ||
+    msg.includes('unavailable')
+  );
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errString = error instanceof Error ? error.message : String(error);
+
+  if (isFirestoreQuotaExceeded(error)) {
+    if (!hasWarnedQuota) {
+      hasWarnedQuota = true;
+      console.warn(`[Firestore Offline Fallback] Kuota Firestore harian tercapai atau mode offline pada /${path}. Aplikasi berjalan lancar dengan penyimpanan lokal.`);
+    }
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errString,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -70,8 +93,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.warn('Firestore Operation Notice: ', JSON.stringify(errInfo));
 }
 
 // Connection check on boot
@@ -110,8 +132,10 @@ export function subscribeCollection<T extends { id?: string }>(
       onUpdate(items);
     },
     (error) => {
-      console.warn(`[Firestore] Snapshot error on /${collectionName}:`, error);
-      if (onError) onError(error);
+      if (!isFirestoreQuotaExceeded(error)) {
+        console.warn(`[Firestore] Snapshot info on /${collectionName}:`, error?.message || error);
+      }
+      if (onError && error instanceof Error) onError(error);
       handleFirestoreError(error, OperationType.GET, collectionName);
     }
   );
@@ -137,8 +161,10 @@ export function subscribeDoc<T>(
       }
     },
     (error) => {
-      console.warn(`[Firestore] Doc snapshot error on /${collectionName}/${docId}:`, error);
-      if (onError) onError(error);
+      if (!isFirestoreQuotaExceeded(error)) {
+        console.warn(`[Firestore] Doc snapshot info on /${collectionName}/${docId}:`, error?.message || error);
+      }
+      if (onError && error instanceof Error) onError(error);
       handleFirestoreError(error, OperationType.GET, `${collectionName}/${docId}`);
     }
   );

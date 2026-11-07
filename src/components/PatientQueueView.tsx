@@ -165,11 +165,13 @@ export const PatientQueueView: React.FC<PatientQueueViewProps> = ({
             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none"
           >
             <option value="">Semua Poli</option>
-            {Array.from(new Set(schedules.map((s) => s.poli))).map((poli) => (
-              <option key={poli} value={poli}>
-                {poli}
-              </option>
-            ))}
+            {Array.from(new Set(schedules.map((s) => s.poli)))
+              .filter((poli) => Boolean(poli) && poli.trim() !== '')
+              .map((poli) => (
+                <option key={poli} value={poli}>
+                  {poli}
+                </option>
+              ))}
           </select>
 
           <select

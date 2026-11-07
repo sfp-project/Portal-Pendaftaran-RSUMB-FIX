@@ -17,4 +17,7 @@ export interface BroadcastTemplatePreset {
   title: string;
   description: string;
   content: string;
+  category: 'Kontrol & Jadwal' | 'BPJS & Jaminan' | 'Admisi & Ranap' | 'Operasi & Tindakan' | 'Informasi & Layanan';
+  tag?: string;
+  isFavorite?: boolean;
 }

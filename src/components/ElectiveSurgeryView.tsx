@@ -181,7 +181,11 @@ export const ElectiveSurgeryView: React.FC<ElectiveSurgeryViewProps> = ({
   // Extract unique Poli list
   const uniquePolis = useMemo(() => {
     const set = new Set<string>();
-    surgeryList.forEach((item) => set.add(item.poli));
+    surgeryList.forEach((item) => {
+      if (item.poli && item.poli.trim() !== '') {
+        set.add(item.poli.trim());
+      }
+    });
     return Array.from(set).sort();
   }, [surgeryList]);
 

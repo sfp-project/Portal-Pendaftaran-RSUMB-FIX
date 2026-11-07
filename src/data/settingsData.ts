@@ -83,7 +83,7 @@ export function loadPortalSettings(): PortalSystemSettings {
         waBroadcast: {
           ...DEFAULT_WA_BROADCAST_SETTINGS,
           ...(parsed.waBroadcast || {}),
-          templates: Array.isArray(parsed.waBroadcast?.templates) && parsed.waBroadcast.templates.length > 0
+          templates: Array.isArray(parsed.waBroadcast?.templates) && parsed.waBroadcast.templates.length >= DEFAULT_BROADCAST_TEMPLATES.length
             ? parsed.waBroadcast.templates
             : DEFAULT_BROADCAST_TEMPLATES
         }

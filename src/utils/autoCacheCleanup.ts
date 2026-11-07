@@ -6,6 +6,8 @@
  * setiap kali aplikasi dibuka (app mount), guna menjaga performa portal tetap ringan, cepat, dan responsif.
  */
 
+import { purgeExpiredDoctorLeavesFromStorage } from './dateHelpers';
+
 export interface AutoCleanupConfig {
   enabled: boolean;
   retentionDays: number; // default: 30 hari
@@ -96,6 +98,7 @@ export function runAutoCacheCleanup(force: boolean = false): {
   cleanedCount: number;
   cleanedLogs: number;
   cleanedSnapshots: number;
+  cleanedLeaves?: number;
   freedBytesApprox: number;
   summary: string;
 } {
@@ -200,13 +203,22 @@ export function runAutoCacheCleanup(force: boolean = false): {
       cleanedSnapshots++;
     });
 
-    const totalCleaned = cleanedLogs + cleanedSnapshots;
+    // 3. Bersihkan pengumuman libur / perubahan jadwal dokter yang kadaluarsa (> 3 hari pasca tanggal masuk)
+    const leaveCleanup = purgeExpiredDoctorLeavesFromStorage();
+    const cleanedLeaves = leaveCleanup.cleanedCount;
+
+    const totalCleaned = cleanedLogs + cleanedSnapshots + cleanedLeaves;
     const freedBytes = freedChars * 2;
     const freedKb = Math.round(freedBytes / 1024);
 
+    const parts: string[] = [];
+    if (cleanedLogs > 0) parts.push(`${cleanedLogs} log audit`);
+    if (cleanedSnapshots > 0) parts.push(`${cleanedSnapshots} snapshot`);
+    if (cleanedLeaves > 0) parts.push(`${cleanedLeaves} pengumuman libur dokter (> 3 hari)`);
+
     const summary = totalCleaned > 0
-      ? `Membersihkan ${totalCleaned} item usang (${cleanedLogs} log aktivitas, ${cleanedSnapshots} snapshot cadangan > ${config.retentionDays} hari, hemat ~${freedKb} KB).`
-      : `Penyimpanan bersih. Tidak ada data usang (> ${config.retentionDays} hari).`;
+      ? `Membersihkan ${totalCleaned} item usang (${parts.join(', ')}, hemat ~${freedKb} KB).`
+      : `Penyimpanan bersih. Tidak ada data usang (> ${config.retentionDays} hari atau libur dokter > 3 hari).`;
 
     // Perbarui riwayat pembersihan di konfigurasi
     const updatedConfig: AutoCleanupConfig = {
@@ -223,6 +235,7 @@ export function runAutoCacheCleanup(force: boolean = false): {
       cleanedCount: totalCleaned,
       cleanedLogs,
       cleanedSnapshots,
+      cleanedLeaves,
       freedBytesApprox: freedBytes,
       summary
     };

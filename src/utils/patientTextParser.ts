@@ -292,7 +292,7 @@ export function parsePatientRawText(rawText: string): BroadcastPatient[] {
  */
 export function compileBroadcastMessage(
   template: string,
-  patient: { namaPasien: string; dokter: string; poliklinik: string }
+  patient: { namaPasien: string; dokter: string; poliklinik: string; nomorWhatsApp?: string; tanggalKunjungan?: string }
 ): string {
   const todayStr = new Date().toLocaleDateString('id-ID', {
     weekday: 'long',
@@ -306,6 +306,8 @@ export function compileBroadcastMessage(
     .replace(/\{nama_dokter\}/gi, patient.dokter || 'Dokter Spesialis')
     .replace(/\{poliklinik\}/gi, patient.poliklinik || 'Poliklinik RSUMB')
     .replace(/\{tanggal_hari_ini\}/gi, todayStr)
+    .replace(/\{tanggal_kunjungan\}/gi, patient.tanggalKunjungan || todayStr)
+    .replace(/\{nomor_wa\}/gi, patient.nomorWhatsApp || '')
     .replace(/\{rs_nama\}/gi, 'RSU Muhammadiyah Babat (RSUMB)');
 }
 

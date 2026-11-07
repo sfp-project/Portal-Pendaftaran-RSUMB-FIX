@@ -3,6 +3,11 @@ import { X, AlertTriangle, Check, Plus, Calendar } from 'lucide-react';
 import {
   PatientUmumBeresikoRecord
 } from '../../types/patientNotesTypes';
+import {
+  usePatientNotesAutoSave,
+  AutoSaveRestoreBanner,
+  AutoSaveFooterStatus
+} from './usePatientNotesAutoSave';
 
 interface UmumBeresikoModalProps {
   isOpen: boolean;
@@ -58,6 +63,52 @@ export const UmumBeresikoModal: React.FC<UmumBeresikoModalProps> = ({
     initialData ? Boolean(initialData.isResolved) : false
   );
 
+  const resetForm = () => {
+    setNamaPasien('');
+    setNoRm('');
+    setTanggalMrsKontrol(new Date().toISOString().split('T')[0]);
+    setKronologiMasalah('');
+    setPotensiMasalah(['Biaya Operasi/Ranap Tinggi']);
+    setTindakLanjut('');
+    setIsResolved(false);
+  };
+
+  const autoSave = usePatientNotesAutoSave({
+    storageKey: 'rsumb_draft_patient_notes_umum',
+    formData: {
+      namaPasien,
+      noRm,
+      tanggalMrsKontrol,
+      kronologiMasalah,
+      potensiMasalah,
+      tindakLanjut,
+      isResolved
+    },
+    isOpen,
+    isEditing: Boolean(initialData),
+    isEmpty: (data) =>
+      !data.namaPasien.trim() &&
+      !data.noRm.trim() &&
+      !data.kronologiMasalah.trim() &&
+      !data.tindakLanjut.trim(),
+    onRestore: (draft) => {
+      if (draft.namaPasien) setNamaPasien(draft.namaPasien);
+      if (draft.noRm) setNoRm(draft.noRm);
+      if (draft.tanggalMrsKontrol) setTanggalMrsKontrol(draft.tanggalMrsKontrol);
+      if (draft.kronologiMasalah) setKronologiMasalah(draft.kronologiMasalah);
+      if (Array.isArray(draft.potensiMasalah) && draft.potensiMasalah.length > 0) {
+        setPotensiMasalah(draft.potensiMasalah);
+        setAvailableOptions((prev) => {
+          const set = new Set([...prev, ...draft.potensiMasalah]);
+          return Array.from(set);
+        });
+      }
+      if (draft.tindakLanjut) setTindakLanjut(draft.tindakLanjut);
+      if (typeof draft.isResolved === 'boolean') setIsResolved(draft.isResolved);
+    },
+    onReset: resetForm
+  });
+
   if (!isOpen) return null;
 
   const togglePotensi = (item: string) => {
@@ -106,6 +157,7 @@ export const UmumBeresikoModal: React.FC<UmumBeresikoModalProps> = ({
       updatedAt: new Date().toISOString()
     };
 
+    autoSave.clearDraft();
     onSave(record);
     onClose();
   };
@@ -135,6 +187,14 @@ export const UmumBeresikoModal: React.FC<UmumBeresikoModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Auto-Save Restore Banner */}
+        <AutoSaveRestoreBanner
+          wasRestored={autoSave.wasRestored}
+          restoredTime={autoSave.restoredTime}
+          onDiscard={autoSave.discardDraft}
+          onDismiss={() => autoSave.setWasRestored(false)}
+        />
 
         {/* Form Content */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
@@ -297,22 +357,28 @@ export const UmumBeresikoModal: React.FC<UmumBeresikoModalProps> = ({
         </form>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <Check className="w-4 h-4" />
-            {initialData ? 'Simpan Perubahan' : 'Catat Pasien Berisiko'}
-          </button>
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <AutoSaveFooterStatus
+            isSaving={autoSave.isSaving}
+            lastSavedTime={autoSave.lastSavedTime}
+          />
+          <div className="flex items-center gap-3 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              {initialData ? 'Simpan Perubahan' : 'Catat Pasien Berisiko'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -450,3 +450,16 @@ export const restoreSoftDeletedItem = async (
     return false;
   }
 };
+
+// Re-export Firestore 24H Auto-Backup to Sheets
+export {
+  autoBackupFirestore,
+  initAutoBackupFirestore,
+  getFirestoreBackupMeta,
+  isFirestoreBackupDue
+} from './firestoreSync';
+export type {
+  FirestoreBackupMeta,
+  AutoBackupFirestoreResult
+} from './firestoreSync';
+

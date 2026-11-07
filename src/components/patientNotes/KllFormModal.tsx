@@ -1,6 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { X, Car, Upload, Check, AlertCircle, FileText, Trash2 } from 'lucide-react';
 import { PatientKllRecord, PenjaminKll } from '../../types/patientNotesTypes';
+import {
+  usePatientNotesAutoSave,
+  AutoSaveRestoreBanner,
+  AutoSaveFooterStatus
+} from './usePatientNotesAutoSave';
 
 interface KllFormModalProps {
   isOpen: boolean;
@@ -40,6 +45,60 @@ export const KllFormModal: React.FC<KllFormModalProps> = ({
   const [lpFileType, setLpFileType] = useState<'pdf' | 'image' | undefined>(initialData?.lpFileType);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const resetForm = () => {
+    setNamaPasien('');
+    setNoRm('');
+    setTanggalMrs(new Date().toISOString().split('T')[0]);
+    setTanggalKll(new Date().toISOString().split('T')[0]);
+    setKronologi('');
+    setPenjamin('Jasa Raharja');
+    setStatusLp('BELUM');
+    setIsInsidenActive(true);
+    setIsResolved(false);
+    setCatatan('');
+    setLpFileName(undefined);
+    setLpFileUrl(undefined);
+    setLpFileType(undefined);
+  };
+
+  const autoSave = usePatientNotesAutoSave({
+    storageKey: 'rsumb_draft_patient_notes_kll',
+    formData: {
+      namaPasien,
+      noRm,
+      tanggalMrs,
+      tanggalKll,
+      kronologi,
+      penjamin,
+      statusLp,
+      isInsidenActive,
+      isResolved,
+      catatan,
+      lpFileName
+    },
+    isOpen,
+    isEditing: Boolean(initialData),
+    isEmpty: (data) =>
+      !data.namaPasien.trim() &&
+      !data.noRm.trim() &&
+      !data.kronologi.trim() &&
+      !data.catatan.trim(),
+    onRestore: (draft) => {
+      if (draft.namaPasien) setNamaPasien(draft.namaPasien);
+      if (draft.noRm) setNoRm(draft.noRm);
+      if (draft.tanggalMrs) setTanggalMrs(draft.tanggalMrs);
+      if (draft.tanggalKll) setTanggalKll(draft.tanggalKll);
+      if (draft.kronologi) setKronologi(draft.kronologi);
+      if (draft.penjamin) setPenjamin(draft.penjamin);
+      if (draft.statusLp) setStatusLp(draft.statusLp);
+      if (typeof draft.isInsidenActive === 'boolean') setIsInsidenActive(draft.isInsidenActive);
+      if (typeof draft.isResolved === 'boolean') setIsResolved(draft.isResolved);
+      if (draft.catatan) setCatatan(draft.catatan);
+      if (draft.lpFileName) setLpFileName(draft.lpFileName);
+    },
+    onReset: resetForm
+  });
 
   if (!isOpen) return null;
 
@@ -142,6 +201,7 @@ export const KllFormModal: React.FC<KllFormModalProps> = ({
       updatedAt: new Date().toISOString()
     };
 
+    autoSave.clearDraft();
     onSave(record);
     onClose();
   };
@@ -171,6 +231,14 @@ export const KllFormModal: React.FC<KllFormModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Auto-Save Restore Banner */}
+        <AutoSaveRestoreBanner
+          wasRestored={autoSave.wasRestored}
+          restoredTime={autoSave.restoredTime}
+          onDiscard={autoSave.discardDraft}
+          onDismiss={() => autoSave.setWasRestored(false)}
+        />
 
         {/* Form Content */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
@@ -381,22 +449,28 @@ export const KllFormModal: React.FC<KllFormModalProps> = ({
         </form>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
-          >
-            <Check className="w-4 h-4" />
-            {initialData ? 'Simpan Perubahan' : 'Tambah Pasien'}
-          </button>
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <AutoSaveFooterStatus
+            isSaving={autoSave.isSaving}
+            lastSavedTime={autoSave.lastSavedTime}
+          />
+          <div className="flex items-center gap-3 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              {initialData ? 'Simpan Perubahan' : 'Tambah Pasien'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

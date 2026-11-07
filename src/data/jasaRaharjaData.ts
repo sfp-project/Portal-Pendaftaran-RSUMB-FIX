@@ -173,17 +173,21 @@ export function normalizeNoRm(val?: string | null): string {
  * Helper function untuk membersihkan/parsing nilai angka nominal rupiah dari Excel / OCR
  * Contoh: "11.738.348", "Rp 11.738.348", "20.000.000", "0 (HABIS)", "5.240.000,00" -> 11738348
  */
-export function parseNumericValue(val: any): number {
+export function parseNumericValue(val: any, isTerpakaiField: boolean = false): number {
   if (typeof val === 'number') return isNaN(val) ? 0 : Math.round(val);
   if (val === undefined || val === null || val === '') return 0;
 
-  const str = String(val).trim();
+  const str = String(val).trim().toUpperCase();
   if (!str) return 0;
-  if (str.toUpperCase().includes('HABIS')) return 0;
+
+  // Tangani status "HABIS"
+  if (str === 'HABIS' || str.includes('HABIS')) {
+    return isTerpakaiField ? 20000000 : 0;
+  }
 
   // Hapus 'Rp', 'Rp.', 'IDR', spasi, dan karakter non-numerik yang tidak perlu
   let cleaned = str
-    .replace(/Rp\.?/gi, '')
+    .replace(/RP\.?/gi, '')
     .replace(/IDR/gi, '')
     .replace(/\s+/g, '')
     .trim();
@@ -195,44 +199,9 @@ export function parseNumericValue(val: any): number {
     cleaned = cleaned.slice(0, -3);
   }
 
-  // Jika format rupiah Indonesia dengan titik ribuan (misal: "11.738.348" atau "5.240.000")
-  if (cleaned.includes('.') && !cleaned.includes(',')) {
-    const dotCount = (cleaned.match(/\./g) || []).length;
-    if (dotCount > 1) {
-      cleaned = cleaned.replace(/\./g, '');
-    } else {
-      const parts = cleaned.split('.');
-      if (parts[1] && parts[1].length === 3) {
-        cleaned = cleaned.replace(/\./g, '');
-      }
-    }
-  } else if (cleaned.includes(',') && !cleaned.includes('.')) {
-    // Jika format koma ribuan (misal: "11,738,348")
-    const commaCount = (cleaned.match(/,/g) || []).length;
-    if (commaCount > 1) {
-      cleaned = cleaned.replace(/,/g, '');
-    } else {
-      const parts = cleaned.split(',');
-      if (parts[1] && parts[1].length === 3) {
-        cleaned = cleaned.replace(/,/g, '');
-      } else {
-        cleaned = cleaned.replace(/,/g, '.');
-      }
-    }
-  } else if (cleaned.includes('.') && cleaned.includes(',')) {
-    // Format campuran (misal: "11.738.348,50" atau "11,738,348.50")
-    if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
-      // Format Indo: 11.738.348,50
-      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-    } else {
-      // Format US: 11,738,348.50
-      cleaned = cleaned.replace(/,/g, '');
-    }
-  }
-
-  // Hapus karakter apa pun yang bukan angka atau minus
-  const sanitized = cleaned.replace(/[^0-9.-]/g, '');
-  const parsed = parseFloat(sanitized);
+  // Bersihkan format teks nominal dari karakter non-angka (titik, koma, dsb.)
+  cleaned = cleaned.replace(/[\.,]/g, '').replace(/[^0-9-]/g, '');
+  const parsed = parseFloat(cleaned);
   return isNaN(parsed) ? 0 : Math.round(parsed);
 }
 

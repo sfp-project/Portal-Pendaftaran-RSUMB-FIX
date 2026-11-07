@@ -17,6 +17,11 @@ import {
   StatusHandover,
   PrioritasHandover
 } from '../../types/patientNotesTypes';
+import {
+  usePatientNotesAutoSave,
+  AutoSaveRestoreBanner,
+  AutoSaveFooterStatus
+} from './usePatientNotesAutoSave';
 
 interface ShiftHandoverFormModalProps {
   isOpen: boolean;
@@ -106,6 +111,58 @@ export const ShiftHandoverFormModal: React.FC<ShiftHandoverFormModalProps> = ({
     }
   }, [isOpen, editingRecord]);
 
+  const resetForm = () => {
+    const nowIso = new Date().toISOString().slice(0, 16);
+    setNamaPasien('');
+    setNoRm('');
+    setTimestamp(nowIso);
+    setShift(getCurrentShiftByTime());
+    setPetugasAsal('');
+    setMasalah('');
+    setStatus('Pending');
+    setPrioritas('Sedang');
+    setKategori('Pending SEP BPJS');
+    setCatatanPenyelesaian('');
+    setHandledBy('');
+  };
+
+  const autoSave = usePatientNotesAutoSave({
+    storageKey: 'rsumb_draft_patient_notes_handover',
+    formData: {
+      namaPasien,
+      noRm,
+      timestamp,
+      shift,
+      petugasAsal,
+      masalah,
+      status,
+      prioritas,
+      kategori,
+      catatanPenyelesaian,
+      handledBy
+    },
+    isOpen,
+    isEditing: Boolean(editingRecord),
+    isEmpty: (data) =>
+      !data.namaPasien.trim() &&
+      !data.noRm.trim() &&
+      !data.masalah.trim(),
+    onRestore: (draft) => {
+      if (draft.namaPasien) setNamaPasien(draft.namaPasien);
+      if (draft.noRm) setNoRm(draft.noRm);
+      if (draft.timestamp) setTimestamp(draft.timestamp);
+      if (draft.shift) setShift(draft.shift);
+      if (draft.petugasAsal) setPetugasAsal(draft.petugasAsal);
+      if (draft.masalah) setMasalah(draft.masalah);
+      if (draft.status) setStatus(draft.status);
+      if (draft.prioritas) setPrioritas(draft.prioritas);
+      if (draft.kategori) setKategori(draft.kategori);
+      if (draft.catatanPenyelesaian) setCatatanPenyelesaian(draft.catatanPenyelesaian);
+      if (draft.handledBy) setHandledBy(draft.handledBy);
+    },
+    onReset: resetForm
+  });
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -141,6 +198,7 @@ export const ShiftHandoverFormModal: React.FC<ShiftHandoverFormModalProps> = ({
       updatedAt: new Date().toISOString()
     };
 
+    autoSave.clearDraft();
     onSave(newRecord);
     onClose();
   };
@@ -170,6 +228,14 @@ export const ShiftHandoverFormModal: React.FC<ShiftHandoverFormModalProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Auto-Save Restore Banner */}
+        <AutoSaveRestoreBanner
+          wasRestored={autoSave.wasRestored}
+          restoredTime={autoSave.restoredTime}
+          onDiscard={autoSave.discardDraft}
+          onDismiss={() => autoSave.setWasRestored(false)}
+        />
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs sm:text-sm">
@@ -384,21 +450,27 @@ export const ShiftHandoverFormModal: React.FC<ShiftHandoverFormModalProps> = ({
           )}
 
           {/* Action Buttons */}
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-[#005d42] hover:bg-emerald-700 rounded-xl shadow-xs transition cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              <span>{editingRecord ? 'Simpan Perubahan' : 'Tambah Catatan Handover'}</span>
-            </button>
+          <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5">
+            <AutoSaveFooterStatus
+              isSaving={autoSave.isSaving}
+              lastSavedTime={autoSave.lastSavedTime}
+            />
+            <div className="flex items-center gap-2.5 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-[#005d42] hover:bg-emerald-700 rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>{editingRecord ? 'Simpan Perubahan' : 'Tambah Catatan Handover'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

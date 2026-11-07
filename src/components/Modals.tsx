@@ -50,6 +50,53 @@ const handleNumericKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
   }
 };
 
+/**
+ * Helper to parse practice schedule or HFIS time string (e.g. "08.00 - 11.00 WIB", "13.30-17:00", "14.00 - Selesai")
+ * into start and end minutes from midnight for schedule overlap comparison.
+ */
+export function parseTimeRangeToMinutes(timeStr: string): { startMin: number; endMin: number } | null {
+  if (!timeStr || !timeStr.trim()) return null;
+  const clean = timeStr.replace(/\s*\b(wib|wita|wit)\b/gi, '').trim();
+
+  // Split by hyphen or 's/d' or 'sd' or 'sampai'
+  const parts = clean.split(/\s*(?:-|s\/d|sd|sampai)\s*/i);
+  if (parts.length < 1) return null;
+
+  const parseSingleTime = (str: string, defaultMin: number): number => {
+    if (!str) return defaultMin;
+    const trimmed = str.trim().toLowerCase();
+    if (trimmed.includes('selesai')) return 23 * 60 + 59; // 1439 mins
+    const match = trimmed.match(/(\d{1,2})[\.:](\d{2})/);
+    if (match) {
+      const h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+        return h * 60 + m;
+      }
+    }
+    const singleHour = trimmed.match(/\b(\d{1,2})\b/);
+    if (singleHour) {
+      const h = parseInt(singleHour[1], 10);
+      if (!isNaN(h) && h >= 0 && h <= 23) return h * 60;
+    }
+    return defaultMin;
+  };
+
+  const startMin = parseSingleTime(parts[0], 8 * 60);
+  let endMin: number;
+  if (parts.length >= 2) {
+    endMin = parseSingleTime(parts[1], startMin + 180);
+  } else {
+    endMin = startMin + 180;
+  }
+
+  if (endMin <= startMin) {
+    endMin = startMin + 60;
+  }
+
+  return { startMin, endMin };
+}
+
 // Helper to determine if a doctor belongs to a given Poliklinik (matching standard names and synonyms)
 export const isDoctorInPoli = (doctorPoli: string, targetPoli: string, doctorName?: string): boolean => {
   if (!targetPoli) return false;
@@ -515,6 +562,7 @@ interface AddScheduleModalProps {
   onClose: () => void;
   onSave: (schedule: Partial<DoctorSchedule> | DoctorSchedule[]) => void;
   editingSchedule: DoctorSchedule | null;
+  existingSchedules?: DoctorSchedule[];
   poliOptions: string[];
   doctorOptions?: { dpjp: string; poli: string }[];
 }
@@ -574,6 +622,7 @@ export interface AddDoctorModalProps {
   onSave: (schedule: Partial<DoctorSchedule> | DoctorSchedule[]) => void;
   poliOptions: string[];
   doctorOptions?: { dpjp: string; poli: string }[];
+  existingSchedules?: DoctorSchedule[];
 }
 
 /**
@@ -586,7 +635,8 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
   onClose,
   onSave,
   poliOptions,
-  doctorOptions
+  doctorOptions,
+  existingSchedules = []
 }) => {
   const [poli, setPoli] = useState('');
   const [spesialisasiCustom, setSpesialisasiCustom] = useState('');
@@ -728,11 +778,80 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
       return;
     }
 
+    // 1. Validasi urutan jam mulai & jam selesai
+    const mainRange =
+      parseTimeRangeToMinutes(jadwal) ||
+      parseTimeRangeToMinutes(`${startHour} - ${endHour}`);
+
+    if (mainRange && mainRange.endMin <= mainRange.startMin) {
+      setValidationError(
+        `Jam selesai (${endHour}) harus lebih akhir daripada jam mulai (${startHour}).`
+      );
+      return;
+    }
+
+    const formattedPoli = activePoli.startsWith('Poli ')
+      ? activePoli
+      : `Poli ${activePoli.replace(/^Dokter Spesialis\s+/i, '')}`;
+
+    // 2. Validasi jadwal bertabrakan (overlapping) untuk setiap hari yang dipilih
+    if (existingSchedules && existingSchedules.length > 0) {
+      for (const dDay of selectedDays) {
+        const custom = dayCustomTimes[dDay];
+        const dayJadwal = custom?.jadwal || jadwal.trim();
+        const dayRange = parseTimeRangeToMinutes(dayJadwal);
+
+        if (dayRange) {
+          const normDoc = dpjp.trim().toLowerCase();
+          const normPoli = formattedPoli.toLowerCase();
+          const normHari = dDay.toLowerCase();
+
+          const conflict = existingSchedules.find((sch) => {
+            const schDoc = (sch.dpjp || '').trim().toLowerCase();
+            const schPoli = (sch.poli || '').trim().toLowerCase();
+            const schHari = (sch.hari || '').trim().toLowerCase();
+
+            const isSameDoctor =
+              schDoc === normDoc ||
+              schDoc.includes(normDoc) ||
+              normDoc.includes(schDoc);
+
+            const isSamePoli =
+              !normPoli ||
+              !schPoli ||
+              schPoli === normPoli ||
+              schPoli.includes(normPoli) ||
+              normPoli.includes(schPoli);
+
+            const isSameDay = schHari === normHari;
+
+            if (isSameDoctor && isSamePoli && isSameDay) {
+              const exRange = parseTimeRangeToMinutes(
+                sch.jadwal || sch.jamHfis || ''
+              );
+              if (exRange) {
+                return (
+                  dayRange.startMin < exRange.endMin &&
+                  exRange.startMin < dayRange.endMin
+                );
+              }
+            }
+            return false;
+          });
+
+          if (conflict) {
+            setValidationError(
+              `Jadwal praktik bertabrakan (overlapping) dengan jadwal ${conflict.dpjp} (${conflict.poli}) pada hari ${dDay} jam ${conflict.jadwal || conflict.jamHfis}. Silakan sesuaikan jam praktik atau pilih hari lain.`
+            );
+            return;
+          }
+        }
+      }
+    }
+
     const parsedKuotaTotal = Math.max(1, Number(kuotaTotal) || 30);
     const parsedKuotaTerisi = Math.max(0, Number(kuotaTerisi) || 0);
     const parsedRerataPasien = Math.max(0, Number(rerataPasien) || 0);
-
-    const formattedPoli = activePoli.startsWith('Poli ') ? activePoli : `Poli ${activePoli.replace(/^Dokter Spesialis\s+/i, '')}`;
 
     const schedulesToSave: DoctorSchedule[] = selectedDays.map((dDay, idx) => {
       const custom = dayCustomTimes[dDay];
@@ -877,11 +996,13 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#005d42] outline-none font-medium bg-white"
               >
                 <option value="">-- Pilih Poliklinik --</option>
-                {Array.from(new Set([...(poliOptions || []), ...COMMON_POLI_OPTIONS])).map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
+                {Array.from(new Set([...(poliOptions || []), ...COMMON_POLI_OPTIONS]))
+                  .filter((p) => Boolean(p) && p.trim() !== '')
+                  .map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
               </select>
 
               <input
@@ -1011,71 +1132,27 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
             )}
           </div>
 
-          {/* 4. JAM HFIS & JAM CETAK OTOMATIS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5 flex items-center justify-between">
-                <span>Jam Layanan HFIS BPJS</span>
-                <span className="text-[10px] text-slate-400">VClaim / Mobile JKN</span>
-              </label>
-              <input
-                type="text"
-                value={jamHfis}
-                onChange={(e) => handleJamHfisChange(e.target.value)}
-                placeholder="Contoh: 08.00 - 11.00 WIB"
-                className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#005d42] outline-none font-medium bg-white"
-              />
-              <p className="text-[10.5px] text-slate-500 mt-1">
-                Jam buka pendaftaran resmi HFIS BPJS.
-              </p>
-            </div>
-
-            {/* Calculated Field: Jam Cetak Otomatis (HFIS - 1 Jam) */}
-            <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/90 rounded-xl">
-              <label className="block text-xs font-semibold text-emerald-950 uppercase mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Jam Cetak Otomatis</span>
-                </span>
-                <span className="text-[10px] text-emerald-800 font-bold bg-emerald-200/80 px-1.5 py-0.5 rounded border border-emerald-300">
-                  {isJamCetakCustom ? 'Manual' : 'Otomatis: HFIS - 1 Jam'}
-                </span>
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={jamCetak}
-                  onChange={(e) => {
-                    setJamCetak(e.target.value);
-                    setIsJamCetakCustom(true);
-                  }}
-                  placeholder="Contoh: 07.00 WIB"
-                  className="w-full px-3 py-2 text-sm border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-600 outline-none font-bold text-emerald-950 bg-white shadow-2xs"
-                />
-                {isJamCetakCustom && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsJamCetakCustom(false);
-                      const auto = computeAutoPrintTime(jamHfis);
-                      if (auto) setJamCetak(auto);
-                    }}
-                    title="Kembalikan ke kalkulasi otomatis (HFIS - 1 Jam)"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded px-1.5 py-0.5 transition-colors cursor-pointer"
-                  >
-                    Reset Auto
-                  </button>
-                )}
-              </div>
-              <p className="text-[10.5px] text-emerald-800 mt-1 font-medium">
-                Waktu cetak antrean otomatis dihitung 1 jam sebelum jam layanan HFIS dimulai ({jamHfis.split('-')[0]?.trim() || '08.00'} $\rightarrow$ {jamCetak}).
-              </p>
-            </div>
+          {/* 4. JAM LAYANAN HFIS BPJS */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5 flex items-center justify-between">
+              <span>Jam Layanan HFIS BPJS</span>
+              <span className="text-[10px] text-slate-400">VClaim / Mobile JKN</span>
+            </label>
+            <input
+              type="text"
+              value={jamHfis}
+              onChange={(e) => handleJamHfisChange(e.target.value)}
+              placeholder="Contoh: 08.00 - 11.00 WIB"
+              className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#005d42] outline-none font-medium bg-white"
+            />
+            <p className="text-[10.5px] text-slate-500 mt-1">
+              Jam buka pendaftaran resmi HFIS BPJS.
+            </p>
           </div>
 
           {/* 5. RUANGAN & KUOTA */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-1">
+            <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5">
                 Ruangan Poli
               </label>
@@ -1341,6 +1418,70 @@ export const AddOrEditScheduleModal: React.FC<AddOrEditScheduleModalProps> = ({
       return;
     }
 
+    // 1. Validasi urutan jam mulai & jam selesai
+    const newRange =
+      parseTimeRangeToMinutes(jadwal) ||
+      parseTimeRangeToMinutes(`${startHour} - ${endHour}`);
+
+    if (newRange) {
+      if (newRange.endMin <= newRange.startMin) {
+        setValidationError(
+          `Jam selesai (${endHour}) harus lebih akhir daripada jam mulai (${startHour}).`
+        );
+        return;
+      }
+
+      // 2. Validasi jadwal bertabrakan (overlapping) jika dokter & poli yang sama sudah memiliki jadwal di hari tersebut
+      const normDoc = selectedDoctor.trim().toLowerCase();
+      const normPoli = (poli || '').trim().toLowerCase();
+      const normHari = hari.trim().toLowerCase();
+
+      const conflictingSchedule = existingSchedules.find((sch) => {
+        // Abaikan jadwal yang sedang diedit
+        if (editingSchedule && sch.id === editingSchedule.id) return false;
+
+        const schDoc = (sch.dpjp || '').trim().toLowerCase();
+        const schPoli = (sch.poli || '').trim().toLowerCase();
+        const schHari = (sch.hari || '').trim().toLowerCase();
+
+        // Cek dokter, poli, dan hari yang sama
+        const isSameDoctor =
+          schDoc === normDoc ||
+          schDoc.includes(normDoc) ||
+          normDoc.includes(schDoc);
+
+        const isSamePoli =
+          !normPoli ||
+          !schPoli ||
+          schPoli === normPoli ||
+          schPoli.includes(normPoli) ||
+          normPoli.includes(schPoli);
+
+        const isSameDay = schHari === normHari;
+
+        if (isSameDoctor && isSamePoli && isSameDay) {
+          const existingRange = parseTimeRangeToMinutes(
+            sch.jadwal || sch.jamHfis || ''
+          );
+          if (existingRange) {
+            // Overlap condition: A_start < B_end AND B_start < A_end
+            const isOverlapping =
+              newRange.startMin < existingRange.endMin &&
+              existingRange.startMin < newRange.endMin;
+            if (isOverlapping) return true;
+          }
+        }
+        return false;
+      });
+
+      if (conflictingSchedule) {
+        setValidationError(
+          `Jadwal praktik bertabrakan (overlapping) dengan jadwal ${conflictingSchedule.dpjp} (${conflictingSchedule.poli}) pada hari ${hari} jam ${conflictingSchedule.jadwal || conflictingSchedule.jamHfis}. Silakan sesuaikan jam praktik atau pilih hari lain.`
+        );
+        return;
+      }
+    }
+
     const parsedKuotaTotal = Math.max(1, Number(kuotaTotal) || 30);
     const parsedKuotaTerisi = Math.max(0, Number(kuotaTerisi) || 0);
     const parsedRerataPasien = Math.max(0, Number(rerataPasien) || 0);
@@ -1558,71 +1699,27 @@ export const AddOrEditScheduleModal: React.FC<AddOrEditScheduleModalProps> = ({
             </div>
           </div>
 
-          {/* 3. JAM HFIS & JAM CETAK OTOMATIS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5 flex items-center justify-between">
-                <span>Jam Layanan HFIS BPJS</span>
-                <span className="text-[10px] text-slate-400">VClaim / HFIS</span>
-              </label>
-              <input
-                type="text"
-                value={jamHfis}
-                onChange={(e) => handleJamHfisChange(e.target.value)}
-                placeholder="Contoh: 08.00 - 11.00 WIB"
-                className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#005d42] outline-none font-medium bg-white"
-              />
-              <p className="text-[10.5px] text-slate-500 mt-1">
-                Jam buka pendaftaran resmi HFIS BPJS.
-              </p>
-            </div>
-
-            {/* Calculated Field: Jam Cetak Otomatis (HFIS - 1 Jam) */}
-            <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/90 rounded-xl">
-              <label className="block text-xs font-semibold text-emerald-950 uppercase mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Jam Cetak Otomatis</span>
-                </span>
-                <span className="text-[10px] text-emerald-800 font-bold bg-emerald-200/80 px-1.5 py-0.5 rounded border border-emerald-300">
-                  {isJamCetakCustom ? 'Manual' : 'Otomatis: HFIS - 1 Jam'}
-                </span>
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={jamCetak}
-                  onChange={(e) => {
-                    setJamCetak(e.target.value);
-                    setIsJamCetakCustom(true);
-                  }}
-                  placeholder="Contoh: 07.00 WIB"
-                  className="w-full px-3 py-2 text-sm border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-600 outline-none font-bold text-emerald-950 bg-white shadow-2xs"
-                />
-                {isJamCetakCustom && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsJamCetakCustom(false);
-                      const auto = computeAutoPrintTime(jamHfis);
-                      if (auto) setJamCetak(auto);
-                    }}
-                    title="Kembalikan ke kalkulasi otomatis (HFIS - 1 Jam)"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded px-1.5 py-0.5 transition-colors cursor-pointer"
-                  >
-                    Reset Auto
-                  </button>
-                )}
-              </div>
-              <p className="text-[10.5px] text-emerald-800 mt-1 font-medium">
-                Waktu cetak antrean otomatis dihitung 1 jam sebelum jam layanan HFIS dimulai ({jamHfis.split('-')[0]?.trim() || '08.00'} $\rightarrow$ {jamCetak}).
-              </p>
-            </div>
+          {/* 3. JAM LAYANAN HFIS BPJS */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5 flex items-center justify-between">
+              <span>Jam Layanan HFIS BPJS</span>
+              <span className="text-[10px] text-slate-400">VClaim / HFIS</span>
+            </label>
+            <input
+              type="text"
+              value={jamHfis}
+              onChange={(e) => handleJamHfisChange(e.target.value)}
+              placeholder="Contoh: 08.00 - 11.00 WIB"
+              className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#005d42] outline-none font-medium bg-white"
+            />
+            <p className="text-[10.5px] text-slate-500 mt-1">
+              Jam buka pendaftaran resmi HFIS BPJS.
+            </p>
           </div>
 
           {/* 4. RUANGAN & KUOTA */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-1">
+            <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5">
                 Ruangan Poli
               </label>
@@ -1705,6 +1802,7 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = (props) => {
         onClose={props.onClose}
         onSave={props.onSave as any}
         editingSchedule={props.editingSchedule}
+        existingSchedules={props.existingSchedules}
         poliOptions={props.poliOptions}
         doctorOptions={props.doctorOptions}
       />
@@ -1715,6 +1813,7 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = (props) => {
       isOpen={props.isOpen}
       onClose={props.onClose}
       onSave={props.onSave}
+      existingSchedules={props.existingSchedules}
       poliOptions={props.poliOptions}
       doctorOptions={props.doctorOptions}
     />

@@ -1,6 +1,4 @@
-// Tipe Data untuk Modul Catatan Khusus Pasien
-
-export type PatientNotesTab = 'kll' | 'bpjs_kendala' | 'asuransi_swasta' | 'umum_beresiko' | 'handover_shift' | 'belum_cetak_sep' | 'rekap_pendaftaran';
+export type PatientNotesTab = 'all' | 'kll' | 'bpjs_kendala' | 'asuransi_swasta' | 'umum_beresiko' | 'handover_shift';
 
 // TAB 5: Handover Shift Admisi
 export type ShiftAdmisi = 'Pagi' | 'Siang' | 'Malam';

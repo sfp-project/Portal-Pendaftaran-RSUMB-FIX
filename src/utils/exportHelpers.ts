@@ -20,13 +20,14 @@ export interface PdfExportOptions {
   totalLabel?: string;
   headers: string[];
   data: (string | number)[][];
-  columnStyles?: Record<number, { cellWidth?: number; halign?: 'left' | 'center' | 'right' }>;
+  columnStyles?: Record<number, any>;
   orientation?: 'portrait' | 'landscape';
   signatureCity?: string;
   signatureTitle?: string;
   fontSize?: number;
   headFontSize?: number;
   cellPadding?: number;
+  didParseCell?: (data: any) => void;
 }
 
 /**
@@ -239,11 +240,35 @@ export async function exportToExcel(options: ExcelExportOptions): Promise<void> 
     row.eachCell((cell, colNumber) => {
       const align = columnAlignments[colNumber - 1] || 'left';
 
-      cell.font = {
-        name: 'Calibri',
-        size: 9.5,
-        color: { argb: 'FF1E293B' }
-      };
+      const headerTitle = headers[colNumber - 1] ? String(headers[colNumber - 1]).toUpperCase().trim() : '';
+      if (headerTitle === 'JAM PRAKTIK') {
+        cell.font = {
+          name: 'Calibri',
+          size: 9.5,
+          color: { argb: 'FF1E40AF' }, // Dark Blue #1e40af
+          bold: true
+        };
+      } else if (headerTitle === 'JAM HFIS') {
+        cell.font = {
+          name: 'Calibri',
+          size: 9.5,
+          color: { argb: 'FF991B1B' }, // Dark Red #991b1b
+          bold: true
+        };
+      } else if (headerTitle === 'KUOTA BPJS' || headerTitle === 'KUOTA') {
+        cell.font = {
+          name: 'Calibri',
+          size: 9.5,
+          color: { argb: 'FF000000' }, // Deep Black #000000
+          bold: true
+        };
+      } else {
+        cell.font = {
+          name: 'Calibri',
+          size: 9.5,
+          color: { argb: 'FF1E293B' }
+        };
+      }
 
       cell.alignment = {
         vertical: 'middle',
@@ -418,6 +443,7 @@ export async function exportToPdf(options: PdfExportOptions): Promise<void> {
       fillColor: [248, 250, 252]
     },
     columnStyles: columnStyles,
+    didParseCell: options.didParseCell,
     margin: { left: marginX, right: marginX },
     didDrawPage: (hookData) => {
       // Footer Halaman

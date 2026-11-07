@@ -1,6 +1,6 @@
 {
-  "summary":  "Pembaruan Top Navbar Sticky/Fixed (sticky top-0 z-50) di seluruh 13 modul portal pendaftaran RSUMB beserta penyesuaian padding konten utama (pt-16 sm:pt-20) agar tampilan tetap rapi, presisi, dan tidak tertutup saat di-scroll.",
-  "updatedAt":  "2026-10-25T03:18:33.610620758Z",
-  "requestFeedback":  true,
-  "userFacing":  true
+  "summary": "Pembaruan logika ekstraksi SPRI, validasi kode ICD-10 (pemetaan akurat AF -> I48.9), ekstraksi cerdas kelas kamar (VIP, Kelas 1, Kelas 2, Kelas 3 dari string kompleks), dan format baku Output Template Klinik Siap Kirim.",
+  "updatedAt": "2026-11-04T08:36:54.301435617Z",
+  "requestFeedback": true,
+  "userFacing": true
 }

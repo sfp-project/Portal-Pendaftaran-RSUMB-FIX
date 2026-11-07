@@ -284,15 +284,45 @@ export const MedicalLettersView: React.FC<MedicalLettersViewProps> = ({
   }, [documents, categories, posters.length]);
 
   const handleUploadNewDocument = (newDoc: MasterDocumentItem) => {
-    setDocuments((prev) => [newDoc, ...prev]);
+    const updated = [newDoc, ...documents];
+    setDocuments(updated);
+    try {
+      localStorage.setItem('rsumb_master_documents', JSON.stringify(updated));
+      localStorage.setItem('rsumb_document_repository_v1', JSON.stringify(updated));
+      localStorage.setItem('rsumb_master_documents_v1', JSON.stringify(updated));
+      saveMasterDocuments(updated);
+    } catch (err) {
+      console.error('Error saving new document to localStorage:', err);
+    }
+    showToast(`Berkas master "${newDoc.judul}" berhasil ditambahkan.`);
+  };
+
+  const handleDeleteDocument = (id: string) => {
+    // 1. Filter state berkas (buang berkas dengan id yang dipilih)
+    const updatedDocuments = documents.filter((doc) => doc.id !== id);
+
+    // 2. Perbarui state React
+    setDocuments(updatedDocuments);
+
+    // 3. SIMPAN PERUBAHAN KE LOCALSTORAGE SECARA PERMANEN!
+    try {
+      localStorage.setItem('rsumb_master_documents', JSON.stringify(updatedDocuments));
+      localStorage.setItem('rsumb_document_repository_v1', JSON.stringify(updatedDocuments));
+      localStorage.setItem('rsumb_master_documents_v1', JSON.stringify(updatedDocuments));
+      saveMasterDocuments(updatedDocuments);
+    } catch (err) {
+      console.error('Error saving updated documents after deletion:', err);
+    }
+
+    alert('Berkas berhasil dihapus secara permanen.');
+    showToast('Berkas berhasil dihapus secara permanen.');
   };
 
   const handleConfirmDelete = () => {
     if (!docToDelete) return;
-    const title = docToDelete.judul;
-    setDocuments((prev) => prev.filter((d) => d.id !== docToDelete.id));
+    const targetId = docToDelete.id;
     setDocToDelete(null);
-    showToast(`Berkas master "${title}" berhasil dihapus.`);
+    handleDeleteDocument(targetId);
   };
 
   const handleOpenPreview = (doc: MasterDocumentItem) => {
@@ -968,11 +998,12 @@ export const MedicalLettersView: React.FC<MedicalLettersViewProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => setDocToDelete(doc)}
-                              className="p-1.5 hover:bg-rose-100 text-slate-400 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
-                              title="Hapus Berkas Master"
+                              id={`btn-delete-doc-${doc.id}`}
+                              onClick={() => handleDeleteDocument(doc.id)}
+                              className="text-red-600 hover:text-red-800 hover:bg-rose-50 p-1.5 rounded transition-colors cursor-pointer"
+                              title="Hapus Berkas"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5 text-red-600" />
                             </button>
                           </div>
                         </td>

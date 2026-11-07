@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, ChevronDown, Filter, X, RefreshCw } from 'lucide-react';
+import { Search, ChevronDown, Filter, X, RefreshCw, Calendar } from 'lucide-react';
 
 interface FilterBarProps {
   searchTerm: string;
@@ -42,6 +42,22 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     'Sabtu',
     'Ahad'
   ];
+
+  // Helper untuk menentukan hari ini (0 = Ahad/Minggu, 1 = Senin, ..., 6 = Sabtu)
+  const HARI_MAP = ['Ahad', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const todayHari = HARI_MAP[new Date().getDay()];
+  const isTodayActive =
+    Boolean(selectedHari) &&
+    (selectedHari.toLowerCase() === todayHari.toLowerCase() ||
+      (todayHari === 'Ahad' && (selectedHari.toLowerCase() === 'minggu' || selectedHari.toLowerCase() === 'ahad')));
+
+  const handleToggleHariIni = () => {
+    if (isTodayActive) {
+      setSelectedHari('');
+    } else {
+      setSelectedHari(todayHari);
+    }
+  };
 
   // Hanya menyisakan 2 filter cepat: Tersedia dan Ada Libur/Perubahan
   const statusOptions = [
@@ -88,11 +104,21 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-[#0b1c30] focus:bg-white focus:outline-none focus:border-[#005d42] focus:ring-1 focus:ring-[#005d42] transition-all appearance-none cursor-pointer pr-10 font-normal"
           >
             <option value="">Semua Poliklinik</option>
-            {poliOptions.map((poli) => (
-              <option key={poli} value={poli}>
-                {poli}
-              </option>
-            ))}
+            {poliOptions
+              .filter(
+                (poli) =>
+                  Boolean(poli) &&
+                  typeof poli === 'string' &&
+                  poli.trim() !== '' &&
+                  poli.trim() !== '-' &&
+                  poli.trim().toLowerCase() !== 'null' &&
+                  poli.trim().toLowerCase() !== 'undefined'
+              )
+              .map((poli) => (
+                <option key={poli} value={poli}>
+                  {poli}
+                </option>
+              ))}
           </select>
           <ChevronDown className="w-4 h-4 text-[#5c5f61] absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
@@ -104,11 +130,17 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             onChange={(e) => setSelectedHari(e.target.value)}
             className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-[#0b1c30] focus:bg-white focus:outline-none focus:border-[#005d42] focus:ring-1 focus:ring-[#005d42] transition-all appearance-none cursor-pointer pr-10 font-normal"
           >
-            {hariOptions.map((hari) => (
-              <option key={hari} value={hari === 'Semua Hari' ? '' : hari}>
-                {hari}
-              </option>
-            ))}
+            {hariOptions.map((hari) => {
+              const isTodayOption =
+                hari !== 'Semua Hari' &&
+                (hari === todayHari || (todayHari === 'Ahad' && hari === 'Ahad'));
+              return (
+                <option key={hari} value={hari === 'Semua Hari' ? '' : hari}>
+                  {hari === 'Ahad' ? 'Ahad / Minggu' : hari}
+                  {isTodayOption ? ' (Hari Ini)' : ''}
+                </option>
+              );
+            })}
           </select>
           <ChevronDown className="w-4 h-4 text-[#5c5f61] absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
@@ -120,6 +152,26 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <span className="text-xs font-semibold text-slate-500 mr-1 flex items-center gap-1">
             <Filter className="w-3.5 h-3.5" /> Filter Cepat:
           </span>
+
+          {/* Tombol Filter Hari Ini */}
+          <button
+            type="button"
+            id="btn-filter-hari-ini"
+            onClick={handleToggleHariIni}
+            className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-all inline-flex items-center gap-1.5 cursor-pointer select-none shadow-xs active:scale-95 ${
+              isTodayActive
+                ? 'bg-gradient-to-r from-[#005d42] to-[#007a57] text-white ring-2 ring-emerald-500/40 shadow-emerald-900/10'
+                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/90'
+            }`}
+            title={`Tampilkan jadwal dokter untuk hari ini (${todayHari === 'Ahad' ? 'Ahad / Minggu' : todayHari})`}
+          >
+            <Calendar className={`w-3.5 h-3.5 ${isTodayActive ? 'text-amber-300' : 'text-emerald-700'}`} />
+            <span>Filter Hari Ini ({todayHari === 'Ahad' ? 'Ahad' : todayHari})</span>
+            {isTodayActive && (
+              <span className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-amber-300 animate-pulse ml-0.5" />
+            )}
+          </button>
+
           {statusOptions.map((opt) => {
             const isSelected = statusFilter === opt.id;
             return (

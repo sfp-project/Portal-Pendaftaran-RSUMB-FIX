@@ -3,10 +3,13 @@ export interface DoctorSchedule {
   no: number;
   poli: string; // e.g. "Saraf", "Dalam", "Anak", "Bedah", "Obgyn", etc.
   dpjp: string; // e.g. "dr. I'anatul Ulya, Sp.N"
+  dokter?: string; // alias for dpjp
   spesialisasi?: string; // e.g. "Dokter Spesialis Anak"
   hari: string; // e.g. 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', "Jum'at", 'Sabtu', 'Ahad'
   jadwal: string; // e.g. "07.30 - 12.00", "14.00 - 16.00/Selesai"
+  jamPraktik?: string; // alias for jadwal
   jamHfis?: string; // e.g. "07.00-14.00"
+  hfis?: string; // alias for jamHfis
   jamCetak?: string; // e.g. "07.00" or "cetak 07.00"
   jam_praktik?: string;
   jamMulai?: string;
@@ -18,6 +21,7 @@ export interface DoctorSchedule {
   waktuCetak?: string;
   kuotaTerisi: number; // e.g. 60
   kuotaTotal: number; // e.g. 70
+  kuota?: number | string; // alias for kuotaTotal
   kuota_maksimal?: number;
   kuota_bpjs?: number;
   kuota_total?: number;
@@ -25,8 +29,9 @@ export interface DoctorSchedule {
   kuotaBpjs?: number;
   rerataPasien: number | null; // e.g. 60
   ruangan?: string;
-  status?: 'Tersedia' | 'Penuh' | 'Hampir Penuh' | 'Libur';
+  status?: 'Tersedia' | 'Penuh' | 'Hampir Penuh' | 'Libur' | 'Nonaktif';
   catatanKhusus?: string;
+  catatan?: string;
 }
 
 export interface DoctorLeaveItem {

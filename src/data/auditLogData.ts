@@ -520,5 +520,25 @@ export const CATEGORY_META_MAP: Record<
     colorClass: 'text-sky-800',
     bgClass: 'bg-sky-50',
     borderClass: 'border-sky-200'
+  },
+  JADWAL_DOKTER: {
+    label: 'Jadwal Dokter',
+    colorClass: 'text-teal-800',
+    bgClass: 'bg-teal-50',
+    borderClass: 'border-teal-200'
   }
+};
+
+/**
+ * Helper khusus untuk memuat log riwayat perubahan catatan jadwal dokter
+ */
+export const loadDoctorScheduleNoteLogs = (): SystemActivityLog[] => {
+  const allLogs = loadSystemActivityLogs();
+  return allLogs.filter(
+    (log) =>
+      log.category === 'JADWAL_DOKTER' ||
+      log.module === 'Jadwal Dokter' ||
+      (log.metadata && log.metadata.scheduleId) ||
+      /catatan jadwal/i.test(log.actionType)
+  );
 };

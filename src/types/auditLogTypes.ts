@@ -8,7 +8,8 @@ export type ActivityActionCategory =
   | 'KHITAN_JUMAT'
   | 'JASA_RAHARJA'
   | 'DOKUMEN_MASTER'
-  | 'SINKRONISASI';
+  | 'SINKRONISASI'
+  | 'JADWAL_DOKTER';
 
 export interface SystemActivityLog {
   id: string;

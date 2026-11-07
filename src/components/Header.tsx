@@ -21,7 +21,8 @@ import {
   HeartHandshake,
   Database,
   Lock,
-  Unlock
+  Unlock,
+  RefreshCw
 } from 'lucide-react';
 import { ActiveNavTab, DoctorSchedule, DoctorLeaveAnnouncement, PatientQueueItem } from '../types';
 import { ElectiveSurgerySchedule } from '../data/surgeryData';
@@ -53,6 +54,7 @@ import {
   lockAdmin
 } from '../services/adminAuthService';
 import { getEffectiveHospitalLogo, DEFAULT_HOSPITAL_LOGO } from '../data/settingsData';
+import { triggerSilentDriveSync, pushLocalDataToDrive } from '../services/dualSyncStorage';
 
 const STORAGE_READ_QUEUE_KEY = 'rsumb_read_queue_patient_ids_v1';
 
@@ -264,6 +266,30 @@ export const Header: React.FC<HeaderProps> = ({
     }, 3500);
   };
 
+  // State dan Handler Sinkronisasi Manual ke Cloud (Drive / Sheets) Instan
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+
+  const handleManualSync = async () => {
+    if (isManualSyncing) return;
+    setIsManualSyncing(true);
+    try {
+      // 1. Picu silent drive sync instan tanpa interval tunggu (delayMs = 0)
+      triggerSilentDriveSync(0);
+
+      // 2. Jalankan pushLocalDataToDrive langsung untuk verifikasi status penyimpanan
+      const res = await pushLocalDataToDrive(false);
+      if (res.success) {
+        showToast('🟢 Data portal berhasil disinkronkan ke Cloud secara instan!');
+      } else {
+        showToast(res.message || 'Data tersimpan aman di LocalStorage.');
+      }
+    } catch (err: any) {
+      showToast(`Gagal sinkronisasi: ${err?.message || 'Koneksi terputus'}`);
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
+
   const unreadAlertsCount = useMemo(() => {
     return notifications.filter((n) => !n.isRead).length;
   }, [notifications]);
@@ -370,7 +396,9 @@ export const Header: React.FC<HeaderProps> = ({
 
     // 2. Polikliniks
     const matchedPolis: string[] = [];
-    const uniquePolis = Array.from(new Set(schedules.map((s) => s.poli)));
+    const uniquePolis = Array.from(
+      new Set(schedules.map((s) => s.poli))
+    ).filter((p) => Boolean(p) && p.trim() !== '');
     for (const p of uniquePolis) {
       if (p.toLowerCase().includes(q)) {
         matchedPolis.push(p);
@@ -802,6 +830,28 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-2 flex-nowrap shrink-0 ml-auto">
         {/* 1. Badge Status Online (Google Drive Real-time Sync) */}
         <GoogleDriveSyncBadge onOpenSettings={onOpenSettings} showToast={showToast} />
+
+        {/* 1b. Tombol Sinkronisasi Manual ke Cloud Instan */}
+        <button
+          type="button"
+          onClick={handleManualSync}
+          disabled={isManualSyncing}
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer shadow-2xs select-none ${
+            isManualSyncing
+              ? 'bg-amber-50 text-amber-900 border-amber-300 ring-2 ring-amber-400'
+              : 'bg-emerald-50 hover:bg-emerald-100 text-[#005d42] hover:text-[#004a35] border-emerald-300 hover:border-emerald-400 active:scale-95'
+          }`}
+          title="Sinkronisasi Manual ke Cloud (Google Sheets / Drive) secara instan tanpa menunggu waktu otomatis"
+          aria-label="Sinkronisasi Manual Cloud"
+        >
+          <RefreshCw
+            className={`w-3.5 h-3.5 shrink-0 ${
+              isManualSyncing ? 'animate-spin text-amber-700' : 'text-emerald-700'
+            }`}
+          />
+          <span className="hidden sm:inline">Sinkronisasi Manual</span>
+          <span className="sm:hidden">Sync</span>
+        </button>
 
         {/* 2. Tombol Notifikasi (Lonceng & Dropdown Interaktif) */}
         <div className="relative shrink-0">

@@ -25,7 +25,10 @@ import {
   HelpCircle,
   FileDown,
   Download,
-  Loader2
+  Loader2,
+  Users,
+  ArrowRightLeft,
+  Send
 } from 'lucide-react';
 import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
@@ -55,8 +58,8 @@ import {
   updateKllPatientDoc,
   deleteKllPatientDoc
 } from '../../data/patientNotesData';
+import { pullDataFromDrive, pushLocalDataToDrive, triggerSilentDriveSync } from '../../services/dualSyncStorage';
 import { KllFormModal } from './KllFormModal';
-import { SIMRSRecapParser } from './SIMRSRecapParser';
 import { BpjsKendalaModal } from './BpjsKendalaModal';
 import { AsuransiSwastaModal } from './AsuransiSwastaModal';
 import { UmumBeresikoModal } from './UmumBeresikoModal';
@@ -68,6 +71,24 @@ import { ShiftHandoverDashboard } from './ShiftHandoverDashboard';
 import { logSystemActivity } from '../../data/auditLogData';
 import { loadActiveStaff } from '../../data/headerData';
 import { loadPortalSettings } from '../../data/settingsData';
+
+export interface UnifiedSpecialPatientItem {
+  id: string;
+  category: 'kll' | 'bpjs' | 'asuransi' | 'umum';
+  categoryLabel: string;
+  penjamin: string;
+  namaPasien: string;
+  noRm: string;
+  tanggalMrs: string;
+  tanggalKasus?: string;
+  kamarKelas?: string;
+  deskripsi: string;
+  detailInfo?: string;
+  isResolved: boolean;
+  statusBadge: string;
+  isInsidenActive?: boolean;
+  originalData: any;
+}
 
 export const STICKER_TEMPLATE_OPTIONS = [
   'SEP MENYUSUL MENUNGGU LP (PENGURUSAN 2X24)',
@@ -90,10 +111,13 @@ interface PatientNotesViewProps {
 }
 
 export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast }) => {
-  const [activeSubTab, setActiveSubTab] = useState<PatientNotesTab>('kll');
+  // Default: 'all' (Tampilan Rekap Gabungan Semua Pasien)
+  const [activeSubTab, setActiveSubTab] = useState<PatientNotesTab>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Sub-filter states
+  const [allCategoryFilter, setAllCategoryFilter] = useState<'all' | 'kll' | 'bpjs' | 'asuransi' | 'umum'>('all');
+  const [allStatusFilter, setAllStatusFilter] = useState<'all' | 'pending' | 'resolved'>('all');
   const [kllPenjaminFilter, setKllPenjaminFilter] = useState<string>('all');
   const [kllInsidenFilter, setKllInsidenFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [kllStatusFilter, setKllStatusFilter] = useState<'all' | 'pending' | 'resolved'>('all');
@@ -109,6 +133,7 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
   const [asuransiRecords, setAsuransiRecords] = useState<PatientAsuransiSwastaRecord[]>(() => loadAsuransiSwastaRecords());
   const [umumRecords, setUmumRecords] = useState<PatientUmumBeresikoRecord[]>(() => loadUmumBeresikoRecords());
   const [handoverRecords, setHandoverRecords] = useState<PatientShiftHandoverRecord[]>(() => loadShiftHandoverRecords());
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   // Modals state
   const [isKllModalOpen, setIsKllModalOpen] = useState(false);
@@ -140,11 +165,11 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
   const [stickerPaperSize, setStickerPaperSize] = useState<'58mm' | '80mm' | '100mm' | '150mm'>('150mm');
   const [stickerModalOpen, setStickerModalOpen] = useState(false);
   const [stickerPatient, setStickerPatient] = useState<{
-    namaPasien: string;
-    noRm: string;
-    tanggalMrs: string;
-    kamarKelas: string;
-    source: 'KLL' | 'BPJS';
+    namaPasien?: string;
+    noRm?: string;
+    tanggalMrs?: string;
+    kamarKelas?: string;
+    source?: 'KLL' | 'BPJS' | 'GENERAL' | string;
   } | null>(null);
   const [stickerTemplate, setStickerTemplate] = useState<string>(
     'SEP MENYUSUL MENUNGGU LP (PENGURUSAN 2X24)'
@@ -185,14 +210,14 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     return template;
   };
 
-  const handleOpenStickerModal = (patientData: {
-    namaPasien: string;
-    noRm: string;
-    tanggalMrs: string;
-    kamarKelas: string;
-    source: 'KLL' | 'BPJS';
+  const handleOpenStickerModal = (patientData?: {
+    namaPasien?: string;
+    noRm?: string;
+    tanggalMrs?: string;
+    kamarKelas?: string;
+    source?: 'KLL' | 'BPJS' | 'GENERAL' | string;
   }) => {
-    let cleanKelas = (patientData.kamarKelas || '')
+    let cleanKelas = (patientData?.kamarKelas || '')
       .replace(/rawat\s*inap/gi, '')
       .replace(/ranap/gi, '')
       .replace(/^kelas\s*:\s*/i, '')
@@ -203,13 +228,18 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
       cleanKelas = '';
     }
     setStickerPatient({
-      ...patientData,
-      kamarKelas: cleanKelas
+      namaPasien: patientData?.namaPasien || '',
+      noRm: patientData?.noRm || '',
+      tanggalMrs: patientData?.tanggalMrs || '',
+      kamarKelas: cleanKelas,
+      source: patientData?.source || 'GENERAL'
     });
-    if (patientData.source === 'KLL') {
+    if (patientData?.source === 'KLL') {
       setStickerTemplate('PENGURUSAN JR / LP (LAPORAN POLISI) - KLL BERSEDIA MELAPOR');
-    } else {
+    } else if (patientData?.source === 'BPJS') {
       setStickerTemplate('SEP MENYUSUL - BPJS DENDA (PENGURUSAN 3X24)');
+    } else {
+      setStickerTemplate('SEP MENYUSUL MENUNGGU LP (PENGURUSAN 2X24)');
     }
     setCustomStickerText('');
     setStickerPaperSize('150mm');
@@ -620,46 +650,6 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     }
   };
 
-  const belumCetakSepRecords = useMemo(() => {
-    const kllPending = kllRecords
-      .filter((r) => !r.isResolved)
-      .map((r) => ({
-        id: r.id,
-        source: 'KLL' as const,
-        namaPasien: r.namaPasien,
-        noRm: r.noRm,
-        tanggalMrs: r.tanggalMrs,
-        keterangan: `Kecelakaan (${r.penjamin}) - LP ${r.statusLp}`,
-        batasPengurusan: 'Menunggu Laporan Polisi / JR',
-        kamarKelas: r.catatan?.match(/Kamar\s*:\s*([^\n|]+)/i)?.[1]?.trim() || '',
-        originalRecord: r
-      }));
-
-    const bpjsPending = bpjsRecords
-      .filter((r) => r.status === 'Pending')
-      .map((r) => {
-        let batas = '3 x 24 Jam';
-        if (r.jenisKendala.toLowerCase().includes('denda')) {
-          batas = 'Batas 3x24 Jam (Denda 45)';
-        } else if (r.jenisKendala.toLowerCase().includes('non') || r.jenisKendala.toLowerCase().includes('aktif')) {
-          batas = 'Batas 3x24 Jam (Reaktivasi)';
-        }
-        return {
-          id: r.id,
-          source: 'BPJS' as const,
-          namaPasien: r.namaPasien,
-          noRm: r.noRm,
-          tanggalMrs: r.tanggalMrsKontrol || '',
-          keterangan: `Kendala: ${r.jenisKendala}`,
-          batasPengurusan: batas,
-          kamarKelas: r.detailMasalah?.match(/Kamar\s*:\s*([^\n|]+)/i)?.[1]?.trim() || '',
-          originalRecord: r
-        };
-      });
-
-    return [...kllPending, ...bpjsPending];
-  }, [kllRecords, bpjsRecords]);
-
   // Real-time Cloud Firestore synchronization
   useEffect(() => {
     // 1. KLL Listener: Koleksi Firestore 'patient_kll' real-time onSnapshot
@@ -729,6 +719,15 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
   const pendingHandoverCount = useMemo(() => {
     return handoverRecords.filter((r) => r.status === 'Pending').length;
   }, [handoverRecords]);
+
+  // Unified special patients stats (combining KLL, BPJS, Asuransi, UMUM)
+  const totalCombinedSpecialPatients = useMemo(() => {
+    return kllRecords.length + bpjsRecords.length + asuransiRecords.length + umumRecords.length;
+  }, [kllRecords, bpjsRecords, asuransiRecords, umumRecords]);
+
+  const pendingAllSpecialPatientsCount = useMemo(() => {
+    return pendingKllCount + pendingBpjsCount + pendingAsuransiCount + pendingUmumCount;
+  }, [pendingKllCount, pendingBpjsCount, pendingAsuransiCount, pendingUmumCount]);
 
   // Tab 1: KLL Handlers (Direct Firestore CRUD Operations)
   const handleSaveKll = async (record: PatientKllRecord) => {
@@ -943,6 +942,77 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     showToast(`Catatan Handover untuk pasien "${record.namaPasien}" berhasil disimpan.`);
   };
 
+  // Fungsi Tambah Otomatis Pasien ke Handover Shift dari Tabel Gabungan
+  const handleTransferToHandover = (item: UnifiedSpecialPatientItem) => {
+    // Tentukan shift saat ini berdasarkan waktu lokal (WIB)
+    const currentHour = new Date().getHours();
+    let currentShift: 'Pagi' | 'Siang' | 'Malam' = 'Pagi';
+    if (currentHour >= 7 && currentHour < 14) {
+      currentShift = 'Pagi';
+    } else if (currentHour >= 14 && currentHour < 21) {
+      currentShift = 'Siang';
+    } else {
+      currentShift = 'Malam';
+    }
+
+    let staffName = 'Petugas Admisi';
+    try {
+      staffName = loadActiveStaff().name || 'Petugas Admisi';
+    } catch {}
+
+    // Susun deskripsi masalah lengkap (kategori, penjamin, kendala, detail info)
+    const detailParts: string[] = [];
+    if (item.categoryLabel) detailParts.push(`[${item.categoryLabel}]`);
+    if (item.penjamin) detailParts.push(`Penjamin: ${item.penjamin}`);
+    if (item.kamarKelas) detailParts.push(`Kamar/Kelas: ${item.kamarKelas}`);
+    if (item.tanggalMrs) detailParts.push(`Tgl MRS/Kasus: ${item.tanggalMrs}`);
+    if (item.deskripsi) detailParts.push(item.deskripsi);
+    if (item.detailInfo) detailParts.push(`Detail: ${item.detailInfo}`);
+
+    const masalahLengkap = detailParts.join(' | ');
+
+    const newHandover: PatientShiftHandoverRecord = {
+      id: `handover-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      namaPasien: item.namaPasien || 'Pasien',
+      noRm: item.noRm || '-',
+      masalah: masalahLengkap,
+      petugasAsal: staffName,
+      shift: currentShift,
+      status: 'Pending',
+      prioritas: item.isInsidenActive ? 'Tinggi' : 'Sedang',
+      kategori: item.categoryLabel || 'Catatan Pasien',
+      createdAt: new Date().toISOString()
+    };
+
+    // 1. Simpan ke state handover
+    setHandoverRecords((prev) => [newHandover, ...prev]);
+
+    // 2. Simpan permanen ke localStorage & Firestore via saveShiftHandoverRecords
+    try {
+      const existing = loadShiftHandoverRecords();
+      saveShiftHandoverRecords([newHandover, ...existing]);
+    } catch (e) {
+      console.warn('Error saving handover to storage:', e);
+    }
+
+    // 3. Catat ke audit log
+    try {
+      logSystemActivity(
+        'Oper Pasien ke Handover Shift',
+        `Pasien ${item.namaPasien} (${item.noRm}) dari kategori ${item.categoryLabel} (${item.penjamin}) dimasukkan ke daftar Handover Shift ${currentShift}.`,
+        staffName,
+        'HANDOVER_SHIFT',
+        'Catatan Pasien'
+      );
+    } catch (e) {
+      console.warn('Notice logging handover transfer:', e);
+    }
+
+    // 4. Alert & toast notifikasi sukses
+    showToast(`✅ Pasien ${item.namaPasien} berhasil dimasukkan ke daftar Handover Shift (${currentShift})!`);
+  };
+
   const handleToggleHandoverStatus = (id: string) => {
     const target = handoverRecords.find((r) => r.id === id);
     if (!target) return;
@@ -1094,6 +1164,176 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
     });
   }, [umumRecords, searchTerm, umumPotensiFilter, umumStatusFilter]);
 
+  // Handler Sinkronisasi Manual Google Drive/Sheets & Cloud Firestore
+  const handleManualSync = async () => {
+    if (isManualSyncing) return;
+    setIsManualSyncing(true);
+    showToast('Memulai sinkronisasi manual Google Drive & Cloud Firestore...');
+
+    try {
+      // 1. Tarik pembaruan terkini dari Google Sheets / Drive
+      const pullRes = await pullDataFromDrive(true);
+
+      // 2. Refresh state lokal terkini dari localStorage
+      const refreshedBpjs = loadBpjsKendalaRecords();
+      const refreshedAsuransi = loadAsuransiSwastaRecords();
+      const refreshedUmum = loadUmumBeresikoRecords();
+      const refreshedHandover = loadShiftHandoverRecords();
+
+      setBpjsRecords(refreshedBpjs);
+      setAsuransiRecords(refreshedAsuransi);
+      setUmumRecords(refreshedUmum);
+      setHandoverRecords(refreshedHandover);
+
+      // 3. Simpan snapshot terbaru ke Google Drive & picu triggerSilentDriveSync
+      await pushLocalDataToDrive(true);
+      triggerSilentDriveSync(0);
+
+      logSystemActivity(
+        'Sinkronisasi Manual Catatan Khusus',
+        'Petugas memicu sinkronisasi manual data catatan khusus pasien dengan Google Drive & Firestore.',
+        undefined,
+        'PENGATURAN_SISTEM',
+        'Catatan Khusus Pasien'
+      );
+
+      showToast('✅ Sinkronisasi manual selesai! Data Google Drive & Firestore telah diperbarui.');
+    } catch (err: any) {
+      console.error('Error during manual sync:', err);
+      showToast('Sinkronisasi selesai dengan data lokal tersimpan aman.');
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
+
+  // Combined Unified List for Tab 'all' (Semua Pasien Khusus)
+  const filteredAllList = useMemo<UnifiedSpecialPatientItem[]>(() => {
+    const list: UnifiedSpecialPatientItem[] = [];
+
+    // 1. KLL records
+    kllRecords.forEach((r) => {
+      list.push({
+        id: r.id,
+        category: 'kll',
+        categoryLabel: 'KLL',
+        penjamin: r.penjamin || 'Jasa Raharja',
+        namaPasien: r.namaPasien || '',
+        noRm: r.noRm || '',
+        tanggalMrs: r.tanggalMrs || '',
+        tanggalKasus: r.tanggalKll || '',
+        kamarKelas: r.catatan?.match(/Kamar\s*:\s*([^\n|]+)/i)?.[1]?.trim() || '',
+        deskripsi: r.kronologi || r.statusLp || '-',
+        detailInfo: `Status LP: ${r.statusLp || '-'} | Catatan: ${r.catatan || '-'}`,
+        isResolved: Boolean(r.isResolved),
+        statusBadge: r.isResolved ? 'Resolved' : 'Pending',
+        isInsidenActive: r.isInsidenActive,
+        originalData: r
+      });
+    });
+
+    // 2. BPJS Kendala records
+    bpjsRecords.forEach((r) => {
+      const isRes = r.status === 'Resolved (cetak SEP)' || r.status === 'Resolved';
+      list.push({
+        id: r.id,
+        category: 'bpjs',
+        categoryLabel: 'BPJS Kendala',
+        penjamin: 'BPJS Kesehatan',
+        namaPasien: r.namaPasien || '',
+        noRm: r.noRm || '',
+        tanggalMrs: r.tanggalMrsKontrol || r.createdAt?.slice(0, 10) || '',
+        kamarKelas: '',
+        deskripsi: r.jenisKendala || r.detailMasalah || '-',
+        detailInfo: `No. Kartu: ${r.noKartuBpjs || '-'} | Solusi: ${r.catatanSolusi || '-'}`,
+        isResolved: isRes,
+        statusBadge: r.status,
+        originalData: r
+      });
+    });
+
+    // 3. Asuransi Swasta records
+    asuransiRecords.forEach((r) => {
+      list.push({
+        id: r.id,
+        category: 'asuransi',
+        categoryLabel: 'Asuransi Swasta',
+        penjamin: r.namaAsuransi || 'Asuransi Swasta',
+        namaPasien: r.namaPasien || '',
+        noRm: r.noRm || '',
+        tanggalMrs: r.createdAt?.slice(0, 10) || '',
+        kamarKelas: '',
+        deskripsi: r.catatanHandover || r.statusKlaim || '-',
+        detailInfo: `Status Klaim: ${r.statusKlaim || '-'}`,
+        isResolved: Boolean(r.isResolved),
+        statusBadge: r.isResolved ? 'Resolved' : 'Pending',
+        originalData: r
+      });
+    });
+
+    // 4. UMUM Beresiko records
+    umumRecords.forEach((r) => {
+      list.push({
+        id: r.id,
+        category: 'umum',
+        categoryLabel: 'Pasien Umum',
+        penjamin: 'Pasien Umum',
+        namaPasien: r.namaPasien || '',
+        noRm: r.noRm || '',
+        tanggalMrs: r.tanggalMrsKontrol || r.createdAt?.slice(0, 10) || '',
+        kamarKelas: '',
+        deskripsi: r.kronologiMasalah || (r.potensiMasalah ? r.potensiMasalah.join(', ') : '-'),
+        detailInfo: `Potensi: ${r.potensiMasalah ? r.potensiMasalah.join(', ') : '-'} | Tindak Lanjut: ${r.tindakLanjut || '-'}`,
+        isResolved: Boolean(r.isResolved),
+        statusBadge: r.isResolved ? 'Resolved' : 'Pending',
+        originalData: r
+      });
+    });
+
+    // Sort by latest (tanggalMrs or id desc)
+    list.sort((a, b) => {
+      const dateA = a.tanggalMrs || '';
+      const dateB = b.tanggalMrs || '';
+      if (dateA && dateB && dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+      return String(b.id).localeCompare(String(a.id));
+    });
+
+    // Apply global search and sub-filters
+    const q = searchTerm.trim().toLowerCase();
+    return list.filter((item) => {
+      // Search matches: namaPasien, noRm, penjamin, deskripsi, detailInfo
+      const matchSearch =
+        !q ||
+        item.namaPasien.toLowerCase().includes(q) ||
+        item.noRm.toLowerCase().includes(q) ||
+        item.penjamin.toLowerCase().includes(q) ||
+        item.categoryLabel.toLowerCase().includes(q) ||
+        item.deskripsi.toLowerCase().includes(q) ||
+        item.detailInfo.toLowerCase().includes(q);
+
+      // Category filter
+      const matchCategory =
+        allCategoryFilter === 'all' || item.category === allCategoryFilter;
+
+      // Status filter
+      const matchStatus =
+        allStatusFilter === 'all' ||
+        (allStatusFilter === 'pending' && !item.isResolved) ||
+        (allStatusFilter === 'resolved' && item.isResolved);
+
+      return matchSearch && matchCategory && matchStatus;
+    });
+  }, [
+    kllRecords,
+    bpjsRecords,
+    asuransiRecords,
+    umumRecords,
+    searchTerm,
+    allCategoryFilter,
+    allStatusFilter
+  ]);
+
   return (
     <div className="space-y-6">
       {/* Top Banner Header */}
@@ -1200,11 +1440,58 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
             </div>
           </div>
         </div>
+
+        {/* Action Button: Cetak Stiker Note Buku Ranap (Desain Hijau Elegan) */}
+        <div className="mt-4 pt-3 border-t border-blue-400/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-blue-200">
+            <span className="text-base">📋</span>
+            <span>Cetak stiker format thermal 15cm x 8cm (Landscape) untuk instruksi administrasi buku rawat inap.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleOpenStickerModal()}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-emerald-900/30 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer border border-emerald-400/30"
+            title="Buka form dan pratinjau cetak stiker note buku ranap (15cm x 8cm)"
+          >
+            <Printer className="w-4 h-4 text-emerald-200" />
+            <span>Cetak Stiker Note Buku Ranap</span>
+          </button>
+        </div>
       </div>
 
-      {/* 6 TOP TAB TRIGGERS (SPECIFICATION COMPLIANCE) */}
+      {/* TOP TAB TRIGGERS (SEMUA PASIEN + 5 KATEGORI KHUSUS) */}
       <div className="bg-white rounded-2xl p-2 border border-slate-200 shadow-xs">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {/* TAB DEFAULT: SEMUA PASIEN (COVER TABEL GABUNGAN) */}
+          <button
+            onClick={() => setActiveSubTab('all')}
+            className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeSubTab === 'all'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-blue-600'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Semua Pasien</span>
+            {pendingAllSpecialPatientsCount > 0 ? (
+              <span
+                className={`ml-1 text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                  activeSubTab === 'all' ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-900'
+                }`}
+              >
+                {pendingAllSpecialPatientsCount} Pnd
+              </span>
+            ) : (
+              <span
+                className={`ml-1 text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                  activeSubTab === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {totalCombinedSpecialPatients}
+              </span>
+            )}
+          </button>
+
           {/* TAB 1 */}
           <button
             onClick={() => setActiveSubTab('kll')}
@@ -1354,49 +1641,10 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
               </span>
             )}
           </button>
-
-          {/* TAB 6: Belum Cetak SEP (Auto-Derived) */}
-          <button
-            onClick={() => setActiveSubTab('belum_cetak_sep')}
-            className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-              activeSubTab === 'belum_cetak_sep'
-                ? 'bg-blue-800 text-white shadow-md'
-                : 'bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-blue-800'
-            }`}
-          >
-            <span>📄</span>
-            <span>Belum Cetak SEP</span>
-            {belumCetakSepRecords.length > 0 ? (
-              <span
-                className={`ml-1 text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                  activeSubTab === 'belum_cetak_sep' ? 'bg-amber-400 text-slate-900' : 'bg-rose-100 text-rose-800'
-                }`}
-              >
-                {belumCetakSepRecords.length}
-              </span>
-            ) : (
-              <span
-                className={`ml-1 text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                  activeSubTab === 'belum_cetak_sep' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                0
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveSubTab('rekap_pendaftaran')}
-            className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-              activeSubTab === 'rekap_pendaftaran' ? 'bg-blue-800 text-white shadow-md' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <span>📋</span>
-            <span>Rekap</span>
-          </button>
         </div>
       </div>
 
-      {/* CONDITIONAL VIEW: TAB 5 SHIFT HANDOVER vs TABS 1-4 */}
+      {/* CONDITIONAL VIEW: TAB 5 SHIFT HANDOVER vs TABS 1-4 & 6 */}
       {activeSubTab === 'handover_shift' ? (
         <ShiftHandoverDashboard
           records={handoverRecords}
@@ -1412,8 +1660,6 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
           }}
           showToast={showToast}
         />
-      ) : activeSubTab === 'rekap_pendaftaran' ? (
-        <SIMRSRecapParser />
       ) : (
         <>
           {/* GLOBAL FILTER BAR & SEARCH BAR */}
@@ -1440,6 +1686,34 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
 
         {/* Tab-Specific Sub-Filters */}
         <div className="flex flex-wrap items-center gap-2">
+          {activeSubTab === 'all' && (
+            <>
+              {/* Category Filter */}
+              <select
+                value={allCategoryFilter}
+                onChange={(e) => setAllCategoryFilter(e.target.value as any)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
+              >
+                <option value="all">Semua Kategori (KLL / BPJS / Asuransi / Umum)</option>
+                <option value="kll">🚗 Pasien KLL</option>
+                <option value="bpjs">🟢 BPJS Kendala</option>
+                <option value="asuransi">💳 Asuransi Swasta</option>
+                <option value="umum">⚠️ UMUM Beresiko</option>
+              </select>
+
+              {/* Status Filter */}
+              <select
+                value={allStatusFilter}
+                onChange={(e) => setAllStatusFilter(e.target.value as any)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
+              >
+                <option value="all">Semua Status Follow-Up</option>
+                <option value="pending">⏳ Belum Selesai (Pending)</option>
+                <option value="resolved">✅ Selesai (Resolved)</option>
+              </select>
+            </>
+          )}
+
           {activeSubTab === 'kll' && (
             <>
               <select
@@ -1558,6 +1832,318 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
           </button>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* TAB DEFAULT: REKAPITULASI GABUNGAN (SEMUA PASIEN KHUSUS) */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'all' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Users className="w-5 h-5 text-blue-600" />
+              <h3 className="font-bold text-slate-800 text-sm">
+                Rekapitulasi Gabungan Semua Catatan Khusus Pasien
+              </h3>
+              <span className="text-xs bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold">
+                {filteredAllList.length} Pasien
+              </span>
+              {pendingAllSpecialPatientsCount > 0 && (
+                <span className="text-xs bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full font-bold">
+                  {pendingAllSpecialPatientsCount} Pending Follow-Up
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleManualSync}
+                disabled={isManualSyncing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Picu sinkronisasi manual data dengan Google Drive / Cloud Firestore"
+              >
+                {isManualSyncing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
+                )}
+                <span>{isManualSyncing ? 'Menyinkronkan...' : 'Sinkronisasi Manual'}</span>
+              </button>
+              <div className="text-xs text-slate-500 hidden sm:block">
+                * Gabungan Pasien KLL, BPJS Kendala, Asuransi Swasta, &amp; UMUM Beresiko
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-100/90 text-slate-700 uppercase tracking-wider font-bold border-b border-slate-200 text-[11px]">
+                  <th className="py-3 px-3 text-center w-12">No</th>
+                  <th className="py-3 px-3 text-center min-w-[150px]">Kategori &amp; Penjamin</th>
+                  <th className="py-3 px-4 min-w-[170px]">Nama Pasien</th>
+                  <th className="py-3 px-3 text-center w-24">No. RM</th>
+                  <th className="py-3 px-3 text-center w-28">Tgl MRS / Kasus</th>
+                  <th className="py-3 px-3 text-center min-w-[100px]">Kamar / Kls</th>
+                  <th className="py-3 px-4 min-w-[260px]">Deskripsi Kendala &amp; Catatan Khusus</th>
+                  <th className="py-3 px-3 text-center min-w-[150px]">Status Follow-Up</th>
+                  <th className="py-3 px-3 text-center min-w-[130px] w-36 no-print">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredAllList.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Users className="w-8 h-8 text-slate-300" />
+                        <span className="font-semibold text-sm">Tidak ada catatan pasien yang cocok dengan filter.</span>
+                        <span className="text-xs text-slate-400">Silakan sesuaikan kata kunci pencarian atau reset filter kategori.</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAllList.map((item, idx) => {
+                    const isResolved = item.isResolved;
+
+                    // Category Badge styling (KLL: Merah, BPJS: Biru, Asuransi: Hijau, Umum: Kuning)
+                    let categoryBadgeClass = 'bg-slate-100 text-slate-800 border-slate-200';
+                    let categoryIcon = '📌';
+                    if (item.category === 'kll') {
+                      categoryBadgeClass = 'bg-red-100 text-red-800 border-red-300 ring-1 ring-red-200 font-bold';
+                      categoryIcon = '🚗';
+                    } else if (item.category === 'bpjs') {
+                      categoryBadgeClass = 'bg-blue-100 text-blue-800 border-blue-300 ring-1 ring-blue-200 font-bold';
+                      categoryIcon = '🔵';
+                    } else if (item.category === 'asuransi') {
+                      categoryBadgeClass = 'bg-green-100 text-green-800 border-green-300 ring-1 ring-green-200 font-bold';
+                      categoryIcon = '💳';
+                    } else if (item.category === 'umum') {
+                      categoryBadgeClass = 'bg-yellow-100 text-yellow-900 border-yellow-300 ring-1 ring-yellow-200 font-bold';
+                      categoryIcon = '⚠️';
+                    }
+
+                    return (
+                      <tr
+                        key={`${item.category}-${item.id}`}
+                        className={`transition-colors ${
+                          isResolved
+                            ? 'bg-emerald-50/30 opacity-80'
+                            : item.isInsidenActive
+                            ? 'bg-amber-50/40 hover:bg-amber-100/50'
+                            : 'hover:bg-slate-50/80'
+                        }`}
+                      >
+                        {/* No */}
+                        <td className="py-3 px-3 text-center font-bold text-slate-500">
+                          {idx + 1}
+                        </td>
+
+                        {/* Kategori & Penjamin */}
+                        <td className="py-3 px-3 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${categoryBadgeClass}`}>
+                              <span>{categoryIcon}</span>
+                              <span>{item.categoryLabel}</span>
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-700 max-w-[130px] truncate" title={item.penjamin}>
+                              {item.penjamin}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Nama Pasien */}
+                        <td className={`py-3 px-4 font-bold ${isResolved ? 'text-slate-700' : 'text-slate-900'}`}>
+                          <div className="flex flex-col">
+                            <span className="text-xs sm:text-[13px]">{item.namaPasien}</span>
+                            {item.isInsidenActive && (
+                              <span className="text-[10px] text-amber-700 font-bold">⚡ Kasus Insiden Aktif</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* No. RM */}
+                        <td className="py-3 px-3 text-center font-mono font-bold text-blue-700">
+                          {item.noRm || '-'}
+                        </td>
+
+                        {/* Tgl MRS / Kasus */}
+                        <td className="py-3 px-3 text-center text-slate-600 font-medium text-[11px]">
+                          <div>{item.tanggalMrs || '-'}</div>
+                          {item.tanggalKasus && item.tanggalKasus !== item.tanggalMrs && (
+                            <div className="text-[10px] text-slate-400">Kasus: {item.tanggalKasus}</div>
+                          )}
+                        </td>
+
+                        {/* Kamar / Kls */}
+                        <td className="py-3 px-3 text-center text-slate-700 font-semibold text-[11px]">
+                          {item.kamarKelas || '-'}
+                        </td>
+
+                        {/* Deskripsi & Detail Info */}
+                        <td className="py-3 px-4 text-slate-700 leading-relaxed text-[11px]">
+                          <div className="font-medium text-slate-900">{item.deskripsi}</div>
+                          {item.detailInfo && (
+                            <div className="text-[10px] text-slate-500 mt-0.5">{item.detailInfo}</div>
+                          )}
+                        </td>
+
+                        {/* Status Follow-Up Toggle */}
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (item.category === 'kll') {
+                                handleToggleKllResolved(item.id);
+                              } else if (item.category === 'bpjs') {
+                                handleToggleBpjsStatus(item.id);
+                              } else if (item.category === 'asuransi') {
+                                handleToggleAsuransiResolved(item.id);
+                              } else if (item.category === 'umum') {
+                                handleToggleUmumResolved(item.id);
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold transition-all cursor-pointer border shadow-2xs ${
+                              isResolved
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                : 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                            }`}
+                            title="Klik untuk mengubah status follow-up"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isResolved}
+                              onChange={() => {}}
+                              className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer pointer-events-none"
+                            />
+                            <span>{isResolved ? '✅ Selesai' : '⏳ Pending'}</span>
+                          </button>
+                        </td>
+
+                        {/* Aksi */}
+                        <td className="py-3 px-3 text-center no-print">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* Oper ke Handover Shift */}
+                            <button
+                              type="button"
+                              onClick={() => handleTransferToHandover(item)}
+                              className="p-1.5 text-teal-600 hover:text-white hover:bg-teal-600 rounded-lg transition-all shadow-2xs border border-teal-200 hover:border-teal-600 cursor-pointer"
+                              title="Oper ke Handover Shift"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Cetak Stiker Note Ranap */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleOpenStickerModal({
+                                  namaPasien: item.namaPasien,
+                                  noRm: item.noRm,
+                                  tanggalMrs: item.tanggalMrs,
+                                  kamarKelas: item.kamarKelas,
+                                  source: item.category === 'kll' ? 'KLL' : 'BPJS'
+                                });
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-[#005d42] hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                              title="🖨️ Cetak Stiker Note Ranap"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                            </button>
+
+                            {/* Lihat Kartu Handover */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const targetTab: 'kll' | 'bpjs_kendala' | 'asuransi_swasta' | 'umum_beresiko' =
+                                  item.category === 'kll'
+                                    ? 'kll'
+                                    : item.category === 'bpjs'
+                                    ? 'bpjs_kendala'
+                                    : item.category === 'asuransi'
+                                    ? 'asuransi_swasta'
+                                    : 'umum_beresiko';
+
+                                const safeRecord = item.originalData || {
+                                  id: item.id,
+                                  namaPasien: item.namaPasien || 'Pasien',
+                                  noRm: item.noRm || '-',
+                                  tanggalMrs: item.tanggalMrs,
+                                  tanggalMrsKontrol: item.tanggalMrs,
+                                  kamarKelas: item.kamarKelas,
+                                  catatan: item.deskripsi,
+                                  catatanSolusi: item.deskripsi,
+                                  kronologi: item.deskripsi,
+                                  kronologiMasalah: item.deskripsi,
+                                  detailMasalah: item.detailInfo || item.deskripsi,
+                                  deskripsi: item.deskripsi
+                                };
+
+                                setHandoverCardTarget({
+                                  tab: targetTab,
+                                  record: safeRecord
+                                });
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                              title="Lihat Kartu Handover Admisi"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Edit */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                requestAdminAction(() => {
+                                  if (item.category === 'kll') {
+                                    setSelectedKllForEdit(item.originalData);
+                                    setIsKllModalOpen(true);
+                                  } else if (item.category === 'bpjs') {
+                                    setSelectedBpjsForEdit(item.originalData);
+                                    setIsBpjsModalOpen(true);
+                                  } else if (item.category === 'asuransi') {
+                                    setSelectedAsuransiForEdit(item.originalData);
+                                    setIsAsuransiModalOpen(true);
+                                  } else if (item.category === 'umum') {
+                                    setSelectedUmumForEdit(item.originalData);
+                                    setIsUmumModalOpen(true);
+                                  }
+                                }, `Edit Data Pasien ${item.categoryLabel}`);
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title={`Edit Data ${item.categoryLabel}`}
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Hapus */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                requestAdminAction(() => {
+                                  setDeleteTarget({
+                                    id: item.id,
+                                    nama: item.namaPasien,
+                                    noRm: item.noRm,
+                                    tab: item.category as any,
+                                    categoryLabel: item.categoryLabel
+                                  });
+                                }, `Hapus Data Pasien ${item.categoryLabel}`);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title={`Hapus Data ${item.categoryLabel}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 1 CONTENT: PASIEN KECELAKAAN (KLL) */}
@@ -2315,93 +2901,6 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 6 CONTENT: BELUM CETAK SEP (DERIVED FROM LP KLL & BPJS KENDALA) */}
-      {/* ========================================================================= */}
-      {activeSubTab === 'belum_cetak_sep' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-t-2xl mb-4">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-blue-800" />
-              <h3 className="font-bold text-slate-800 text-sm">
-                Pasien Belum Cetak SEP (Kendala LP KLL, BPJS Denda 45 / Nonaktif)
-              </h3>
-              <span className="text-xs bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold">
-                {belumCetakSepRecords.length} Pasien
-              </span>
-            </div>
-            <div className="text-xs text-slate-500">
-              * Daftar otomatis kompilasi pasien KLL & BPJS dengan status pending SEP jaminan
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-100/90 text-slate-700 uppercase tracking-wider font-bold border-b border-slate-200 text-[11px]">
-                  <th className="py-3 px-3 text-center w-12">No</th>
-                  <th className="py-3 px-4 min-w-[160px]">Nama Pasien</th>
-                  <th className="py-3 px-3 text-center w-24">No. RM</th>
-                  <th className="py-3 px-3 text-center w-28">Sumber Jaminan</th>
-                  <th className="py-3 px-4 min-w-[220px]">Keterangan Kendala</th>
-                  <th className="py-3 px-4 min-w-[200px]">Batas Pengurusan</th>
-                  <th className="py-3 px-3 text-center w-28 no-print">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {belumCetakSepRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-500">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <FileText className="w-8 h-8 text-slate-300" />
-                        <span className="font-semibold text-sm">Semua SEP Pasien Aman Terbit / Tidak Ada Pending.</span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  belumCetakSepRecords.map((record, idx) => (
-                    <tr key={record.id} className="hover:bg-blue-50/20 transition-colors">
-                      <td className="py-3 px-3 text-center font-bold text-slate-500">{idx + 1}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{record.namaPasien}</td>
-                      <td className="py-3 px-3 text-center font-mono font-bold text-blue-700">{record.noRm}</td>
-                      <td className="py-3 px-3 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                          record.source === 'KLL' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        }`}>
-                          {record.source}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-medium text-slate-700">{record.keterangan}</td>
-                      <td className="py-3 px-4 font-bold text-rose-700">{record.batasPengurusan}</td>
-                      <td className="py-3 px-3 text-center no-print">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleOpenStickerModal({
-                                namaPasien: record.namaPasien,
-                                noRm: record.noRm,
-                                tanggalMrs: record.tanggalMrs,
-                                kamarKelas: record.kamarKelas || '',
-                                source: record.source
-                              });
-                            }}
-                            className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 transition cursor-pointer border border-blue-200"
-                            title="🖨️ Cetak Stiker Buku Ranap"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                            <span>Stiker Note Ranap</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
         </>
       )}
 
@@ -2489,10 +2988,12 @@ export const PatientNotesView: React.FC<PatientNotesViewProps> = ({ showToast })
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           activeSubTab={activeSubTab}
-          kllRecords={kllRecords}
-          bpjsRecords={bpjsRecords}
-          asuransiRecords={asuransiRecords}
-          umumRecords={umumRecords}
+          kllRecords={filteredKllList}
+          bpjsRecords={filteredBpjsList}
+          asuransiRecords={filteredAsuransiList}
+          umumRecords={filteredUmumList}
+          handoverRecords={handoverRecords}
+          allSpecialPatients={filteredAllList}
         />
       )}
 

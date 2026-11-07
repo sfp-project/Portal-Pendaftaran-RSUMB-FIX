@@ -218,7 +218,9 @@ export const AnalyticsReportsView: React.FC<AnalyticsReportsViewProps> = ({
     surgeryList.forEach((op) => op.poli && setPoli.add(op.poli));
     queueList.forEach((q) => q.poli && setPoli.add(q.poli));
     broadcastPatients.forEach((b) => b.poliklinik && setPoli.add(b.poliklinik));
-    return Array.from(setPoli).sort();
+    return Array.from(setPoli)
+      .filter((p) => Boolean(p) && p.trim() !== '')
+      .sort();
   }, [schedules, doctorLeaves, surgeryList, queueList, broadcastPatients]);
 
   // Date Filter Check

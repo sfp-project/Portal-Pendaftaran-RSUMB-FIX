@@ -274,6 +274,28 @@
     font-weight: bold !important;
   }
 
+  /* Doctor Practice Schedule Table Print Column Styles */
+  .print-jam-praktik {
+    color: #1e40af !important;
+    font-weight: 600 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-jam-hfis {
+    color: #991b1b !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-kuota-bpjs {
+    color: #000000 !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   /* =========================================================================
      THERMAL RECEIPT PRINTING OPTIMIZATION (#print-area & #thermal-print-area)
      Optimized for 58mm / 80mm thermal receipt printers (Epson, Panda, Xprinter, POS)

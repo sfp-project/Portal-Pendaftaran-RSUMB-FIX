@@ -29,7 +29,11 @@ import {
   getGlobalRecycleBinItems,
   restoreSoftDeletedItem,
   SoftDeletedItem,
-  DailySnapshotMeta
+  DailySnapshotMeta,
+  autoBackupFirestore,
+  getFirestoreBackupMeta,
+  FirestoreBackupMeta,
+  isFirestoreBackupDue
 } from '../../services/historyAndBackupService';
 import {
   pushLocalDataToDrive,
@@ -69,6 +73,10 @@ export const CentralBackupModal: React.FC<CentralBackupModalProps> = ({
   const [dailyMeta, setDailyMeta] = useState<DailySnapshotMeta | null>(getDailySnapshotMeta());
   const [isRestoringDaily, setIsRestoringDaily] = useState(false);
 
+  // Firestore 24H Auto-Backup Meta State
+  const [firestoreMeta, setFirestoreMeta] = useState<FirestoreBackupMeta | null>(getFirestoreBackupMeta());
+  const [isBackingUpFirestore, setIsBackingUpFirestore] = useState(false);
+
   // Audit Logs State
   const [auditLogs, setAuditLogs] = useState<SystemActivityLog[]>([]);
   const [auditSearch, setAuditSearch] = useState('');
@@ -85,25 +93,52 @@ export const CentralBackupModal: React.FC<CentralBackupModalProps> = ({
 
     const unsubscribe = addSyncStateListener((st) => setSyncState(st));
     setDailyMeta(getDailySnapshotMeta());
+    setFirestoreMeta(getFirestoreBackupMeta());
     setAuditLogs(loadSystemActivityLogs());
     setRecycleBinItems(getGlobalRecycleBinItems());
 
     const handleDataUpdate = () => {
+      setDailyMeta(getDailySnapshotMeta());
+      setFirestoreMeta(getFirestoreBackupMeta());
       setAuditLogs(loadSystemActivityLogs());
       setRecycleBinItems(getGlobalRecycleBinItems());
     };
 
+    const handleFirestoreBackupUpdate = (e: any) => {
+      setFirestoreMeta(e?.detail || getFirestoreBackupMeta());
+    };
+
     window.addEventListener('rsumb_audit_logs_updated', handleDataUpdate);
     window.addEventListener('rsumb_database_updated', handleDataUpdate);
+    window.addEventListener('rsumb_firestore_backup_completed', handleFirestoreBackupUpdate);
 
     return () => {
       unsubscribe();
       window.removeEventListener('rsumb_audit_logs_updated', handleDataUpdate);
       window.removeEventListener('rsumb_database_updated', handleDataUpdate);
+      window.removeEventListener('rsumb_firestore_backup_completed', handleFirestoreBackupUpdate);
     };
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  // Manual Trigger Firestore 24H Backup to Google Sheets
+  const handleManualFirestoreBackup = async () => {
+    try {
+      setIsBackingUpFirestore(true);
+      const res = await autoBackupFirestore(true);
+      if (res.success) {
+        showToast(res.message);
+        setFirestoreMeta(getFirestoreBackupMeta());
+      } else {
+        showToast(res.message);
+      }
+    } catch (err: any) {
+      showToast(`Gagal auto-backup Firestore: ${err?.message || 'Gangguan koneksi'}`);
+    } finally {
+      setIsBackingUpFirestore(false);
+    }
+  };
 
   // Manual Trigger Drive Sync
   const handleManualDriveSync = async () => {
@@ -318,8 +353,8 @@ export const CentralBackupModal: React.FC<CentralBackupModalProps> = ({
           {/* TAB 1: OPERASI BACKUP & RESTORE */}
           {activeTab === 'backup' && (
             <div className="space-y-6">
-              {/* Status Header Strip */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Status Header Strip (4 Cards) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Card 1: Cloud Sync Status */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
                   <div>
@@ -361,12 +396,49 @@ export const CentralBackupModal: React.FC<CentralBackupModalProps> = ({
                   </button>
                 </div>
 
-                {/* Card 2: Daily Auto Snapshot Status */}
+                {/* Card 2: Firestore 24H Auto-Backup to Sheets */}
+                <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-emerald-100 to-transparent -z-0 rounded-bl-3xl pointer-events-none" />
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                        <Database className="w-3.5 h-3.5 text-emerald-600" />
+                        Firestore 24 Jam
+                      </span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        firestoreMeta?.status === 'failed'
+                          ? 'bg-rose-100 text-rose-800 border-rose-300'
+                          : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      }`}>
+                        {firestoreMeta?.status === 'failed' ? 'Perlu Cek' : '24 Jam Aktif'}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-700 font-semibold mt-2.5">
+                      Redundansi: <span className="font-bold text-emerald-700">{firestoreMeta?.totalDocuments || 0} dok</span> ({firestoreMeta?.totalCollections || 0} koleksi)
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1 truncate" title={firestoreMeta?.lastBackupTime || ''}>
+                      Snapshot: {firestoreMeta?.lastBackupTime ? new Date(firestoreMeta.lastBackupTime).toLocaleString('id-ID') : 'Otomatis tiap 24 jam'}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleManualFirestoreBackup}
+                    disabled={isBackingUpFirestore}
+                    className="relative z-10 mt-3 w-full py-2 px-3 bg-gradient-to-r from-[#005d42] to-emerald-600 hover:from-[#004732] hover:to-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                    title="Jalankan snapshot cadangan data Firestore ke Google Sheets saat ini juga"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isBackingUpFirestore ? 'animate-spin' : ''}`} />
+                    <span>{isBackingUpFirestore ? 'Membuat Snapshot...' : '⚡ Backup Firestore Sekarang'}</span>
+                  </button>
+                </div>
+
+                {/* Card 3: Daily Auto Snapshot Status */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Snapshot Otomatis Harian
+                        Snapshot Lokal Harian
                       </span>
                       <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full border border-blue-200">
                         {dailyMeta?.snapshotDate || 'Aktif'}
@@ -387,11 +459,11 @@ export const CentralBackupModal: React.FC<CentralBackupModalProps> = ({
                     className="mt-3 w-full py-2 px-3 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-900 border border-blue-200 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition disabled:opacity-50 cursor-pointer"
                   >
                     <RotateCcw className={`w-3.5 h-3.5 ${isRestoringDaily ? 'animate-spin' : ''}`} />
-                    <span>Pulihkan Snapshot Harian</span>
+                    <span>Pulihkan Snapshot Lokal</span>
                   </button>
                 </div>
 
-                {/* Card 3: Storage Engine Info */}
+                {/* Card 4: Storage Engine Info */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between">
@@ -399,7 +471,7 @@ export const CentralBackupModal: React.FC<CentralBackupModalProps> = ({
                         Storage Immutability
                       </span>
                       <span className="text-[10px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full border border-purple-200">
-                        Versi Audit Aktivated
+                        Audit Trail Aktif
                       </span>
                     </div>
 

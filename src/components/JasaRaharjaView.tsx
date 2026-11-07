@@ -150,58 +150,118 @@ function parseExcelJasaRaharja(dataBuffer: ArrayBuffer): JasaRaharjaOcrItem[] {
   }
 
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rawRows: Record<string, any>[] = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
 
-  if (!rawRows || rawRows.length === 0) {
+  // 1. Baca data Excel sebagai 2D array baris & kolom
+  const rawData: any[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+
+  if (!rawData || rawData.length === 0) {
     throw new Error('Tidak ada baris data yang ditemukan di dalam lembar Excel.');
   }
 
+  // Helper fungsi pembersih angka rupiah dari karakter non-angka (titik, koma, Rp, spasi)
+  const cleanNominal = (val: any): number => {
+    if (val === null || val === undefined) return 0;
+    if (typeof val === 'number') return isNaN(val) ? 0 : Math.round(val);
+    const str = String(val).trim().toUpperCase();
+    if (!str || str === '-' || str === 'NULL' || str === 'UNDEFINED' || str === 'HABIS' || str.includes('HABIS')) return 0;
+
+    let cleaned = str.replace(/RP\.?/gi, '').replace(/IDR/gi, '').replace(/\s+/g, '').trim();
+    if (!cleaned) return 0;
+    if (cleaned.endsWith(',00') || cleaned.endsWith('.00')) {
+      cleaned = cleaned.slice(0, -3);
+    }
+    // Bersihkan format teks nominal dari karakter non-angka (seperti titik, koma, dsb.)
+    cleaned = cleaned.replace(/[^0-9]/g, '');
+    const num = parseInt(cleaned, 10);
+    return isNaN(num) ? 0 : num;
+  };
+
+  // Deteksi indeks header dan pemetaan kolom
+  let headerIdx = -1;
+  let colNoRm = 1;
+  let colNama = 2;
+  let colTanggal = 3;
+  let colNominal1 = 4; // Kolom ke-4 (0-indexed index 4): NOMINAL 1 (Rp) -> Plafon Terpakai
+  let colNominal2 = 5; // Kolom ke-5 (0-indexed index 5): NOMINAL 2 (Rp) -> Sisa Plafon
+  let colKet = 6;
+
+  for (let r = 0; r < Math.min(rawData.length, 12); r++) {
+    const row = rawData[r];
+    if (!Array.isArray(row)) continue;
+    const rowStr = row.map((c) => String(c || '').toUpperCase()).join(' ');
+
+    if (
+      rowStr.includes('NOMINAL 1') ||
+      rowStr.includes('NOMINAL') ||
+      rowStr.includes('NO RM') ||
+      rowStr.includes('NO. RM') ||
+      rowStr.includes('NAMA PASIEN') ||
+      rowStr.includes('PLAFON TERPAKAI')
+    ) {
+      headerIdx = r;
+      row.forEach((cell: any, idx: number) => {
+        const str = String(cell || '').trim().toUpperCase();
+        if (str.includes('NOMINAL 1') || str.includes('NOMINAL1') || str.includes('TERPAKAI') || str.includes('BIAYA')) {
+          colNominal1 = idx;
+        } else if (str.includes('NOMINAL 2') || str.includes('NOMINAL2') || str.includes('SISA')) {
+          colNominal2 = idx;
+        } else if (str.includes('NO. RM') || str.includes('NO RM') || str.includes('REKAM') || str.includes('NORM') || str.includes('ID PASIEN')) {
+          colNoRm = idx;
+        } else if ((str.includes('NAMA') || str.includes('PASIEN') || str.includes('KORBAN')) && !str.includes('PENANGGUNG')) {
+          colNama = idx;
+        } else if (str.includes('TANGGAL') || str.includes('TGL') || str.includes('MASUK') || str.includes('KEJADIAN')) {
+          colTanggal = idx;
+        } else if (str.includes('KET') || str.includes('STATUS') || str.includes('RUJUK') || str.includes('RANAP')) {
+          colKet = idx;
+        }
+      });
+      break;
+    }
+  }
+
+  const startRow = headerIdx >= 0 ? headerIdx + 1 : 0;
   const items: JasaRaharjaOcrItem[] = [];
 
-  for (let i = 0; i < rawRows.length; i++) {
-    const row = rawRows[i];
-    const keys = Object.keys(row);
+  for (let i = startRow; i < rawData.length; i++) {
+    const row = rawData[i];
+    if (!row || !Array.isArray(row) || row.length === 0) continue;
 
-    const getVal = (possibleCols: string[]): any => {
-      // 1. Akses langsung kueri kunci eksak
-      for (const col of possibleCols) {
-        if (row[col] !== undefined && row[col] !== null && String(row[col]).trim() !== '') {
-          return row[col];
-        }
-      }
-      // 2. Akses pencocokan kunci yang dinormalisasi (abaikan spasi, simbol, besar-kecil huruf)
-      for (const col of possibleCols) {
-        const targetClean = col.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const foundKey = keys.find((k) => k.toLowerCase().trim().replace(/[^a-z0-9]/g, '') === targetClean);
-        if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && String(row[foundKey]).trim() !== '') {
-          return row[foundKey];
-        }
-      }
-      // 3. Akses pencocokan parsial (contains)
-      for (const col of possibleCols) {
-        const targetClean = col.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (targetClean.length < 3) continue;
-        const foundKey = keys.find((k) => k.toLowerCase().trim().replace(/[^a-z0-9]/g, '').includes(targetClean));
-        if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && String(row[foundKey]).trim() !== '') {
-          return row[foundKey];
-        }
-      }
-      return '';
-    };
+    // Lewati baris header yang berulang
+    const rowCheckStr = row.map((c) => String(c || '').toUpperCase()).join(' ');
+    if (
+      rowCheckStr.includes('NOMINAL 1') ||
+      rowCheckStr.includes('NO RM') ||
+      rowCheckStr.includes('NO. RM') ||
+      rowCheckStr.includes('NAMA PASIEN')
+    ) {
+      continue;
+    }
 
-    const rawNoRm = String(getVal(['Plafon', 'No RM', 'No. RM', 'No_RM', 'Norm', 'Rekam Medis', 'No Rekam Medis', 'RM', 'ID Pasien', 'No RM Pasien']) || '').trim();
-    const rawNama = String(getVal(['Nama Pasien', 'Nama', 'Nama Lengkap', 'Pasien', 'Nama_Pasien', 'Nama Korban', 'Korban']) || '').trim();
-    const rawTanggal = String(getVal(['Tanggal', 'Tgl', 'Tanggal Kunjungan', 'Tgl Masuk', 'Tanggal Masuk', 'Tgl Laka', 'Tanggal Laka', 'Tgl_Masuk', 'Tgl Kejadian']) || '').trim();
-    const rawBiaya = getVal(['Plafon Terpakai', 'Plafon Terpakai (Rp)', 'Biaya Terpakai', 'Terpakai', 'Biaya', 'Pemakaian', 'Tagihan', 'Total Biaya', 'Total Biaya Terpakai', 'Klaim', 'Nominal Klaim', 'Nominal Terpakai', 'Jumlah', 'Klaim Jasa Raharja', 'Biaya Terpakai (Rp)']);
-    const rawSisa = getVal(['Sisa Plafon', 'Sisa Plafon (Rp)', 'Sisa', 'Sisa_Plafon', 'Sisa Dana', 'Saldo', 'Sisa Plafon Rp']);
-    const rawKet = String(getVal(['Keterangan', 'Ket', 'Status', 'Status Rawat', 'Jenis Rawat', 'Ranap', 'Poli', 'Rujuk', 'Status_Keterangan', 'Status Plafon']) || '').trim();
+    // 1. Identifikasi No. RM & Nama Pasien
+    let rawNoRm = row[colNoRm] !== undefined && row[colNoRm] !== null ? String(row[colNoRm]).trim() : '';
+    let rawNama = row[colNama] !== undefined && row[colNama] !== null ? String(row[colNama]).trim() : '';
 
-    // Skip empty filler lines
+    if (!rawNoRm && row[0] && String(row[0]).trim()) {
+      const val0 = String(row[0]).trim();
+      if (!isNaN(Number(val0)) && Number(val0) < 500 && row[1]) {
+        rawNoRm = String(row[1]).trim();
+      } else {
+        rawNoRm = val0;
+      }
+    }
+    if (!rawNama && row[2] && String(row[2]).trim()) {
+      rawNama = String(row[2]).trim();
+    } else if (!rawNama && row[1] && isNaN(Number(row[1])) && String(row[1]).trim()) {
+      rawNama = String(row[1]).trim();
+    }
+
+    // Lewati jika baris benar-benar kosong
     if (!rawNoRm && !rawNama) continue;
 
-    // Normalize date string (handles Excel numeric timestamps or standard date strings)
+    // 2. Format Tanggal
+    let rawTanggal = row[colTanggal] !== undefined && row[colTanggal] !== null ? String(row[colTanggal]).trim() : '';
     let cleanTanggal = rawTanggal;
-    if (typeof rawTanggal === 'number' || (!isNaN(Number(rawTanggal)) && Number(rawTanggal) > 20000 && Number(rawTanggal) < 60000)) {
+    if (typeof row[colTanggal] === 'number' || (!isNaN(Number(rawTanggal)) && Number(rawTanggal) > 20000 && Number(rawTanggal) < 60000)) {
       try {
         const excelDate = new Date((Number(rawTanggal) - 25569) * 86400 * 1000);
         if (!isNaN(excelDate.getTime())) {
@@ -215,18 +275,111 @@ function parseExcelJasaRaharja(dataBuffer: ArrayBuffer): JasaRaharjaOcrItem[] {
       }
     }
 
-    const itemBiaya = parseNominal(rawBiaya);
-    const hasExplicitSisa = rawSisa !== '' && rawSisa !== null && rawSisa !== undefined;
-    const itemSisa = hasExplicitSisa ? parseNominal(rawSisa) : Math.max(0, 20000000 - itemBiaya);
+    // 3. Kolom NOMINAL 1 (Terpakai) dan Kolom NOMINAL 2 (Sisa)
+    // Sesuai instruksi: membaca row[4] sebagai Plafon Terpakai (NOMINAL 1) dan row[5] sebagai Sisa Plafon (NOMINAL 2)
+    let rawNominal1 = (row[colNominal1] !== undefined && row[colNominal1] !== null && String(row[colNominal1]).trim() !== '')
+      ? row[colNominal1].toString().trim().toUpperCase()
+      : (row[4] ? row[4].toString().trim().toUpperCase() : '');
+    let rawNominal2 = (row[colNominal2] !== undefined && row[colNominal2] !== null && String(row[colNominal2]).trim() !== '')
+      ? row[colNominal2].toString().trim().toUpperCase()
+      : (row[5] ? row[5].toString().trim().toUpperCase() : '');
+
+    let plafonTerpakai = 0;
+    let sisaPlafon = 20000000; // Plafon maksimal standar Rp 20.000.000
+
+    // Logika Tangani Status "HABIS":
+    if (
+      rawNominal1 === 'HABIS' ||
+      rawNominal1.includes('HABIS') ||
+      rawNominal2 === 'HABIS' ||
+      rawNominal2.includes('HABIS')
+    ) {
+      plafonTerpakai = 20000000;
+      sisaPlafon = 0;
+    } else {
+      // Parsing angka rupiah bersih (bebas karakter titik, koma, 'Rp', atau simbol lainnya)
+      plafonTerpakai = cleanNominal(rawNominal1);
+      if (rawNominal2 && rawNominal2 !== '' && rawNominal2 !== '-') {
+        sisaPlafon = cleanNominal(rawNominal2);
+      } else {
+        sisaPlafon = Math.max(0, 20000000 - plafonTerpakai);
+      }
+    }
+
+    // 4. Keterangan Pasien
+    let rawKet = row[colKet] !== undefined && row[colKet] !== null ? String(row[colKet]).trim().toUpperCase() : '';
+    if (!rawKet || rawKet === '-') {
+      rawKet = (plafonTerpakai >= 20000000 || sisaPlafon <= 0 || rawNominal1 === 'HABIS' || rawNominal2 === 'HABIS') ? 'HABIS' : 'RANAP';
+    }
 
     items.push({
       noRm: rawNoRm || `JR-${Date.now()}-${i + 1}`,
       namaPasien: rawNama || 'Pasien Tanpa Nama',
       tanggal: cleanTanggal || new Date().toISOString().slice(0, 10),
-      biayaTerpakai: itemBiaya,
-      sisaPlafon: itemSisa,
-      keterangan: rawKet ? rawKet.toUpperCase() : (itemSisa <= 0 ? 'HABIS' : 'RANAP')
+      biayaTerpakai: plafonTerpakai,
+      sisaPlafon: sisaPlafon,
+      keterangan: rawKet
     });
+  }
+
+  // Fallback pengamanan jika array 2D tidak menghasilkan baris (misal sheet dengan format object)
+  if (items.length === 0) {
+    const rawRows: Record<string, any>[] = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+    if (rawRows && rawRows.length > 0) {
+      for (let i = 0; i < rawRows.length; i++) {
+        const row = rawRows[i];
+        const keys = Object.keys(row);
+
+        const getVal = (possibleCols: string[]): any => {
+          for (const col of possibleCols) {
+            if (row[col] !== undefined && row[col] !== null && String(row[col]).trim() !== '') {
+              return row[col];
+            }
+          }
+          for (const col of possibleCols) {
+            const targetClean = col.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const foundKey = keys.find((k) => k.toLowerCase().trim().replace(/[^a-z0-9]/g, '') === targetClean);
+            if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && String(row[foundKey]).trim() !== '') {
+              return row[foundKey];
+            }
+          }
+          return '';
+        };
+
+        const rawNoRm = String(getVal(['No RM', 'No. RM', 'No_RM', 'Norm', 'Rekam Medis', 'No Rekam Medis', 'RM', 'ID Pasien']) || '').trim();
+        const rawNama = String(getVal(['Nama Pasien', 'Nama', 'Nama Lengkap', 'Pasien', 'Nama_Pasien', 'Nama Korban', 'Korban']) || '').trim();
+        const rawTanggal = String(getVal(['Tanggal', 'Tgl', 'Tanggal Kunjungan', 'Tgl Masuk', 'Tanggal Masuk', 'Tgl Laka', 'Tanggal Laka']) || '').trim();
+        const rawNominal1 = String(getVal(['NOMINAL 1 (Rp)', 'NOMINAL 1', 'NOMINAL1', 'Nominal 1 (Rp)', 'Nominal 1', 'Plafon Terpakai', 'Plafon Terpakai (Rp)', 'Biaya Terpakai', 'Terpakai', 'Biaya']) || '').trim().toUpperCase();
+        const rawNominal2 = String(getVal(['NOMINAL 2 (Rp)', 'NOMINAL 2', 'NOMINAL2', 'Nominal 2 (Rp)', 'Nominal 2', 'Sisa Plafon', 'Sisa Plafon (Rp)', 'Sisa']) || '').trim().toUpperCase();
+        const rawKet = String(getVal(['Keterangan', 'Ket', 'Status', 'Status Rawat']) || '').trim().toUpperCase();
+
+        if (!rawNoRm && !rawNama) continue;
+
+        let plafonTerpakai = 0;
+        let sisaPlafon = 20000000;
+
+        if (rawNominal1 === 'HABIS' || rawNominal1.includes('HABIS') || rawNominal2 === 'HABIS' || rawNominal2.includes('HABIS')) {
+          plafonTerpakai = 20000000;
+          sisaPlafon = 0;
+        } else {
+          plafonTerpakai = cleanNominal(rawNominal1);
+          if (rawNominal2 && rawNominal2 !== '' && rawNominal2 !== '-') {
+            sisaPlafon = cleanNominal(rawNominal2);
+          } else {
+            sisaPlafon = Math.max(0, 20000000 - plafonTerpakai);
+          }
+        }
+
+        items.push({
+          noRm: rawNoRm || `JR-${Date.now()}-${i + 1}`,
+          namaPasien: rawNama || 'Pasien Tanpa Nama',
+          tanggal: rawTanggal || new Date().toISOString().slice(0, 10),
+          biayaTerpakai: plafonTerpakai,
+          sisaPlafon: sisaPlafon,
+          keterangan: rawKet || (plafonTerpakai >= 20000000 || sisaPlafon <= 0 ? 'HABIS' : 'RANAP')
+        });
+      }
+    }
   }
 
   return items;
@@ -530,18 +683,38 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
   // ---------------------------------------------------------------------------
   // Handle Excel / CSV File Import (Local SheetJS Parser)
   // ---------------------------------------------------------------------------
+  // Handle Excel / CSV File Import (Local SheetJS Parser)
+  // ---------------------------------------------------------------------------
   const handleExcelFileSelected = async (file: File) => {
+    // 1. Validasi Ekstensi Spreadsheet
+    const lowerName = file.name.toLowerCase();
+    const validExcelExts = ['.xlsx', '.xls', '.csv'];
+    const isValidExt = validExcelExts.some((ext) => lowerName.endsWith(ext));
+    if (!isValidExt) {
+      const msg = `Format file tidak didukung (${file.name}). Harap unggah berkas spreadsheet berformat .xlsx, .xls, atau .csv.`;
+      alert(msg);
+      showToast(msg, 'error');
+      if (genericInputRef.current) genericInputRef.current.value = '';
+      return;
+    }
+
+    // 2. Validasi Batasan Ukuran File (Maksimal 20 MB)
+    const MAX_SIZE_BYTES = 20 * 1024 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      const msg = `Ukuran berkas ${file.name} terlalu besar (${sizeMb} MB). Batas maksimum file upload adalah 20 MB.`;
+      alert(msg);
+      showToast(msg, 'error');
+      if (genericInputRef.current) genericInputRef.current.value = '';
+      return;
+    }
+
     setIsProcessingOcr(true);
     setOcrProgressPercent(25);
     setOcrProgressText(`Membaca file ${file.name}...`);
     setLastUpsertSummary(null);
 
     try {
-      const lowerName = file.name.toLowerCase();
-      if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.xls') && !lowerName.endsWith('.csv')) {
-        throw new Error('Format file tidak didukung. Harap unggah berkas berformat .xlsx, .xls, atau .csv.');
-      }
-
       const buffer = await file.arrayBuffer();
       setOcrProgressPercent(60);
       setOcrProgressText('Memetakan kolom (No. RM, Pasien, Biaya, Plafon)...');
@@ -550,7 +723,7 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
       setOcrProgressPercent(90);
 
       if (extractedItems.length === 0) {
-        throw new Error('Tidak ada data pasien yang valid di dalam file Excel / CSV. Pastikan format tabel tidak rusak.');
+        throw new Error('Tidak ada data pasien yang valid di dalam file Excel / CSV. Pastikan struktur tabel tidak kosong atau rusak.');
       }
 
       // Upsert into state
@@ -572,12 +745,17 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
         'success'
       );
     } catch (err: any) {
-      console.error('Error saat parsing file Excel:', err);
-      showToast(err?.message || 'Gagal membaca berkas Excel/CSV. Format file rusak atau tidak valid.', 'error');
+      console.error('Error saat parsing file Excel Jasa Raharja:', err);
+      const errMsg = err?.message || 'Gagal membaca berkas Excel/CSV. Format file rusak atau tidak valid.';
+      alert(`Perhatian: Gagal memproses file "${file.name}".\n\nDetail: ${errMsg}`);
+      showToast(errMsg, 'error');
     } finally {
       setIsProcessingOcr(false);
       setOcrProgressText('');
       setOcrProgressPercent(0);
+      if (genericInputRef.current) {
+        genericInputRef.current.value = '';
+      }
     }
   };
 
@@ -588,11 +766,24 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
     const rawFiles = Array.from(filesList);
     if (rawFiles.length === 0) return;
 
+    const MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB per file
     const excelFiles: File[] = [];
     const mediaFiles: File[] = [];
+    const rejectedFiles: { name: string; reason: string }[] = [];
 
     for (const file of rawFiles) {
       const lowerName = file.name.toLowerCase();
+
+      // Check file size
+      if (file.size > MAX_SIZE_BYTES) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        rejectedFiles.push({
+          name: file.name,
+          reason: `Ukuran melebihi batas 20 MB (${sizeMb} MB)`
+        });
+        continue;
+      }
+
       const isExcel =
         lowerName.endsWith('.xlsx') ||
         lowerName.endsWith('.xls') ||
@@ -614,11 +805,22 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
         excelFiles.push(file);
       } else if (isMediaOrPdf) {
         mediaFiles.push(file);
+      } else {
+        rejectedFiles.push({
+          name: file.name,
+          reason: 'Format file tidak didukung (hanya .xlsx, .xls, .csv, .pdf, .jpg, .jpeg, .png, .webp)'
+        });
       }
+    }
+
+    if (rejectedFiles.length > 0) {
+      const details = rejectedFiles.map((f) => `- ${f.name}: ${f.reason}`).join('\n');
+      alert(`Beberapa file tidak dapat diproses:\n\n${details}`);
     }
 
     if (excelFiles.length === 0 && mediaFiles.length === 0) {
       showToast('Harap pilih file gambar (JPG, PNG), PDF (.pdf), atau berkas Excel (.xlsx, .xls, .csv).', 'error');
+      if (genericInputRef.current) genericInputRef.current.value = '';
       return;
     }
 
@@ -650,8 +852,9 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
             size: file.size,
             status: 'processing'
           });
-        } catch (readErr) {
-          console.error('Gagal membaca berkas dokumen:', readErr);
+        } catch (readErr: any) {
+          console.error(`Gagal membaca berkas dokumen "${file.name}":`, readErr);
+          alert(`Peringatan: Gagal membaca berkas "${file.name}". Berkas mungkin korup atau tidak dapat dibaca oleh peramban.`);
         }
       }
 
@@ -662,6 +865,10 @@ KEMBALIKAN HANYA JSON VALID MURNI (tanpa markdown tambahan) dengan format array 
         setIsProcessingOcr(false);
         setOcrProgressText('');
       }
+    }
+
+    if (genericInputRef.current) {
+      genericInputRef.current.value = '';
     }
   };
 

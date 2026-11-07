@@ -13,6 +13,7 @@ interface MohatReportPdfModalProps {
     kategori?: string;
     penjamin?: string;
     status?: string;
+    periode?: string;
   };
 }
 
@@ -127,7 +128,8 @@ export const MohatReportPdfModal: React.FC<MohatReportPdfModalProps> = ({
       'Sopir',
       'Fee Perujuk',
       'Fee Sopir',
-      'Total Fee'
+      'Total Fee',
+      'Status'
     ];
 
     const data = kuponList.map((k, idx) => [
@@ -142,13 +144,16 @@ export const MohatReportPdfModal: React.FC<MohatReportPdfModalProps> = ({
       k.namaSopir || (k.kategori === 'MOHAT' ? k.namaPerujuk : '-'),
       formatRupiahMohat(k.feePerujuk),
       formatRupiahMohat(k.feeSopir),
-      formatRupiahMohat(k.feeTotal)
+      formatRupiahMohat(k.feeTotal),
+      k.status || 'Menunggu Kasir'
     ]);
+
+    const periodStr = filterInfo?.periode || 'Semua Data';
 
     await exportToPdf({
       filename: `Laporan_Klaim_Kupon_Mohat_RSUMB_${new Date().toISOString().slice(0, 10)}.pdf`,
       title: 'LAPORAN REKAPITULASI KUPON FEE RUJUKAN PASIEN RANAP',
-      subtitle: `Unit Pendaftaran & Kasir RSUMB • Total Kupon: ${kuponList.length} Lembar`,
+      subtitle: `Unit Pendaftaran & Kasir RSUMB • Periode: ${periodStr} • Total Kupon: ${kuponList.length} Lembar`,
       totalLabel: `Total Pengeluaran Fee: ${formatRupiahMohat(totalFeeAll)}`,
       headers,
       data,
@@ -156,18 +161,19 @@ export const MohatReportPdfModal: React.FC<MohatReportPdfModalProps> = ({
       signatureCity: 'Babat, Lamongan',
       signatureTitle: 'Bagian Keuangan / Kasir RSUMB',
       columnStyles: {
-        0: { halign: 'center', cellWidth: 8 },
-        1: { halign: 'center', cellWidth: 20 },
-        2: { halign: 'center', cellWidth: 26 },
+        0: { halign: 'center', cellWidth: 7 },
+        1: { halign: 'center', cellWidth: 17 },
+        2: { halign: 'center', cellWidth: 23 },
         3: { halign: 'center', cellWidth: 18 },
-        4: { halign: 'left', cellWidth: 38 },
-        5: { halign: 'left', cellWidth: 26 },
-        6: { halign: 'center', cellWidth: 16 },
-        7: { halign: 'left', cellWidth: 32 },
-        8: { halign: 'left', cellWidth: 26 },
-        9: { halign: 'right', cellWidth: 20 },
-        10: { halign: 'right', cellWidth: 20 },
-        11: { halign: 'right', cellWidth: 22 }
+        4: { halign: 'left', cellWidth: 32 },
+        5: { halign: 'left', cellWidth: 22 },
+        6: { halign: 'center', cellWidth: 14 },
+        7: { halign: 'left', cellWidth: 28 },
+        8: { halign: 'left', cellWidth: 24 },
+        9: { halign: 'right', cellWidth: 18 },
+        10: { halign: 'right', cellWidth: 18 },
+        11: { halign: 'right', cellWidth: 20 },
+        12: { halign: 'center', cellWidth: 20 }
       }
     });
   };
@@ -238,6 +244,8 @@ export const MohatReportPdfModal: React.FC<MohatReportPdfModalProps> = ({
                 LAPORAN REKAPITULASI KLAIM KUPON FEE RUJUKAN PASIEN RAWAT INAP
               </h2>
               <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-600 mt-1">
+                <span>Periode: <strong>{filterInfo?.periode || 'Semua Data'}</strong></span>
+                <span>•</span>
                 <span>Tanggal Laporan: <strong>{currentDate}</strong></span>
                 <span>•</span>
                 <span>Waktu Cetak: <strong>{currentTime} WIB</strong></span>
@@ -286,13 +294,14 @@ export const MohatReportPdfModal: React.FC<MohatReportPdfModalProps> = ({
                     <th className="p-2 border-r border-emerald-700 text-left">Sopir</th>
                     <th className="p-2 border-r border-emerald-700 text-right">Fee Perujuk</th>
                     <th className="p-2 border-r border-emerald-700 text-right">Fee Sopir</th>
-                    <th className="p-2 text-right">Total Fee</th>
+                    <th className="p-2 border-r border-emerald-700 text-right">Total Fee</th>
+                    <th className="p-2 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {kuponList.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="p-4 text-center text-slate-400 italic">
+                      <td colSpan={13} className="p-4 text-center text-slate-400 italic">
                         Tidak ada riwayat kupon yang sesuai filter.
                       </td>
                     </tr>
@@ -336,8 +345,17 @@ export const MohatReportPdfModal: React.FC<MohatReportPdfModalProps> = ({
                         <td className="p-1.5 text-right font-mono border-r border-slate-200">
                           {k.feeSopir > 0 ? formatRupiahMohat(k.feeSopir) : '-'}
                         </td>
-                        <td className="p-1.5 text-right font-mono font-bold text-[#005d42]">
+                        <td className="p-1.5 text-right font-mono font-bold text-[#005d42] border-r border-slate-200">
                           {formatRupiahMohat(k.feeTotal)}
+                        </td>
+                        <td className="p-1.5 text-center whitespace-nowrap">
+                          <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${
+                            k.status === 'Lunas'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {k.status || 'Menunggu Kasir'}
+                          </span>
                         </td>
                       </tr>
                     ))
@@ -345,7 +363,7 @@ export const MohatReportPdfModal: React.FC<MohatReportPdfModalProps> = ({
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-100 font-bold border-t-2 border-slate-400">
-                    <td colSpan={8} className="p-2 text-right uppercase tracking-wider text-slate-700 border-r border-slate-300">
+                    <td colSpan={9} className="p-2 text-right uppercase tracking-wider text-slate-700 border-r border-slate-300">
                       GRAND TOTAL PENGELUARAN FEE:
                     </td>
                     <td className="p-2 text-right font-mono text-slate-800 border-r border-slate-300">
@@ -354,8 +372,11 @@ export const MohatReportPdfModal: React.FC<MohatReportPdfModalProps> = ({
                     <td className="p-2 text-right font-mono text-slate-800 border-r border-slate-300">
                       {formatRupiahMohat(totalFeeSopirAll)}
                     </td>
-                    <td className="p-2 text-right font-mono text-sm font-black text-[#005d42]">
+                    <td className="p-2 text-right font-mono text-sm font-black text-[#005d42] border-r border-slate-300">
                       {formatRupiahMohat(totalFeeAll)}
+                    </td>
+                    <td className="p-2 text-center text-slate-500 font-normal text-[9px]">
+                      {kuponList.length} Kupon
                     </td>
                   </tr>
                 </tfoot>

@@ -27,7 +27,11 @@ import {
   X,
   AlertTriangle,
   History,
-  ShieldCheck
+  ShieldCheck,
+  ArrowUpDown,
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
+  ChevronDown
 } from 'lucide-react';
 import {
   KuponMohat,
@@ -61,6 +65,8 @@ import { logSystemActivity } from '../../data/auditLogData';
 import { MohatThermalReceiptModal } from './MohatThermalReceiptModal';
 import { MohatReportPdfModal } from './MohatReportPdfModal';
 import { MohatAuditTrailModal } from './MohatAuditTrailModal';
+import { MohatExportOptionsModal } from './MohatExportOptionsModal';
+import { MohatDriverAutocomplete } from './MohatDriverAutocomplete';
 import { requestAdminAction, getStoredAdminPin } from '../../services/adminAuthService';
 
 interface KuponFeeMohatViewProps {
@@ -103,6 +109,17 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
   const [namaSopirMohat, setNamaSopirMohat] = useState<string>('');
   const [noHpHpMohat, setNoHpHpMohat] = useState<string>('');
 
+  // Handler pemilihan sopir Mohat dari Smart Autocomplete (otomatis isi nomor HP/WA)
+  const handleSelectMohatDriver = (driverFullName: string, phone?: string) => {
+    setNamaSopirMohat(driverFullName);
+    if (phone && phone.trim()) {
+      setNoHpHpMohat(phone.trim());
+      showToast(`Pengantar ${driverFullName} dipilih. No. HP WhatsApp (${phone}) otomatis terisi.`);
+    } else {
+      showToast(`Pengantar ${driverFullName} dipilih.`);
+    }
+  };
+
   // Catatan opsional
   const [catatan, setCatatan] = useState<string>('');
 
@@ -112,6 +129,12 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
 
   // Modal Print / Export PDF Laporan
   const [isPdfReportModalOpen, setIsPdfReportModalOpen] = useState<boolean>(false);
+  const [pdfReportList, setPdfReportList] = useState<KuponMohat[]>([]);
+  const [pdfReportPeriod, setPdfReportPeriod] = useState<string>('Semua Data');
+
+  // Modal Dialog Pilihan Ekspor (Semua Data / Bulanan / Filter)
+  const [isExportOptionsModalOpen, setIsExportOptionsModalOpen] = useState<boolean>(false);
+  const [exportOptionsInitialFormat, setExportOptionsInitialFormat] = useState<'EXCEL' | 'PDF'>('EXCEL');
 
   // Modal Konfirmasi Hapus Kupon
   const [kuponToDelete, setKuponToDelete] = useState<KuponMohat | null>(null);
@@ -157,6 +180,7 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
   const [filterKategori, setFilterKategori] = useState<string>('ALL');
   const [filterPenjamin, setFilterPenjamin] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [sortOrder, setSortOrder] = useState<'DESC' | 'ASC'>('DESC');
 
   // Kalkulasi Live Otomatis
   const currentFeeCalc = useMemo(() => {
@@ -434,9 +458,9 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
     showToast('Data Riwayat Kupon Berhasil Diperbarui!');
   };
 
-  // Filter Kupon List
+  // Filter & Sorting Kupon List
   const filteredKuponList = useMemo(() => {
-    return kuponList.filter((k) => {
+    const list = kuponList.filter((k) => {
       // Match query
       const q = searchQuery.toLowerCase().trim();
       const matchSearch =
@@ -463,7 +487,21 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
 
       return matchSearch && matchKategori && matchPenjamin && matchStatus;
     });
-  }, [kuponList, searchQuery, filterKategori, filterPenjamin, filterStatus]);
+
+    // Urutkan berdasarkan waktu/tanggal
+    return [...list].sort((a, b) => {
+      const timeA = new Date(`${a.tanggalMasuk}T${a.createdAt ? (a.createdAt.split('T')[1] || '00:00:00') : '00:00:00'}`).getTime() || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const timeB = new Date(`${b.tanggalMasuk}T${b.createdAt ? (b.createdAt.split('T')[1] || '00:00:00') : '00:00:00'}`).getTime() || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+
+      if (timeA === timeB) {
+        return sortOrder === 'DESC'
+          ? (b.nomorKupon || '').localeCompare(a.nomorKupon || '')
+          : (a.nomorKupon || '').localeCompare(b.nomorKupon || '');
+      }
+
+      return sortOrder === 'DESC' ? timeB - timeA : timeA - timeB;
+    });
+  }, [kuponList, searchQuery, filterKategori, filterPenjamin, filterStatus, sortOrder]);
 
   // Statistik Ringkasan
   const stats = useMemo(() => {
@@ -475,10 +513,15 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
     return { totalKupon, totalNominal, totalPkm, totalMohat, totalMenunggu };
   }, [kuponList]);
 
-  // Export Excel (.xlsx) dengan 10 Kolom Terstruktur & Ringkasan Total
-  const handleExportExcel = async () => {
-    const listToExport = filteredKuponList.length > 0 ? filteredKuponList : kuponList;
-    if (listToExport.length === 0) {
+  // Handler Buka Modal Opsi Ekspor (Semua Data / Bulanan / Filter)
+  const handleOpenExportModal = (format: 'EXCEL' | 'PDF' = 'EXCEL') => {
+    setExportOptionsInitialFormat(format);
+    setIsExportOptionsModalOpen(true);
+  };
+
+  // Export Excel (.xlsx) dengan Opsi Scope & Kolom Lengkap Termasuk Status Klaim
+  const handleExportExcelWithScope = async (dataToExport: KuponMohat[], periodeLabel: string) => {
+    if (dataToExport.length === 0) {
       showToast('Tidak ada data kupon untuk diekspor.');
       return;
     }
@@ -494,10 +537,11 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
       'Sopir',
       'Fee Perujuk',
       'Fee Sopir',
-      'Total Fee'
+      'Total Fee',
+      'Status Klaim'
     ];
 
-    const data = listToExport.map((k) => [
+    const data = dataToExport.map((k) => [
       k.noSeri || '-',
       k.nomorKupon,
       k.tanggalMasuk,
@@ -508,13 +552,14 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
       k.namaSopir || (k.kategori === 'MOHAT' ? k.namaPerujuk : '-'),
       k.feePerujuk,
       k.feeSopir,
-      k.feeTotal
+      k.feeTotal,
+      k.status || 'Menunggu Kasir'
     ]);
 
     // Baris Grand Total
-    const totalFeePerujuk = listToExport.reduce((acc, k) => acc + k.feePerujuk, 0);
-    const totalFeeSopir = listToExport.reduce((acc, k) => acc + k.feeSopir, 0);
-    const totalFeeAll = listToExport.reduce((acc, k) => acc + k.feeTotal, 0);
+    const totalFeePerujuk = dataToExport.reduce((acc, k) => acc + k.feePerujuk, 0);
+    const totalFeeSopir = dataToExport.reduce((acc, k) => acc + k.feeSopir, 0);
+    const totalFeeAll = dataToExport.reduce((acc, k) => acc + k.feeTotal, 0);
 
     data.push([
       'TOTAL',
@@ -527,20 +572,30 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
       '',
       totalFeePerujuk,
       totalFeeSopir,
-      totalFeeAll
+      totalFeeAll,
+      ''
     ]);
 
+    const sanitizedPeriode = periodeLabel.replace(/[^a-zA-Z0-9_-]/g, '_');
+
     await exportToExcel({
-      filename: `Rekap_Kupon_Fee_Mohat_RSUMB_${getTodayDateStr()}.xlsx`,
+      filename: `Rekap_Kupon_Fee_Mohat_${sanitizedPeriode}_${getTodayDateStr()}.xlsx`,
       sheetName: 'Kupon Mohat',
       title: 'REKAPITULASI KLAIM KUPON FEE RUJUKAN PASIEN RAWAT INAP',
-      subtitle: `RSU Muhammadiyah Babat • Total Data: ${listToExport.length} Kupon • Tanggal Ekspor: ${getTodayDateStr()}`,
+      subtitle: `RSU Muhammadiyah Babat • Periode: ${periodeLabel} • Total: ${dataToExport.length} Kupon • Tanggal Unduh: ${getTodayDateStr()}`,
       headers,
       data,
-      columnAlignments: ['center', 'center', 'center', 'left', 'left', 'center', 'left', 'left', 'right', 'right', 'right']
+      columnAlignments: ['center', 'center', 'center', 'left', 'left', 'center', 'left', 'left', 'right', 'right', 'right', 'center']
     });
 
-    showToast('Laporan Excel (.xlsx) berhasil diunduh.');
+    showToast(`Laporan Excel (${periodeLabel}) berhasil diunduh.`);
+  };
+
+  // Handler Buka Laporan PDF Berdasarkan Scope
+  const handleOpenPdfReportWithScope = (dataToExport: KuponMohat[], periodeLabel: string) => {
+    setPdfReportList(dataToExport);
+    setPdfReportPeriod(periodeLabel);
+    setIsPdfReportModalOpen(true);
   };
 
   // Export CSV
@@ -609,21 +664,23 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
             </button>
 
             <button
-              onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-700/80 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold border border-emerald-500/30 transition cursor-pointer"
-              title="Unduh Seluruh Rekapitulasi ke Berkas Excel (.xlsx)"
+              onClick={() => handleOpenExportModal('EXCEL')}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-700/80 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold border border-emerald-500/30 transition cursor-pointer shadow-xs active:scale-98"
+              title="Buka Pilihan Ekspor Excel (Semua Data / Berdasarkan Bulan)"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
               <span>Ekspor Excel</span>
+              <ChevronDown className="w-3.5 h-3.5 text-emerald-300" />
             </button>
 
             <button
-              onClick={() => setIsPdfReportModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold border border-white/20 transition cursor-pointer"
-              title="Pratinjau & Cetak Laporan Resmi PDF"
+              onClick={() => handleOpenExportModal('PDF')}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold border border-white/20 transition cursor-pointer shadow-xs active:scale-98"
+              title="Buka Pilihan Ekspor & Cetak PDF Resmi (Semua Data / Berdasarkan Bulan)"
             >
               <Printer className="w-4 h-4 text-emerald-300" />
               <span>Laporan PDF</span>
+              <ChevronDown className="w-3.5 h-3.5 text-emerald-300" />
             </button>
 
             <button
@@ -837,35 +894,47 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
                   <span>Data Pengantar / Sopir Mobil Sehat Desa</span>
                 </div>
 
-                {/* Nama Sopir Mohat */}
+                {/* Nama Sopir Mohat dengan Smart Multi-Keyword Autocomplete */}
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-[11px] font-bold text-slate-700 uppercase">
-                      Nama Sopir / Pengantar Mohat <span className="text-rose-500">*</span>
+                    <label className="text-[11px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                      <span>Nama Sopir / Pengantar Mohat</span>
+                      <span className="text-rose-500">*</span>
                     </label>
-                    <span className="text-[10px] text-amber-700 font-medium">Autocomplete Aktif</span>
+                    <span className="text-[10px] text-amber-900 font-bold bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1 shadow-2xs">
+                      <Sparkles className="w-2.5 h-2.5 text-amber-700" />
+                      <span>Smart Autocomplete</span>
+                    </span>
                   </div>
-                  <input
-                    type="text"
-                    required
-                    list="list-sopir-mohat-suggestions"
-                    placeholder="Ketik atau pilih nama sopir Mohat desa..."
+
+                  <MohatDriverAutocomplete
                     value={namaSopirMohat}
-                    onChange={(e) => setNamaSopirMohat(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-amber-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-600"
+                    onChange={setNamaSopirMohat}
+                    onSelectDriver={handleSelectMohatDriver}
+                    kuponList={kuponList}
+                    fallbackSuggestions={suggestions.sopirMohatList}
+                    required
                   />
-                  <datalist id="list-sopir-mohat-suggestions">
-                    {suggestions.sopirMohatList.map((item, idx) => (
-                      <option key={`m-${idx}`} value={item} />
-                    ))}
-                  </datalist>
+                  <p className="text-[10px] text-amber-900/80 mt-1 flex items-center gap-1">
+                    <span>💡 Cari nama sopir (cth: <em>rof</em>) atau asal desa (cth: <em>maduran</em>). No. HP otomatis terisi.</span>
+                  </p>
                 </div>
 
                 {/* No HP Pengantar Mohat */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                    No. HP / WhatsApp Pengantar
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase">
+                      No. HP / WhatsApp Pengantar
+                    </label>
+                    {noHpHpMohat ? (
+                      <span className="text-[9.5px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
+                        <Check className="w-2.5 h-2.5 text-emerald-600" />
+                        <span>Otomatis Terisi dari Riwayat</span>
+                      </span>
+                    ) : (
+                      <span className="text-[9.5px] text-slate-400">Opsional</span>
+                    )}
+                  </div>
                   <div className="relative">
                     <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
@@ -873,7 +942,7 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
                       placeholder="Contoh: 0858-xxxx-xxxx"
                       value={noHpHpMohat}
                       onChange={(e) => setNoHpHpMohat(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 text-xs border border-amber-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-600 font-mono"
+                      className="w-full pl-8 pr-3 py-2 text-xs border border-amber-300 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-600 font-mono text-slate-800"
                     />
                   </div>
                 </div>
@@ -967,23 +1036,25 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
               {/* Tombol Eksport Excel */}
               <button
                 type="button"
-                onClick={handleExportExcel}
+                onClick={() => handleOpenExportModal('EXCEL')}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
-                title="Unduh rekapitulasi data ke Microsoft Excel (.xlsx)"
+                title="Buka Pilihan Ekspor Excel (Semua Data / Berdasarkan Bulan)"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Eksport Excel</span>
+                <ChevronDown className="w-3 h-3 text-emerald-200" />
               </button>
 
               {/* Tombol Eksport PDF */}
               <button
                 type="button"
-                onClick={() => setIsPdfReportModalOpen(true)}
+                onClick={() => handleOpenExportModal('PDF')}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
-                title="Pratinjau & Cetak Laporan Resmi PDF"
+                title="Buka Pilihan Ekspor & Cetak PDF Resmi (Semua Data / Berdasarkan Bulan)"
               >
                 <Printer className="w-3.5 h-3.5 text-emerald-300" />
                 <span>Eksport PDF</span>
+                <ChevronDown className="w-3 h-3 text-slate-300" />
               </button>
 
               <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-bold text-xs">
@@ -993,9 +1064,9 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
           </div>
 
           {/* Filter Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
             {/* Search */}
-            <div className="relative sm:col-span-3">
+            <div className="relative sm:col-span-2 lg:col-span-4">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
@@ -1004,6 +1075,26 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
               />
+            </div>
+
+            {/* Filter Pengurutan (Sorting) */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                <span>Urutan Waktu</span>
+                {sortOrder === 'DESC' ? (
+                  <ArrowDownWideNarrow className="w-3 h-3 text-emerald-600" />
+                ) : (
+                  <ArrowUpNarrowWide className="w-3 h-3 text-emerald-600" />
+                )}
+              </label>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'DESC' | 'ASC')}
+                className="w-full px-2.5 py-1.5 border border-emerald-300 bg-emerald-50/50 font-semibold text-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+              >
+                <option value="DESC">Terbaru ke Terlama (Descending)</option>
+                <option value="ASC">Terlama ke Terbaru (Ascending)</option>
+              </select>
             </div>
 
             {/* Filter Kategori */}
@@ -1083,7 +1174,21 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
             <table className="w-full text-left border-collapse text-xs min-w-[700px]">
               <thead>
                 <tr className="bg-slate-100/80 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
-                  <th className="p-2.5">No. Kupon / Tgl</th>
+                  <th className="p-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSortOrder((prev) => (prev === 'DESC' ? 'ASC' : 'DESC'))}
+                      className="inline-flex items-center gap-1.5 hover:text-emerald-800 transition cursor-pointer group"
+                      title="Klik untuk ubah pengurutan: Terbaru ⇄ Terlama"
+                    >
+                      <span>No. Kupon / Tgl</span>
+                      {sortOrder === 'DESC' ? (
+                        <ArrowDownWideNarrow className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition" />
+                      ) : (
+                        <ArrowUpNarrowWide className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition" />
+                      )}
+                    </button>
+                  </th>
                   <th className="p-2.5">Nama Pasien Ranap</th>
                   <th className="p-2.5">Kategori / Penjamin</th>
                   <th className="p-2.5">Perujuk & Sopir</th>
@@ -1262,14 +1367,29 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
       {/* Modal Cetak & Ekspor Laporan PDF */}
       <MohatReportPdfModal
         isOpen={isPdfReportModalOpen}
-        onClose={() => setIsPdfReportModalOpen(false)}
-        kuponList={filteredKuponList.length > 0 ? filteredKuponList : kuponList}
+        onClose={() => {
+          setIsPdfReportModalOpen(false);
+          setPdfReportList([]);
+        }}
+        kuponList={pdfReportList.length > 0 ? pdfReportList : (filteredKuponList.length > 0 ? filteredKuponList : kuponList)}
         filterInfo={{
           search: searchQuery,
           kategori: filterKategori,
           penjamin: filterPenjamin,
-          status: filterStatus
+          status: filterStatus,
+          periode: pdfReportPeriod
         }}
+      />
+
+      {/* Modal Pilihan Ekspor Laporan (Semua Data, Bulanan, Sesuai Filter) */}
+      <MohatExportOptionsModal
+        isOpen={isExportOptionsModalOpen}
+        onClose={() => setIsExportOptionsModalOpen(false)}
+        allKuponList={kuponList}
+        filteredKuponList={filteredKuponList}
+        initialFormat={exportOptionsInitialFormat}
+        onExecuteExportExcel={handleExportExcelWithScope}
+        onExecuteExportPdf={handleOpenPdfReportWithScope}
       />
 
       {/* Modal Audit Trail (20 Kupon Terakhir & Re-Print) */}
@@ -1568,16 +1688,32 @@ export const KuponFeeMohatView: React.FC<KuponFeeMohatViewProps> = ({ showToast 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">
-                    {editKategori === 'PKM' ? 'Nama Perawat / Bidan' : 'Nama Sopir / Pengantar'} *
+                    {editKategori === 'PKM' ? 'Nama Perawat / Bidan' : 'Nama Sopir / Pengantar Mohat'} *
                   </label>
-                  <input
-                    type="text"
-                    required
-                    value={editNamaPerujuk}
-                    onChange={(e) => setEditNamaPerujuk(e.target.value)}
-                    placeholder={editKategori === 'PKM' ? 'Nama Bidan / Perawat' : 'Nama Pengantar Desa'}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
-                  />
+                  {editKategori === 'PKM' ? (
+                    <input
+                      type="text"
+                      required
+                      value={editNamaPerujuk}
+                      onChange={(e) => setEditNamaPerujuk(e.target.value)}
+                      placeholder="Nama Bidan / Perawat"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#005d42]"
+                    />
+                  ) : (
+                    <MohatDriverAutocomplete
+                      value={editNamaPerujuk}
+                      onChange={setEditNamaPerujuk}
+                      onSelectDriver={(driver, phone) => {
+                        setEditNamaPerujuk(driver);
+                        if (phone && phone.trim()) {
+                          setEditNoHpPengantar(phone.trim());
+                        }
+                      }}
+                      kuponList={kuponList}
+                      fallbackSuggestions={suggestions.sopirMohatList}
+                      required
+                    />
+                  )}
                 </div>
 
                 {editKategori === 'PKM' ? (

@@ -1,15 +1,34 @@
-# Implementasi Top Navbar Sticky & Penyesuaian Layout Konten Utama Portal RSUMB
+# Rencana Implementasi: Perbaikan Logika Ekstraksi / Parser SPRI & Output Template Klinik
 
-## Status: Selesai (Completed & Verified)
+## 1. Ekstraksi Kelas Kamar yang Akurat
+- [x] Membuat fungsi `extractKelasKamarFromText`:
+  - Mendeteksi kata kunci kelas secara ketat dan berprioritas (`VVIP`, `VIP`, `Kelas 3`, `Kelas 2`, `Kelas 1`).
+  - Mengabaikan nomor bed atau nomor ruangan seperti `BED4` pada `"VIP-BED4 JANNATUL FIRDAUS VIP"` (sehingga kelas terbaca `VIP`).
+  - Mengabaikan nomor ruangan/bed seperti `5A` pada `"Ma'wa 5A... Kelas 3"` (sehingga kelas terbaca `3`).
+  - Menampilkan hasil kelas kamar secara akurat pada baris pertama output: `Pesan kamar kls : [Kelas]`.
+  - Sinkronisasi otomatis state kelas kamar ke dropdown antarmuka pengguna pada saat parser dijalankan.
 
-### Ringkasan Pekerjaan
-1. **Penerapan Sticky Position pada Top Navbar (`sticky top-0 z-50`)**:
-   - Menambahkan pembungkus `sticky top-0 z-50 print:hidden no-print bg-[#f8f9ff]/95 backdrop-blur-md` pada level kontainer navigasi atas di `src/App.tsx`.
-   - Mengubah elemen `<header>` di `src/components/Header.tsx` menjadi `sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-[#d8e4f5] shadow-xs`.
-   - Memastikan z-index `z-50` berada di lapisan atas tabel poliklinik, kartu informasi, dan filter bar saat halaman di-scroll ke bawah.
-   - Memastikan dropdown pencarian real-time, notifikasi lonceng, dan menu profil petugas tetap menempel presisi di layar saat bernavigasi.
+## 2. Validasi Kode ICD-10 & Diagnosa
+- [x] Menambahkan pemetaan akurat kode ICD-10:
+  - Diagnosa `AF` / `Atrial Fibrillation` / `Atrial Flutter` / `Fibrilasi Atrium` dipetakan secara akurat ke kode ICD-10 `I48.9`.
+  - Diagnosa `ADHF` / `CHF` dipetakan ke `I50.9`.
+  - Diagnosa `Dyspneu` / `Dyspnea` dipetakan ke `R06.0`.
+  - Menerapkan fungsi `matchIcdForDiagnosis` untuk multi-diagnosis (misal `DYSPNEU S ADHF` menghasilkan `R06.0 / I50.9`).
 
-2. **Penyesuaian Layout Konten Utama (`pt-16 sm:pt-20`)**:
-   - Menambahkan `pt-16 sm:pt-20` pada kontainer `<main>` di `src/App.tsx` secara global untuk seluruh 13 menu aplikasi (Beranda, Jadwal Dokter, Kuota BPJS, Tarif Kamar, Operasi Elektif, Khitan, Jasa Raharja, Dokumen Master, Catatan Khusus, Hubungi Pasien, Kupon Mohat, Insentif, dan Pengaturan).
-   - Menambahkan `scroll-mt-20` pada `#schedule-table-section` agar navigasi halus dari hasil pencarian maupun dashboard mendarat tepat di bawah navbar tanpa tertutup.
-   - Memindahkan `EmergencyAlertBanner` ke dalam kontainer sticky atas agar tetap terlihat mencolok di bagian atas layar ketika aktif.
+## 3. Penerbitan Format Output Template Baku
+- [x] Memastikan format baku yang dihasilkan pada baris WhatsApp dan pratinjau:
+  ```text
+  Pesan kamar kls : [Kelas Kamar]
+
+  [Nama Pasien] ([Umur])
+  - [Diagnosa Awal] ([Kode ICD-10])
+  - DPJP : [Nama Dokter DPJP]
+  - [Cara Bayar/Asuransi] [Kelas Kamar]
+  ```
+- [x] Menjaga agar baris DPJP mutlak mengambil nama dari teks berlabel `Dokter DPJP` dan tidak tertukar dengan `Dokter Yang Memeriksa` (dokter IGD/Klinik).
+- [x] Menyediakan tombol preset pengujian langsung: `SPRI AF (I48.9) & VIP` dan `SPRI Ma'wa 5A... Kelas 3`.
+
+## 4. Verifikasi
+- [x] Pengujian otomatis dengan data uji spesifik.
+- [x] `lint_applet` (`tsc --noEmit`) berhasil dengan 0 error.
+- [x] `compile_applet` (`vite build`) berhasil dibangun dengan sukses.

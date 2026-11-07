@@ -524,8 +524,6 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
       (kupon.noHpPengantar ? `Kontak/HP    : ${kupon.noHpPengantar}\n` : '') +
       (kupon.catatan ? `Catatan      : ${kupon.catatan}\n` : '') +
       `------------------------------------------\n` +
-      `TOTAL FEE: ${formatRupiahMohat(kupon.feeTotal)}\n` +
-      `==========================================\n` +
       `BERKAS SAH & TERVERIFIKASI DIGITAL RSU MUHAMMADIYAH BABAT\n` +
       `KODE AUTH: ${authCode}\n` +
       `Status: ${kupon.status}\n` +
@@ -793,27 +791,6 @@ export const MohatThermalReceiptModal: React.FC<MohatThermalReceiptModalProps> =
                     <span className="text-right text-black italic">{kupon.catatan}</span>
                   </div>
                 )}
-              </div>
-
-              {/* Rincian Tambahan Khusus PKM jika ada Sopir */}
-              {kupon.kategori === 'PKM' && kupon.feeSopir > 0 && (
-                <div className="space-y-0.5 text-[10px] border-t border-dashed border-black pt-1 my-1">
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-black">Fee Perujuk (Bidan/Perawat):</span>
-                    <span className="font-bold text-black">{formatRupiahMohat(kupon.feePerujuk)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-black">Fee Sopir PKM:</span>
-                    <span className="font-bold text-black">{formatRupiahMohat(kupon.feeSopir)}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* HIGHLIGHT TOTAL FEE: Boxed Container with Bold 14px Font */}
-              <div className="border-2 border-black p-2 my-2 bg-white text-center">
-                <div className="text-[14px] font-black tracking-wide text-black uppercase">
-                  TOTAL FEE: {formatRupiahMohat(kupon.feeTotal)}
-                </div>
               </div>
 
               {/* DIGITAL AUTHENTICATION (QR CODE & KODE KEASLIAN) */}

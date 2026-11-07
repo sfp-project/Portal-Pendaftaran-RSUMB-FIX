@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { StatsCards } from './components/StatsCards';
@@ -43,6 +44,14 @@ import {
   initialQueueList,
   MASTER_DOCTORS
 } from './data/initialData';
+import {
+  masterSchedules,
+  sanitizeAndDeduplicateSchedules,
+  normalizePoliCanonical,
+  inferPoliFromDoctor,
+  normalizeDoctorCanonicalName,
+  inferRoomLocation
+} from './data/masterSchedulesData';
 import { initialSurgerySchedules, ElectiveSurgerySchedule } from './data/surgeryData';
 import { KhitanParticipant, loadKhitanParticipants, saveKhitanParticipants, calculateDefaultControlDate } from './data/khitanData';
 import { MedicalLetterItem } from './types/letterTypes';
@@ -50,8 +59,9 @@ import { loadMedicalLetters, saveMedicalLetters } from './data/letterData';
 import { initAuth } from './services/googleAuthService';
 import { pullDataFromDrive, triggerSilentDriveSync, initGasAutoConnect } from './services/dualSyncStorage';
 import { pushDatabaseToSheets, isGasConnected } from './services/googleSheetsService';
-import { initDailyAutoSnapshot } from './services/historyAndBackupService';
+import { initDailyAutoSnapshot, initAutoBackupFirestore } from './services/historyAndBackupService';
 import { runAutoCacheCleanup } from './utils/autoCacheCleanup';
+import { logSystemActivity } from './data/auditLogData';
 import {
   loadJasaRaharjaData,
   saveJasaRaharjaData,
@@ -75,7 +85,9 @@ import {
   formatDoctorScheduleTime,
   formatHfisTime,
   getScheduleStartMinutes,
-  DAY_ORDER_MAP
+  DAY_ORDER_MAP,
+  filterExpiredDoctorLeaves,
+  purgeExpiredDoctorLeavesFromStorage
 } from './utils/dateHelpers';
 import {
   HelpCircle,
@@ -91,6 +103,7 @@ import {
   saveScheduleDoc,
   deleteScheduleDoc,
   batchSaveSchedules,
+  replaceAllSchedulesInFirestore,
   subscribeDoctorLeaves,
   saveDoctorLeaveDoc,
   deleteDoctorLeaveDoc,
@@ -115,33 +128,38 @@ export default function App() {
   // Persistence state
   const [schedules, setSchedules] = useState<DoctorSchedule[]>(() => {
     try {
-      const saved = localStorage.getItem('medcentral_schedules_v5');
+      const MASTER_SCHEDULES_VERSION = '2026_10_master_v8_ahad_minggu_fix';
+      if (localStorage.getItem('rsumb_master_schedules_version') !== MASTER_SCHEDULES_VERSION) {
+        [
+          'rsumb_schedules',
+          'medcentral_schedules_v5',
+          'medcentral_schedules_v4',
+          'medcentral_schedules_v3',
+          'medcentral_schedules_v2',
+          'medcentral_schedules_v1',
+          'rsumb_master_schedules_v4',
+          'rsumb_master_schedules_v5',
+          'rsumb_master_schedules_version',
+          'rsumb_schedules_cache'
+        ].forEach((key) => localStorage.removeItem(key));
+
+        const clean = sanitizeAndDeduplicateSchedules(masterSchedules);
+        localStorage.setItem('rsumb_schedules', JSON.stringify(clean));
+        localStorage.setItem('medcentral_schedules_v5', JSON.stringify(clean));
+        localStorage.setItem('rsumb_master_schedules_version', MASTER_SCHEDULES_VERSION);
+        return clean;
+      }
+      const saved = localStorage.getItem('rsumb_schedules') || localStorage.getItem('medcentral_schedules_v5');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const activeOnly = parsed.filter((s: any) => !s.is_deleted && !s.isDeleted);
-          // Pastikan seluruh 4 hari jadwal praktik dr. Aulya Farra Rahmadany, Sp. A selalu termuat
-          const aulyaInitial = initialSchedules.filter(
-            (s) => s.dpjp && s.dpjp.toLowerCase().includes('aulya')
-          );
-          const existingAulyaDays = new Set(
-            activeOnly
-              .filter((s: any) => s.dpjp && s.dpjp.toLowerCase().includes('aulya'))
-              .map((s: any) => s.hari)
-          );
-          const missingAulya = aulyaInitial.filter((s) => !existingAulyaDays.has(s.hari));
-          if (missingAulya.length > 0) {
-            const merged = [...activeOnly, ...missingAulya];
-            localStorage.setItem('medcentral_schedules_v5', JSON.stringify(merged));
-            return merged;
-          }
-          return activeOnly;
+          return sanitizeAndDeduplicateSchedules(parsed);
         }
       }
     } catch (e) {
-      console.error('Error loading medcentral_schedules_v5:', e);
+      console.error('Error loading rsumb_schedules / medcentral_schedules_v5:', e);
     }
-    return initialSchedules.filter((s: any) => !s.is_deleted && !s.isDeleted);
+    return sanitizeAndDeduplicateSchedules(masterSchedules);
   });
 
   const [doctorLeaves, setDoctorLeaves] = useState<DoctorLeaveAnnouncement[]>(() => {
@@ -367,12 +385,25 @@ export default function App() {
   // SINKRONISASI REAL-TIME CLOUD FIRESTORE (SEMUA MENU)
   // ----------------------------------------------------
   useEffect(() => {
+    const MASTER_SCHEDULES_KEY = '2026_10_master_v8_ahad_minggu_fix';
+    if (localStorage.getItem('rsumb_master_schedules_firestore_migrated') !== MASTER_SCHEDULES_KEY) {
+      localStorage.setItem('rsumb_master_schedules_firestore_migrated', MASTER_SCHEDULES_KEY);
+      const clean = sanitizeAndDeduplicateSchedules(masterSchedules);
+      setSchedules(clean);
+      localStorage.setItem('medcentral_schedules_v5', JSON.stringify(clean));
+      replaceAllSchedulesInFirestore(clean).catch((e) => console.warn(e));
+    }
+
     const unsubSchedules = subscribeSchedules((items) => {
       if (items && items.length > 0) {
-        setSchedules(items);
+        const cleanItems = sanitizeAndDeduplicateSchedules(items);
+        setSchedules(cleanItems);
+        localStorage.setItem('medcentral_schedules_v5', JSON.stringify(cleanItems));
       } else {
-        batchSaveSchedules(initialSchedules).catch(() => {});
-        setSchedules(initialSchedules);
+        // Cold start fallback if collection is empty
+        const clean = sanitizeAndDeduplicateSchedules(masterSchedules);
+        setSchedules(clean);
+        localStorage.setItem('medcentral_schedules_v5', JSON.stringify(clean));
       }
     });
 
@@ -423,6 +454,9 @@ export default function App() {
     // Inisialisasi snapshot otomatis harian pada browser storage (rsumb_db_snapshot_daily)
     initDailyAutoSnapshot();
 
+    // Inisialisasi auto-backup Firestore ke Google Sheets setiap 24 jam untuk redundansi cadangan
+    const cleanupAutoBackupFirestore = initAutoBackupFirestore();
+
     // Auto-Connect / Auto-Sync ke backend Google Sheets (GAS) dengan fallback DEFAULT_GAS_URL
     initGasAutoConnect().catch((err) => {
       console.info('[Auto-Connect GAS] Initial check notice:', err?.message || err);
@@ -445,6 +479,7 @@ export default function App() {
 
     return () => {
       clearTimeout(timer);
+      cleanupAutoBackupFirestore();
       window.removeEventListener('rsumb_open_incoming_self_reg_modal', handleGlobalOpenIncomingModal);
     };
   }, []);
@@ -472,6 +507,7 @@ export default function App() {
   // Save to localStorage safely & trigger silent auto-save to Google Drive
   useEffect(() => {
     try {
+      localStorage.setItem('rsumb_schedules', JSON.stringify(schedules));
       localStorage.setItem('medcentral_schedules_v5', JSON.stringify(schedules));
       if (!isInitialMountRef.current) {
         triggerSilentDriveSync(2500);
@@ -491,6 +527,27 @@ export default function App() {
       console.warn('Gagal menyimpan doctorLeaves ke localStorage:', e);
     }
   }, [doctorLeaves]);
+
+  // Auto-cleanup berkala pengumuman libur/perubahan jadwal dokter yang kadaluarsa (> 3 hari pasca tanggal masuk)
+  useEffect(() => {
+    const handleCheckExpiry = () => {
+      setDoctorLeaves((prev) => {
+        const cleaned = filterExpiredDoctorLeaves(prev);
+        if (cleaned.length !== prev.length) {
+          purgeExpiredDoctorLeavesFromStorage();
+          return consolidateAndSortDoctorLeaves(cleaned);
+        }
+        return prev;
+      });
+    };
+
+    const interval = setInterval(handleCheckExpiry, 15 * 60 * 1000);
+    window.addEventListener('focus', handleCheckExpiry);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleCheckExpiry);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -556,7 +613,9 @@ export default function App() {
         if (savedSchedules && savedSchedules.trim() !== '' && savedSchedules !== 'undefined' && savedSchedules !== 'null') {
           try {
             const parsed = JSON.parse(savedSchedules);
-            if (Array.isArray(parsed) && parsed.length > 0) setSchedules(parsed);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setSchedules(sanitizeAndDeduplicateSchedules(parsed));
+            }
           } catch {}
         }
 
@@ -772,10 +831,21 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Distinct Poliklinik list
+  // Distinct Poliklinik list (Clean, non-empty, standardized)
   const poliOptions = useMemo(() => {
-    const set = new Set(schedules.map((s) => s.poli));
-    return Array.from(set).sort();
+    const set = new Set<string>();
+    schedules.forEach((s) => {
+      const p = (s.poli || '').trim();
+      if (
+        p &&
+        p !== '-' &&
+        p.toLowerCase() !== 'null' &&
+        p.toLowerCase() !== 'undefined'
+      ) {
+        set.add(p);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [schedules]);
 
   // Distinct Doctors list for dropdowns (using MASTER_DOCTORS exact list as primary)
@@ -797,7 +867,11 @@ export default function App() {
 
   // Statistics calculation
   const stats: HospitalStats = useMemo(() => {
-    const uniquePoli = new Set(schedules.map((s) => s.poli)).size;
+    const uniquePoli = new Set(
+      schedules
+        .map((s) => s.poli)
+        .filter((poli) => Boolean(poli) && poli.trim() !== '')
+    ).size;
     const uniqueDpjp = new Set(schedules.map((s) => s.dpjp)).size;
     const totalKuota = schedules.reduce((acc, curr) => acc + (curr.kuotaTotal || 0), 0);
     const totalPasien = schedules.reduce((acc, curr) => acc + (curr.rerataPasien || 0), 0);
@@ -820,14 +894,23 @@ export default function App() {
     const poli = selectedPoli;
     const hari = normalize(selectedHari);
 
+    const isAhadOrMinggu = (val: string) => {
+      const v = (val || '').toLowerCase().trim();
+      return v === 'ahad' || v === 'minggu' || v.includes('ahad') || v.includes('minggu');
+    };
+
     const list = schedules.filter((row) => {
       const dpjpNorm = normalize(row.dpjp);
       const poliNorm = normalize(row.poli);
       const hariNorm = normalize(row.hari);
       const spesialisasiNorm = normalize(row.spesialisasi || '');
 
+      const isSearchSunday = search === 'ahad' || search === 'minggu';
+      const isRowSunday = isAhadOrMinggu(row.hari);
+
       const matchesSearch =
         search === '' ||
+        (isSearchSunday && isRowSunday) ||
         dpjpNorm.includes(search) ||
         poliNorm.includes(search) ||
         poliNorm.replace(/^poli\s*/i, '').includes(search) ||
@@ -843,7 +926,14 @@ export default function App() {
         normalize(poli).includes(normalize(row.poli)) ||
         normalize(row.poli).replace(/^poli\s*/i, '') === normalize(poli).replace(/^poli\s*/i, '');
 
-      const matchesHari = hari === '' || hariNorm.includes(hari) || hari.includes(hariNorm);
+      const matchesHari =
+        !selectedHari ||
+        selectedHari === '' ||
+        selectedHari === 'Semua Hari' ||
+        (isAhadOrMinggu(selectedHari) && isRowSunday) ||
+        hariNorm === hari ||
+        hariNorm.includes(hari) ||
+        hari.includes(hariNorm);
 
       // Status filter
       let matchesStatus = true;
@@ -993,6 +1083,364 @@ export default function App() {
     setSchedules((prev) => prev.filter((s) => !ids.includes(s.id)));
     ids.forEach((id) => deleteScheduleDoc(id).catch(() => {}));
     showToast(`${ids.length} jadwal dokter berhasil dihapus.`);
+  };
+
+  const handleUpdateScheduleNote = (scheduleId: string, newNote: string) => {
+    const trimmed = newNote.trim();
+    setSchedules((prev) => {
+      let targetDoctor = '';
+      let targetPoli = '';
+      let targetHari = '';
+      let oldNote = '';
+
+      const updated = prev.map((s) => {
+        if (s.id !== scheduleId) return s;
+        targetDoctor = s.dpjp;
+        targetPoli = s.poli;
+        targetHari = s.hari;
+        oldNote = (s.catatan || s.catatanKhusus || '').trim();
+        const modified: DoctorSchedule = {
+          ...s,
+          catatan: trimmed,
+          catatanKhusus: trimmed,
+          status: /nonaktif|non-aktif/i.test(trimmed)
+            ? 'Nonaktif'
+            : s.status === 'Nonaktif'
+            ? ((s.kuotaTerisi || 0) >= (s.kuotaTotal || 50) ? 'Penuh' : 'Tersedia')
+            : s.status
+        };
+        saveScheduleDoc(modified).catch(() => {});
+        return modified;
+      });
+
+      // Catat log aktivitas jika catatan mengalami perubahan
+      if (oldNote !== trimmed && targetDoctor) {
+        try {
+          const actionType =
+            !oldNote && trimmed
+              ? 'Tambah Catatan Jadwal'
+              : oldNote && !trimmed
+              ? 'Hapus Catatan Jadwal'
+              : 'Ubah Catatan Jadwal';
+
+          const details =
+            !oldNote && trimmed
+              ? `Menambahkan catatan jadwal dokter ${targetDoctor} (${targetPoli}, Hari ${targetHari}): "${trimmed}".`
+              : oldNote && !trimmed
+              ? `Menghapus catatan jadwal dokter ${targetDoctor} (${targetPoli}, Hari ${targetHari}) yang sebelumnya: "${oldNote}".`
+              : `Mengubah catatan jadwal dokter ${targetDoctor} (${targetPoli}, Hari ${targetHari}) dari "${oldNote}" menjadi "${trimmed}".`;
+
+          logSystemActivity(
+            actionType,
+            details,
+            undefined, // Otomatis menggunakan nama staf aktif yang sedang bertugas
+            'JADWAL_DOKTER',
+            'Jadwal Dokter',
+            {
+              scheduleId,
+              doctor: targetDoctor,
+              poli: targetPoli,
+              hari: targetHari,
+              oldNote,
+              newNote: trimmed
+            }
+          );
+        } catch (logErr) {
+          console.warn('Gagal mencatat log aktivitas jadwal dokter:', logErr);
+        }
+      }
+
+      try {
+        localStorage.setItem('rsumb_schedules', JSON.stringify(updated));
+        localStorage.setItem('medcentral_schedules_v5', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('rsumb_schedules_saved'));
+      } catch (err) {
+        console.warn('Gagal menyimpan rsumb_schedules ke localStorage:', err);
+      }
+      return updated;
+    });
+
+    showToast(
+      trimmed
+        ? `Catatan jadwal dokter berhasil diperbarui: "${trimmed}".`
+        : 'Catatan jadwal dokter berhasil dikosongkan.'
+    );
+  };
+
+  const handleUpdateScheduleTime = (scheduleId: string, newTime: string) => {
+    const trimmed = newTime.trim();
+    if (!trimmed) return;
+
+    setSchedules((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id !== scheduleId) return s;
+        const modified: DoctorSchedule = {
+          ...s,
+          jadwal: trimmed,
+          jamPraktik: trimmed
+        };
+        saveScheduleDoc(modified).catch(() => {});
+        return modified;
+      });
+
+      try {
+        localStorage.setItem('rsumb_schedules', JSON.stringify(updated));
+        localStorage.setItem('medcentral_schedules_v5', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('rsumb_schedules_saved'));
+      } catch (err) {
+        console.warn('Gagal menyimpan rsumb_schedules ke localStorage:', err);
+      }
+      return updated;
+    });
+
+    showToast(`Waktu praktik berhasil diperbarui menjadi "${trimmed}".`);
+  };
+
+  const handleUploadMasterSchedules = async (
+    newSchedules: DoctorSchedule[]
+  ) => {
+    // 1. Bersihkan state & localStorage lama secara total sebelum menyimpan data baru
+    setSchedules([]);
+    [
+      'rsumb_schedules',
+      'medcentral_schedules_v5',
+      'medcentral_schedules_v4',
+      'medcentral_schedules_v3',
+      'medcentral_schedules_v2',
+      'medcentral_schedules_v1',
+      'rsumb_master_schedules_v4',
+      'rsumb_master_schedules_v5',
+      'rsumb_schedules_cache'
+    ].forEach((k) => localStorage.removeItem(k));
+
+    // 2. Sanitasi dan deduplikasi baris jadwal hasil upload Excel
+    const sanitized = sanitizeAndDeduplicateSchedules(newSchedules);
+
+    // 3. Masukkan HANYA data baru hasil ekstraksi file Excel (tanpa concat/spread data lama)
+    setSchedules(sanitized);
+    localStorage.setItem('rsumb_schedules', JSON.stringify(sanitized));
+    localStorage.setItem('medcentral_schedules_v5', JSON.stringify(sanitized));
+
+    // 4. Timpa total seluruh jadwal di Firestore (hapus seluruh dokumen lama, simpan data baru)
+    try {
+      await replaceAllSchedulesInFirestore(sanitized);
+    } catch (err) {
+      console.warn('[UploadMasterSchedules] Firestore sync error:', err);
+    }
+
+    try {
+      logSystemActivity(
+        'Upload Master Jadwal Excel',
+        `Menimpa total seluruh data jadwal dokter dengan ${sanitized.length} data baru dari file Excel master manajemen (Mode Ganti Total / Overwrite).`,
+        undefined,
+        'SINKRONISASI',
+        'Jadwal Dokter'
+      );
+    } catch {}
+
+    showToast(`Berhasil! Master jadwal diperbarui secara total dan bersih (${sanitized.length} Jadwal).`);
+  };
+
+  // Fungsi Upload Master Excel dengan Mode "Overwrite Total" & Normalisasi Hari
+  const handleUploadMasterAman = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // 1. Validasi ekstensi file spreadsheet
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const fileName = file.name.toLowerCase();
+    const hasValidExt = validExtensions.some((ext) => fileName.endsWith(ext));
+    if (!hasValidExt) {
+      alert(`Format file tidak valid (${file.name}). Harap pilih file spreadsheet dengan ekstensi .xlsx, .xls, atau .csv.`);
+      event.target.value = '';
+      return;
+    }
+
+    // 2. Validasi batasan ukuran file maksimum (15 MB)
+    const MAX_SIZE_BYTES = 15 * 1024 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      alert(`Ukuran berkas terlalu besar (${sizeMb} MB). Batas maksimum file upload adalah 15 MB.`);
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = (err) => {
+      console.error('FileReader error pada master jadwal:', err);
+      alert('Gagal membaca berkas Excel. File mungkin rusak atau tidak dapat diakses oleh browser.');
+    };
+
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        let newSchedules: any[] = [];
+        let currentPoli = '';
+
+        const isHeaderWord = (str: string) =>
+          /^(no|nomor|total|rekapitulasi|subtotal|jumlah|poli|poliklinik|klinik|spesialis|spesialisasi|spesialisasi\s*\/\s*peran|dokter|dpjp|nama dokter|nama nakes|nama dokter\s*\/\s*nakes|nama dpjp|hari|hari praktik|hari praktek|jam|jam praktik|jam praktek|jam praktis|jam hfis|hfis|jam hfis bpjs|kuota|kuota bpjs|catatan|keterangan)$/i.test(str.trim()) ||
+          /^(jadwal|master|rekap|daftar|jadwal praktik|jadwal dokter|rsu muhammadiyah babat)$/i.test(str.trim());
+
+        // Parsing baris data master (mulai baris ke-3 / indeks 2 secara default)
+        let startIndex = 2;
+        for (let r = 0; r < Math.min(rawData.length, 3); r++) {
+          const rowStr = (rawData[r] || []).map((c: any) => String(c || '').toLowerCase()).join(' ');
+          if (rowStr.includes('spesialisasi') || rowStr.includes('nama dokter') || rowStr.includes('hari praktik')) {
+            startIndex = r + 1;
+            break;
+          }
+        }
+
+        for (let i = startIndex; i < rawData.length; i++) {
+          let row = rawData[i];
+          if (!row || row.length === 0) continue;
+
+          let poli = row[0] ? row[0].toString().trim() : '';
+          if (poli && !isHeaderWord(poli)) currentPoli = normalizePoliCanonical(poli);
+          else if (!poli && currentPoli) poli = currentPoli; // Fitur fill-down jika sel poli digabung
+
+          let dokter = row[1] ? row[1].toString().trim() : '';
+          let hari = row[2] ? row[2].toString().trim() : '';
+          
+          // Normalisasi teks hari agar "Minggu" dan "Ahad" selaras
+          if (hari.toLowerCase() === 'minggu') hari = 'Ahad';
+          else if (hari.toLowerCase() === 'ahad') hari = 'Ahad';
+          else {
+            const hLow = hari.toLowerCase();
+            if (hLow.includes('senin')) hari = 'Senin';
+            else if (hLow.includes('selasa')) hari = 'Selasa';
+            else if (hLow.includes('rabu')) hari = 'Rabu';
+            else if (hLow.includes('kamis')) hari = 'Kamis';
+            else if (hLow.includes('jumat') || hLow.includes("jum'at")) hari = 'Jumat';
+            else if (hLow.includes('sabtu')) hari = 'Sabtu';
+          }
+
+          let jamPraktik = row[3] ? row[3].toString().trim() : '';
+          let hfis = row[4] ? row[4].toString().trim() : '';
+          let kuota = row[5] ? row[5].toString().trim() : '';
+          let catatan = row[6] ? row[6].toString().trim() : '';
+
+          if (dokter && hari && !isHeaderWord(dokter) && !isHeaderWord(hari)) {
+            const canonicalDokter = normalizeDoctorCanonicalName(dokter);
+            const canonicalPoli = poli || inferPoliFromDoctor(canonicalDokter) || 'Poli Spesialis';
+            const kuotaNum = parseInt(kuota?.toString().replace(/[^0-9]/g, '') || '30', 10) || 30;
+            const isNonaktif =
+              /nonaktif|non-aktif|tutup|libur/i.test(catatan) ||
+              catatan.toUpperCase() === 'JADWAL NONAKTIF';
+
+            newSchedules.push({
+              id: `sch-master-${i}`,
+              no: i,
+              poli: canonicalPoli,
+              dokter: canonicalDokter,
+              dpjp: canonicalDokter,
+              hari,
+              jamPraktik,
+              jadwal: jamPraktik || (hfis ? hfis.replace(/:/g, '.') + ' WIB' : '08.00 WIB - selesai'),
+              hfis,
+              jamHfis: hfis,
+              kuota: kuotaNum,
+              kuotaTotal: kuotaNum,
+              kuotaBpjs: kuotaNum,
+              kuotaTerisi: 0,
+              rerataPasien: Math.round(kuotaNum * 0.8),
+              ruangan: inferRoomLocation(canonicalPoli),
+              status: isNonaktif ? 'Nonaktif' : 'Tersedia',
+              catatan
+            });
+          }
+        }
+
+        // LANGKAH UTAMA: Hapus total data lama agar tidak menumpuk/double!
+        localStorage.removeItem('rsumb_schedules');
+        [
+          'medcentral_schedules_v5',
+          'medcentral_schedules_v4',
+          'medcentral_schedules_v3',
+          'medcentral_schedules_v2',
+          'medcentral_schedules_v1',
+          'rsumb_master_schedules_v4',
+          'rsumb_master_schedules_v5',
+          'rsumb_schedules_cache'
+        ].forEach((k) => localStorage.removeItem(k));
+
+        // Timpa state langsung dengan data baru yang bersih
+        const cleanSchedules = sanitizeAndDeduplicateSchedules(newSchedules);
+        setSchedules(cleanSchedules);
+        localStorage.setItem('rsumb_schedules', JSON.stringify(cleanSchedules));
+        localStorage.setItem('medcentral_schedules_v5', JSON.stringify(cleanSchedules));
+
+        try {
+          await replaceAllSchedulesInFirestore(cleanSchedules);
+        } catch (fErr) {
+          console.warn('[handleUploadMasterAman] Firestore sync notice:', fErr);
+        }
+
+        try {
+          logSystemActivity(
+            'Upload Master Jadwal Excel',
+            `Menimpa total seluruh data jadwal dokter dengan ${cleanSchedules.length} data baru dari file Excel master manajemen (Mode Ganti Total / Overwrite).`,
+            undefined,
+            'SINKRONISASI',
+            'Jadwal Dokter'
+          );
+        } catch {}
+
+        alert(`Berhasil! Master jadwal diperbarui secara total dan bersih (${cleanSchedules.length} Jadwal).`);
+      } catch (err) {
+        console.error(err);
+        alert('Gagal memproses file Excel master.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    event.target.value = ''; // Reset input file
+  };
+
+  const handleResetMasterSchedules = async () => {
+    // 1. Bersihkan state & localStorage lama secara total
+    setSchedules([]);
+    [
+      'rsumb_schedules',
+      'medcentral_schedules_v5',
+      'medcentral_schedules_v4',
+      'medcentral_schedules_v3',
+      'medcentral_schedules_v2',
+      'medcentral_schedules_v1',
+      'rsumb_master_schedules_v4',
+      'rsumb_master_schedules_v5',
+      'rsumb_schedules_cache'
+    ].forEach((k) => localStorage.removeItem(k));
+
+    // 2. Terapkan masterSchedules resmi (64 baris unik)
+    const cleanMaster = sanitizeAndDeduplicateSchedules(masterSchedules);
+    setSchedules(cleanMaster);
+    localStorage.setItem('rsumb_schedules', JSON.stringify(cleanMaster));
+    localStorage.setItem('medcentral_schedules_v5', JSON.stringify(cleanMaster));
+    localStorage.setItem('rsumb_master_schedules_version', '2026_10_master_v8_ahad_minggu_fix');
+    localStorage.setItem('rsumb_master_schedules_firestore_migrated', '2026_10_master_v8_ahad_minggu_fix');
+
+    // 3. Timpa total di Firestore
+    try {
+      await replaceAllSchedulesInFirestore(cleanMaster);
+    } catch (err) {
+      console.warn('[ResetMasterSchedules] Firestore sync error:', err);
+    }
+
+    try {
+      logSystemActivity(
+        'Reset Master Jadwal Resmi (64 DPJP)',
+        'Mereset total seluruh data jadwal ke 64 jadwal dokter resmi RSUMB tanpa duplikasi.',
+        undefined,
+        'SINKRONISASI',
+        'Jadwal Dokter'
+      );
+    } catch {}
+
+    showToast('Master Jadwal Dokter berhasil di-reset total ke data resmi (64 DPJP unik).');
   };
 
   const handleSaveLeave = (leaveData: DoctorLeaveAnnouncement) => {
@@ -1175,6 +1623,14 @@ export default function App() {
   const handlePrint = () => {
     window.print();
   };
+
+  const cetakPDF = () => {
+    handlePrint();
+  };
+
+  useEffect(() => {
+    // cetakPDF logic removed to avoid window property assignment issues
+  }, []);
 
   const handleResetFilters = () => {
     setSearchTerm('');
@@ -1547,8 +2003,15 @@ export default function App() {
                 onResetFilters={handleResetFilters}
                 onExport={handleExportCSV}
                 onPrint={handlePrint}
+                cetakPDF={cetakPDF}
                 onBulkUpdateSchedules={handleBulkUpdateSchedules}
                 onBulkDeleteSchedules={handleBulkDeleteSchedules}
+                onUploadMasterSchedules={handleUploadMasterSchedules}
+                onUploadMasterAman={handleUploadMasterAman}
+                onResetMasterSchedules={handleResetMasterSchedules}
+                onUpdateScheduleNote={handleUpdateScheduleNote}
+                onUpdateScheduleTime={handleUpdateScheduleTime}
+                onNavigateToFullAudit={() => setActiveTab('settings')}
                 showToast={showToast}
               />
             </>
@@ -1684,6 +2147,7 @@ export default function App() {
           handleSaveSchedule(data);
           setIsAddDoctorModalOpen(false);
         }}
+        existingSchedules={schedules}
         poliOptions={poliOptions}
         doctorOptions={doctorOptions}
       />
@@ -1711,6 +2175,7 @@ export default function App() {
         onClose={() => setIsAddScheduleModalOpen(false)}
         onSave={handleSaveSchedule}
         editingSchedule={editingSchedule}
+        existingSchedules={schedules}
         poliOptions={poliOptions}
         doctorOptions={doctorOptions}
       />

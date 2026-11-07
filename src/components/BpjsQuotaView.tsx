@@ -149,7 +149,11 @@ export const BpjsQuotaView: React.FC<BpjsQuotaViewProps> = ({ schedules }) => {
   // Unique list of Poliklinik names for filter
   const allPolis = useMemo(() => {
     const set = new Set<string>();
-    schedules.forEach((s) => set.add(s.poli));
+    schedules.forEach((s) => {
+      if (s.poli && s.poli.trim() !== '') {
+        set.add(s.poli.trim());
+      }
+    });
     return Array.from(set).sort();
   }, [schedules]);
 

@@ -87,6 +87,7 @@ export const DEFAULT_MOHAT_SUGGESTIONS: MohatSuggestions = {
     'Supratno (Ambulans PKM Kedungpring)'
   ],
   sopirMohatList: [
+    'Rofii (Mohat Desa Maduran)',
     'Pak Sukardi (Mohat Desa Moropelang)',
     'Pak Hariyanto (Mohat Desa Gendongkulon)',
     'Cak Yanto (Mohat Desa Datinawong)',
@@ -94,6 +95,17 @@ export const DEFAULT_MOHAT_SUGGESTIONS: MohatSuggestions = {
     'Pak Suwandi (Mohat Desa Kebalandono)',
     'Mas Irfan (Mohat Desa Karangkembang)'
   ]
+};
+
+// Database Nomor HP / WhatsApp Pengantar Mohat bawaan untuk auto-fill instan
+export const DEFAULT_MOHAT_DRIVER_PHONES: Record<string, string> = {
+  'Rofii (Mohat Desa Maduran)': '085788991122',
+  'Pak Sukardi (Mohat Desa Moropelang)': '085812345678',
+  'Pak Hariyanto (Mohat Desa Gendongkulon)': '081234567890',
+  'Cak Yanto (Mohat Desa Datinawong)': '085732114455',
+  'Pak Mulyadi (Mohat Desa Pucuk)': '082199887766',
+  'Pak Suwandi (Mohat Desa Kebalandono)': '081355443322',
+  'Mas Irfan (Mohat Desa Karangkembang)': '085644332211'
 };
 
 // Data Awal Kupon Demo (Termasuk Arsip Bulan Agustus & September 2026)
@@ -194,6 +206,25 @@ export const SEED_KUPON_MOHAT: KuponMohat[] = [
     createdAt: '2026-08-30T18:20:00Z'
   },
   {
+    id: 'kpn-aug-06',
+    nomorKupon: 'MHT-20260831-006',
+    noSeri: 'SN-00086',
+    tanggalMasuk: '2026-08-31',
+    jamDibuat: '19:45 WIB',
+    namaPasien: 'Ny. Warsiti (52 Th)',
+    penjamin: 'UMUM',
+    kategori: 'MOHAT',
+    namaPerujuk: 'Rofii (Mohat Desa Maduran)',
+    noHpPengantar: '085788991122',
+    feePerujuk: 25000,
+    feeSopir: 0,
+    feeTotal: 25000,
+    status: 'Lunas',
+    petugasKasir: 'Melinda',
+    catatan: 'Rujukan Mobil Sehat Desa Maduran',
+    createdAt: '2026-08-31T19:45:00Z'
+  },
+  {
     id: 'kpn-1',
     nomorKupon: 'MHT-20260920-001',
     noSeri: 'SN-00001',
@@ -269,7 +300,12 @@ export const loadKuponList = (): KuponMohat[] => {
     let list: KuponMohat[] = [];
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) list = parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+    }
+
+    if (list.length === 0) {
+      list = [...SEED_KUPON_MOHAT];
+      localStorage.setItem(STORAGE_KEY_KUPON_MOHAT, JSON.stringify(list));
     }
 
     // Pastikan seluruh kupon memiliki nomor seri unik untuk integritas audit
@@ -699,5 +735,160 @@ export const clearMohatAuditTrail = (): void => {
   } catch (error) {
     console.error('Gagal membersihkan audit trail:', error);
   }
+};
+
+/**
+ * =============================================================================
+ * SMART DIRECTORY & MULTI-KEYWORD AUTOCOMPLETE SOPIR MOHAT
+ * =============================================================================
+ */
+
+export interface MohatDriverProfile {
+  fullName: string;
+  driverName: string;
+  village: string;
+  phone: string;
+  hasHistory: boolean;
+  lastUsedDate?: string;
+  usageCount: number;
+}
+
+/**
+ * Ekstraksi nama driver dan asal desa dari string komposit:
+ * Contoh: "Rofii (Mohat Desa Maduran)" -> driverName: "Rofii", village: "Mohat Desa Maduran"
+ */
+export const parseDriverNameAndVillage = (rawName: string): { driverName: string; village: string } => {
+  const trimmed = (rawName || '').trim();
+  // Format dalam tanda kurung: "Rofii (Mohat Desa Maduran)"
+  const parenMatch = trimmed.match(/^(.*?)\s*\((.*?)\)$/);
+  if (parenMatch) {
+    return {
+      driverName: parenMatch[1].trim(),
+      village: parenMatch[2].trim()
+    };
+  }
+
+  // Format pemisah tanda hubung: "Rofii - Desa Maduran"
+  const dashMatch = trimmed.match(/^(.*?)\s*[-–]\s*(.*?)$/);
+  if (dashMatch) {
+    return {
+      driverName: dashMatch[1].trim(),
+      village: dashMatch[2].trim()
+    };
+  }
+
+  return {
+    driverName: trimmed,
+    village: ''
+  };
+};
+
+/**
+ * Menghasilkan direktori profil sopir Mohat dinamis dari riwayat kupon localStorage
+ * digabungkan dengan saran sistem bawaan & pemetaan nomor HP WhatsApp.
+ */
+export const getMohatDriverDirectory = (
+  kuponList: KuponMohat[] = [],
+  fallbackList?: string[]
+): MohatDriverProfile[] => {
+  const map = new Map<string, MohatDriverProfile>();
+
+  // 1. Prioritaskan data riwayat kupon fee yang sudah diinput ke localStorage
+  if (Array.isArray(kuponList)) {
+    kuponList.forEach((k) => {
+      if (k.kategori === 'MOHAT' && k.namaPerujuk && k.namaPerujuk.trim()) {
+        const full = k.namaPerujuk.trim();
+        const key = full.toLowerCase();
+        const { driverName, village } = parseDriverNameAndVillage(full);
+        const existing = map.get(key);
+
+        const currentPhone =
+          (k.noHpPengantar && k.noHpPengantar.trim()) ||
+          DEFAULT_MOHAT_DRIVER_PHONES[full] ||
+          '';
+        const currentDate = k.tanggalMasuk || (k.createdAt ? k.createdAt.slice(0, 10) : '');
+
+        if (!existing) {
+          map.set(key, {
+            fullName: full,
+            driverName: driverName || full,
+            village: village || '',
+            phone: currentPhone,
+            hasHistory: true,
+            lastUsedDate: currentDate,
+            usageCount: 1
+          });
+        } else {
+          existing.usageCount += 1;
+          existing.hasHistory = true;
+          // Selalu perbarui ke nomor HP terbaru jika ada
+          if (k.noHpPengantar && k.noHpPengantar.trim()) {
+            existing.phone = k.noHpPengantar.trim();
+          }
+          if (currentDate && (!existing.lastUsedDate || currentDate > existing.lastUsedDate)) {
+            existing.lastUsedDate = currentDate;
+          }
+        }
+      }
+    });
+  }
+
+  // 2. Gabungkan dengan data saran bawaan/tersimpan
+  const fallbackSources =
+    fallbackList && fallbackList.length > 0
+      ? fallbackList
+      : DEFAULT_MOHAT_SUGGESTIONS.sopirMohatList;
+
+  fallbackSources.forEach((raw) => {
+    const full = (raw || '').trim();
+    if (!full) return;
+    const key = full.toLowerCase();
+    const existing = map.get(key);
+    const defaultPhone = DEFAULT_MOHAT_DRIVER_PHONES[full] || '';
+
+    if (!existing) {
+      const { driverName, village } = parseDriverNameAndVillage(full);
+      map.set(key, {
+        fullName: full,
+        driverName: driverName || full,
+        village: village || '',
+        phone: defaultPhone,
+        hasHistory: false,
+        usageCount: 0
+      });
+    } else if (!existing.phone && defaultPhone) {
+      existing.phone = defaultPhone;
+    }
+  });
+
+  // Urutkan: frekuensi pemakaian terbanyak di atas, lalu urut alfabetis
+  return Array.from(map.values()).sort((a, b) => {
+    if (b.usageCount !== a.usageCount) {
+      return b.usageCount - a.usageCount;
+    }
+    return a.driverName.localeCompare(b.driverName);
+  });
+};
+
+/**
+ * Multi-keyword smart filtering:
+ * Mendukung pencarian dengan banyak kata kunci acak (misal: "rof", "maduran", "rof maduran", "0857")
+ * Setiap token kata kunci harus cocok dengan nama pengantar, asal desa, atau nomor HP.
+ */
+export const filterMohatDrivers = (
+  directory: MohatDriverProfile[],
+  query: string
+): MohatDriverProfile[] => {
+  const clean = (query || '').trim().toLowerCase();
+  if (!clean) return directory;
+
+  // Split query ke kata-kata kunci terpisah
+  const tokens = clean.split(/\s+/).filter(Boolean);
+
+  return directory.filter((item) => {
+    // Gabungan teks pencarian mencakup nama lengkap, nama panggilan, desa, dan nomor kontak
+    const searchable = `${item.fullName} ${item.driverName} ${item.village} ${item.phone}`.toLowerCase();
+    return tokens.every((token) => searchable.includes(token));
+  });
 };
 

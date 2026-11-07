@@ -31,7 +31,11 @@ export type HandoverCardData =
   | { tab: 'kll'; record: PatientKllRecord }
   | { tab: 'bpjs_kendala'; record: PatientBpjsKendalaRecord }
   | { tab: 'asuransi_swasta'; record: PatientAsuransiSwastaRecord }
-  | { tab: 'umum_beresiko'; record: PatientUmumBeresikoRecord };
+  | { tab: 'umum_beresiko'; record: PatientUmumBeresikoRecord }
+  | { tab: 'bpjs'; record: PatientBpjsKendalaRecord }
+  | { tab: 'asuransi'; record: PatientAsuransiSwastaRecord }
+  | { tab: 'umum'; record: PatientUmumBeresikoRecord }
+  | { tab: string; record: any };
 
 interface HandoverCardModalProps {
   isOpen: boolean;
@@ -51,6 +55,17 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
   if (!isOpen || !data) return null;
 
   const { tab, record } = data;
+
+  // Normalisasi tab agar mengenali alias seperti 'bpjs', 'asuransi', 'umum'
+  const rawTab = String(tab || '').toLowerCase().trim();
+  const normalizedTab: 'kll' | 'bpjs_kendala' | 'asuransi_swasta' | 'umum_beresiko' =
+    rawTab === 'bpjs' || rawTab === 'bpjs_kendala'
+      ? 'bpjs_kendala'
+      : rawTab === 'asuransi' || rawTab === 'asuransi_swasta'
+      ? 'asuransi_swasta'
+      : rawTab === 'umum' || rawTab === 'umum_beresiko'
+      ? 'umum_beresiko'
+      : 'kll';
 
   // Format date helper
   const formatDate = (dateStr?: string) => {
@@ -89,126 +104,125 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
     return dateStr;
   };
 
-  // Determine Dynamic Status Badge
+  // Determine Dynamic Status Badge dengan Proteksi Null Safety Penuh
   const getStatusBadge = () => {
-    if (tab === 'kll') {
-      const kll = record as PatientKllRecord;
-      if (kll.isInsidenActive) {
-        return {
-          type: 'high_risk',
-          label: '🔴 HIGH RISK',
-          subLabel: 'Insiden Aktif',
-          badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-300',
-          dotClass: 'bg-rose-500'
-        };
-      }
-      const hasLp = kll.statusLp && !kll.statusLp.toUpperCase().includes('BELUM');
-      if (hasLp) {
-        return {
-          type: 'resolved',
-          label: '🟢 RESOLVED (CETAK SEP)',
-          subLabel: 'LP Terbit',
-          badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 ring-1 ring-emerald-300',
-          dotClass: 'bg-emerald-500'
-        };
-      }
-      return {
-        type: 'pending',
-        label: '🟡 PENDING',
-        subLabel: 'Menunggu Berkas LP',
-        badgeClass: 'bg-amber-50 text-amber-800 border-amber-200 ring-1 ring-amber-300',
-        dotClass: 'bg-amber-500'
-      };
-    }
-
-    if (tab === 'bpjs_kendala') {
-      const bpjs = record as PatientBpjsKendalaRecord;
-      if (bpjs.status === 'Resolved (cetak SEP)' || bpjs.status === 'Resolved') {
-        return {
-          type: 'resolved',
-          label: '🟢 RESOLVED (CETAK SEP)',
-          subLabel: 'SEP Berhasil Dicetak',
-          badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 ring-1 ring-emerald-300',
-          dotClass: 'bg-emerald-500'
-        };
-      }
-      if (bpjs.jenisKendala === 'SEP Blocked' || bpjs.jenisKendala === 'Denda Pelayanan') {
-        return {
-          type: 'high_risk',
-          label: '🔴 HIGH RISK',
-          subLabel: 'Kendala Kritis BPJS',
-          badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-300',
-          dotClass: 'bg-rose-500'
-        };
-      }
-      return {
-        type: 'pending',
-        label: '🟡 PENDING',
-        subLabel: 'Menunggu Penyelesaian',
-        badgeClass: 'bg-amber-50 text-amber-800 border-amber-200 ring-1 ring-amber-300',
-        dotClass: 'bg-amber-500'
-      };
-    }
-
-    if (tab === 'asuransi_swasta') {
-      const asuransi = record as PatientAsuransiSwastaRecord;
-      if (asuransi.statusKlaim === 'Disetujui / Selesai') {
-        return {
-          type: 'resolved',
-          label: '🟢 RESOLVED',
-          subLabel: 'GL Disetujui',
-          badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 ring-1 ring-emerald-300',
-          dotClass: 'bg-emerald-500'
-        };
-      }
-      if (
-        asuransi.statusKlaim.includes('Excess') ||
-        asuransi.statusKlaim.includes('Off-Hours')
-      ) {
-        return {
-          type: 'high_risk',
-          label: '🔴 HIGH RISK',
-          subLabel: asuransi.statusKlaim,
-          badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-300',
-          dotClass: 'bg-rose-500'
-        };
-      }
-      return {
-        type: 'pending',
-        label: '🟡 PENDING',
-        subLabel: 'Menunggu GL / Dokumen',
-        badgeClass: 'bg-amber-50 text-amber-800 border-amber-200 ring-1 ring-amber-300',
-        dotClass: 'bg-amber-500'
-      };
-    }
-
-    // tab === 'umum_beresiko'
-    const umum = record as PatientUmumBeresikoRecord;
-    const highRiskTerms = ['Risiko APS/Kabur', 'Komplain Pelayanan', 'Biaya Operasi/Ranap Tinggi', 'Pasien/Keluarga Vokal'];
-    const isHigh = umum.potensiMasalah?.some((p) => highRiskTerms.some((t) => p.includes(t)));
-    if (isHigh) {
-      return {
-        type: 'high_risk',
-        label: '🔴 HIGH RISK',
-        subLabel: 'Potensi Masalah Kritis',
-        badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-300',
-        dotClass: 'bg-rose-500'
-      };
-    }
-    return {
+    const defaultBadge = {
       type: 'pending',
       label: '🟡 PENDING',
-      subLabel: 'Perlu Monitoring Admisi',
+      subLabel: 'Menunggu Penyelesaian',
       badgeClass: 'bg-amber-50 text-amber-800 border-amber-200 ring-1 ring-amber-300',
       dotClass: 'bg-amber-500'
     };
+
+    if (!record) return defaultBadge;
+
+    try {
+      if (normalizedTab === 'kll') {
+        const kll = record as PatientKllRecord;
+        if (kll?.isInsidenActive) {
+          return {
+            type: 'high_risk',
+            label: '🔴 HIGH RISK',
+            subLabel: 'Insiden Aktif',
+            badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-300',
+            dotClass: 'bg-rose-500'
+          };
+        }
+        const hasLp = kll?.statusLp && !String(kll.statusLp).toUpperCase().includes('BELUM');
+        if (hasLp) {
+          return {
+            type: 'resolved',
+            label: '🟢 RESOLVED (CETAK SEP)',
+            subLabel: 'LP Terbit',
+            badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 ring-1 ring-emerald-300',
+            dotClass: 'bg-emerald-500'
+          };
+        }
+        return defaultBadge;
+      }
+
+      if (normalizedTab === 'bpjs_kendala') {
+        const bpjs = record as PatientBpjsKendalaRecord;
+        if (bpjs?.status === 'Resolved (cetak SEP)' || bpjs?.status === 'Resolved') {
+          return {
+            type: 'resolved',
+            label: '🟢 RESOLVED (CETAK SEP)',
+            subLabel: 'SEP Berhasil Dicetak',
+            badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 ring-1 ring-emerald-300',
+            dotClass: 'bg-emerald-500'
+          };
+        }
+        if (bpjs?.jenisKendala === 'SEP Blocked' || bpjs?.jenisKendala === 'Denda Pelayanan') {
+          return {
+            type: 'high_risk',
+            label: '🔴 HIGH RISK',
+            subLabel: 'Kendala Kritis BPJS',
+            badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-300',
+            dotClass: 'bg-rose-500'
+          };
+        }
+        return defaultBadge;
+      }
+
+      if (normalizedTab === 'asuransi_swasta') {
+        const asuransi = record as PatientAsuransiSwastaRecord;
+        if (asuransi?.statusKlaim === 'Disetujui / Selesai') {
+          return {
+            type: 'resolved',
+            label: '🟢 RESOLVED',
+            subLabel: 'GL Disetujui',
+            badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 ring-1 ring-emerald-300',
+            dotClass: 'bg-emerald-500'
+          };
+        }
+        if (
+          asuransi?.statusKlaim &&
+          (String(asuransi.statusKlaim).includes('Excess') || String(asuransi.statusKlaim).includes('Off-Hours'))
+        ) {
+          return {
+            type: 'high_risk',
+            label: '🔴 HIGH RISK',
+            subLabel: asuransi.statusKlaim,
+            badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-300',
+            dotClass: 'bg-rose-500'
+          };
+        }
+        return defaultBadge;
+      }
+
+      // normalizedTab === 'umum_beresiko'
+      const umum = record as PatientUmumBeresikoRecord;
+      const highRiskTerms = ['Risiko APS/Kabur', 'Komplain Pelayanan', 'Biaya Operasi/Ranap Tinggi', 'Pasien/Keluarga Vokal'];
+      const isHigh =
+        Array.isArray(umum?.potensiMasalah) &&
+        umum.potensiMasalah.some((p) => highRiskTerms.some((t) => p && p.includes(t)));
+      if (isHigh) {
+        return {
+          type: 'high_risk',
+          label: '🔴 HIGH RISK',
+          subLabel: 'Potensi Masalah Kritis',
+          badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-300',
+          dotClass: 'bg-rose-500'
+        };
+      }
+    } catch {
+      // Safe fallback
+    }
+
+    return defaultBadge;
   };
 
-  const statusInfo = getStatusBadge();
+  const statusInfo = getStatusBadge() || {
+    type: 'pending',
+    label: '🟡 PENDING',
+    subLabel: 'Menunggu Penyelesaian',
+    badgeClass: 'bg-amber-50 text-amber-800 border-amber-200 ring-1 ring-amber-300',
+    dotClass: 'bg-amber-500'
+  };
 
-  // Tab details helper
+  // Tab details helper dengan Safe Fallback Object
   const getTabCategoryInfo = () => {
-    switch (tab) {
+    switch (normalizedTab) {
       case 'kll':
         return {
           title: 'KLL & JASA RAHARJA',
@@ -233,12 +247,22 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
           color: 'text-amber-700 bg-amber-50 border-amber-200',
           icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
         };
+      default:
+        return {
+          title: 'CATATAN KHUSUS PASIEN',
+          color: 'text-slate-700 bg-slate-50 border-slate-200',
+          icon: <Tag className="w-3.5 h-3.5 text-slate-600" />
+        };
     }
   };
 
-  const categoryInfo = getTabCategoryInfo();
+  const categoryInfo = getTabCategoryInfo() || {
+    title: 'CATATAN KHUSUS PASIEN',
+    color: 'text-slate-700 bg-slate-50 border-slate-200',
+    icon: <Tag className="w-3.5 h-3.5 text-slate-600" />
+  };
 
-  // Extract fields based on Tab
+  // Extract fields based on normalizedTab
   let tanggalMrsKontrol = '-';
   let tanggalKllStr = '';
   let problemStatementTitle = 'Kronologi / Masalah Kasus Pasien';
@@ -249,42 +273,42 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
   let lpFileName = '';
   let lpFileUrl = '';
 
-  if (tab === 'kll') {
-    const kll = record as PatientKllRecord;
-    tanggalMrsKontrol = formatDate(kll.tanggalMrs);
-    if (kll.tanggalKll) {
+  if (normalizedTab === 'kll') {
+    const kll = (record || {}) as PatientKllRecord;
+    tanggalMrsKontrol = formatDate(kll?.tanggalMrs);
+    if (kll?.tanggalKll) {
       tanggalKllStr = formatDate(kll.tanggalKll);
     }
     problemStatementTitle = 'Kronologi Kejadian Kecelakaan (TKP & Lawan Tabrakan)';
-    problemStatementBody = kll.kronologi || '(Tidak ada kronologi yang dicatat)';
+    problemStatementBody = kll?.kronologi || '(Tidak ada kronologi yang dicatat)';
     solutionTitle = 'Catatan Koordinasi Admisi & Jasa Raharja';
-    solutionBody = kll.catatan || '(Belum ada catatan solusi khusus)';
-    if (kll.lpFileName || kll.lpFileUrl) {
+    solutionBody = kll?.catatan || '(Belum ada catatan solusi khusus)';
+    if (kll?.lpFileName || kll?.lpFileUrl) {
       hasLpFile = true;
       lpFileName = kll.lpFileName || 'Surat Laporan Polisi';
       lpFileUrl = kll.lpFileUrl || '';
     }
-  } else if (tab === 'bpjs_kendala') {
-    const bpjs = record as PatientBpjsKendalaRecord;
-    tanggalMrsKontrol = formatDate(bpjs.tanggalMrsKontrol || bpjs.createdAt);
+  } else if (normalizedTab === 'bpjs_kendala') {
+    const bpjs = (record || {}) as PatientBpjsKendalaRecord;
+    tanggalMrsKontrol = formatDate(bpjs?.tanggalMrsKontrol || bpjs?.createdAt);
     problemStatementTitle = 'Detail Kendala Kepesertaan / Bridging SEP';
-    problemStatementBody = bpjs.detailMasalah || '(Tidak ada rincian kendala)';
+    problemStatementBody = bpjs?.detailMasalah || '(Tidak ada rincian kendala)';
     solutionTitle = 'Catatan Solusi & Tindak Lanjut Admisi';
-    solutionBody = bpjs.catatanSolusi || '(Belum ada catatan solusi)';
-  } else if (tab === 'asuransi_swasta') {
-    const asuransi = record as PatientAsuransiSwastaRecord;
-    tanggalMrsKontrol = formatDate(asuransi.createdAt);
+    solutionBody = bpjs?.catatanSolusi || '(Belum ada catatan solusi)';
+  } else if (normalizedTab === 'asuransi_swasta') {
+    const asuransi = (record || {}) as PatientAsuransiSwastaRecord;
+    tanggalMrsKontrol = formatDate(asuransi?.createdAt);
     problemStatementTitle = 'Status Verifikasi Klaim & Penjaminan';
-    problemStatementBody = `Status Klaim: ${asuransi.statusKlaim}. Penjamin: ${asuransi.namaAsuransi}.`;
+    problemStatementBody = `Status Klaim: ${asuransi?.statusKlaim || '-'}. Penjamin: ${asuransi?.namaAsuransi || '-'}.`;
     solutionTitle = 'Catatan Solusi & Handover Shift Admisi';
-    solutionBody = asuransi.catatanHandover || '(Belum ada catatan handover)';
-  } else if (tab === 'umum_beresiko') {
-    const umum = record as PatientUmumBeresikoRecord;
-    tanggalMrsKontrol = formatDate(umum.tanggalMrsKontrol || umum.createdAt);
+    solutionBody = asuransi?.catatanHandover || '(Belum ada catatan handover)';
+  } else if (normalizedTab === 'umum_beresiko') {
+    const umum = (record || {}) as PatientUmumBeresikoRecord;
+    tanggalMrsKontrol = formatDate(umum?.tanggalMrsKontrol || umum?.createdAt);
     problemStatementTitle = 'Kronologi Masalah & Situasi Pasien / Keluarga';
-    problemStatementBody = umum.kronologiMasalah || '(Tidak ada catatan kronologi)';
+    problemStatementBody = umum?.kronologiMasalah || '(Tidak ada catatan kronologi)';
     solutionTitle = 'Tindak Lanjut & Intervensi Petugas Admisi';
-    solutionBody = umum.tindakLanjut || '(Belum ada tindak lanjut khusus)';
+    solutionBody = umum?.tindakLanjut || '(Belum ada tindak lanjut khusus)';
   }
 
   // Handle Print Action
@@ -295,14 +319,14 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
   // Copy Summary text to Clipboard
   const handleCopyCardText = () => {
     let summaryText = `*RSU MUHAMMADIYAH BABAT - KARTU KHUSUS ADMISI*\n`;
-    summaryText += `Pasien: ${record.namaPasien} | No. RM: ${record.noRm}\n`;
-    summaryText += `Kategori: ${categoryInfo.title} | Status: ${statusInfo.label}\n`;
+    summaryText += `Pasien: ${record?.namaPasien || '-'} | No. RM: ${record?.noRm || '-'}\n`;
+    summaryText += `Kategori: ${categoryInfo?.title || 'Catatan Khusus'} | Status: ${statusInfo?.label || 'Pending'}\n`;
     summaryText += `Tgl MRS/Kontrol: ${tanggalMrsKontrol}\n`;
     summaryText += `----------------------------------------\n`;
     summaryText += `*${problemStatementTitle}:*\n${problemStatementBody}\n`;
     summaryText += `----------------------------------------\n`;
     summaryText += `*${solutionTitle}:*\n${solutionBody}\n`;
-    summaryText += `Waktu Catat: ${formatDateTime(record.createdAt)}\n`;
+    summaryText += `Waktu Catat: ${formatDateTime(record?.createdAt)}\n`;
 
     navigator.clipboard.writeText(summaryText).then(() => {
       setCopied(true);
@@ -335,10 +359,10 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
 
             <div className="flex items-center gap-2 shrink-0">
               <div
-                className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-wider uppercase border flex items-center gap-1.5 shadow-xs ${statusInfo.badgeClass}`}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-wider uppercase border flex items-center gap-1.5 shadow-xs ${statusInfo?.badgeClass || 'bg-amber-50 text-amber-800 border-amber-200'}`}
               >
-                <span className={`w-2 h-2 rounded-full animate-pulse ${statusInfo.dotClass}`} />
-                <span>{statusInfo.label}</span>
+                <span className={`w-2 h-2 rounded-full animate-pulse ${statusInfo?.dotClass || 'bg-amber-500'}`} />
+                <span>{statusInfo?.label || 'PENDING'}</span>
               </div>
               <button
                 type="button"
@@ -358,10 +382,10 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <h4 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                    {record.namaPasien}
+                    {record?.namaPasien || 'Pasien'}
                   </h4>
                   <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono font-bold text-xs tracking-wider">
-                    RM: {record.noRm}
+                    RM: {record?.noRm || '-'}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium">
@@ -380,10 +404,10 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
               {/* Sub-tab Category Pill */}
               <div className="self-start sm:self-center">
                 <span
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${categoryInfo.color}`}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${categoryInfo?.color || 'text-slate-700 bg-slate-50 border-slate-200'}`}
                 >
-                  {categoryInfo.icon}
-                  <span>{categoryInfo.title}</span>
+                  {categoryInfo?.icon || <Tag className="w-3.5 h-3.5 text-slate-600" />}
+                  <span>{categoryInfo?.title || 'CATATAN KHUSUS'}</span>
                 </span>
               </div>
             </div>
@@ -617,8 +641,8 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
 
           {/* Top Status & Timestamp */}
           <div className="flex justify-between items-center text-[8pt] bg-gray-100 p-1.5 border border-gray-300 font-bold">
-            <span>KATEGORI: {categoryInfo.title}</span>
-            <span className="font-mono">STATUS: {statusInfo.label}</span>
+            <span>KATEGORI: {categoryInfo?.title || 'CATATAN KHUSUS'}</span>
+            <span className="font-mono">STATUS: {statusInfo?.label || 'PENDING'}</span>
           </div>
 
           {/* Row 1: Demographics Grid */}
@@ -626,9 +650,9 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
             <tbody>
               <tr>
                 <td className="w-28 p-1 font-bold bg-gray-50 border border-black">Nama Pasien</td>
-                <td className="p-1 font-bold border border-black text-[9pt]">{record.namaPasien}</td>
+                <td className="p-1 font-bold border border-black text-[9pt]">{record?.namaPasien || '-'}</td>
                 <td className="w-20 p-1 font-bold bg-gray-50 border border-black">No. RM</td>
-                <td className="w-24 p-1 font-mono font-bold border border-black text-[9pt] text-center">{record.noRm}</td>
+                <td className="w-24 p-1 font-mono font-bold border border-black text-[9pt] text-center">{record?.noRm || '-'}</td>
               </tr>
               <tr>
                 <td className="p-1 font-bold bg-gray-50 border border-black">Tgl MRS / Kontrol</td>
@@ -637,12 +661,12 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
                 </td>
                 <td className="p-1 font-bold bg-gray-50 border border-black">Penjamin</td>
                 <td className="p-1 border border-black font-bold text-center">
-                  {tab === 'kll'
-                    ? (record as PatientKllRecord).penjamin
-                    : tab === 'bpjs_kendala'
+                  {normalizedTab === 'kll'
+                    ? ((record as PatientKllRecord)?.penjamin || 'Jasa Raharja')
+                    : normalizedTab === 'bpjs_kendala'
                     ? 'BPJS Kes'
-                    : tab === 'asuransi_swasta'
-                    ? (record as PatientAsuransiSwastaRecord).namaAsuransi
+                    : normalizedTab === 'asuransi_swasta'
+                    ? ((record as PatientAsuransiSwastaRecord)?.namaAsuransi || 'Asuransi Swasta')
                     : 'UMUM'}
                 </td>
               </tr>
@@ -660,29 +684,29 @@ export const HandoverCardModal: React.FC<HandoverCardModalProps> = ({
           {/* Row 3: Tags / Additional Identifiers */}
           <div className="border border-black p-2 bg-gray-50 text-[7.5pt]">
             <span className="font-bold">DETAIL IDENTIFIKASI & LABEL: </span>
-            {tab === 'kll' && (
+            {normalizedTab === 'kll' && (
               <span>
-                Status LP: {(record as PatientKllRecord).statusLp || 'BELUM'} |
-                Insiden: {(record as PatientKllRecord).isInsidenActive ? 'AKTIF' : 'NON-AKTIF'}
+                Status LP: {(record as PatientKllRecord)?.statusLp || 'BELUM'} |
+                Insiden: {(record as PatientKllRecord)?.isInsidenActive ? 'AKTIF' : 'NON-AKTIF'}
                 {hasLpFile ? ' | Berkas LP Terunggah' : ''}
               </span>
             )}
-            {tab === 'bpjs_kendala' && (
+            {normalizedTab === 'bpjs_kendala' && (
               <span>
-                Kendala: {(record as PatientBpjsKendalaRecord).jenisKendala} |
-                No. BPJS: {(record as PatientBpjsKendalaRecord).noKartuBpjs || '-'} |
-                Status: {(record as PatientBpjsKendalaRecord).status}
+                Kendala: {(record as PatientBpjsKendalaRecord)?.jenisKendala || '-'} |
+                No. BPJS: {(record as PatientBpjsKendalaRecord)?.noKartuBpjs || '-'} |
+                Status: {(record as PatientBpjsKendalaRecord)?.status || '-'}
               </span>
             )}
-            {tab === 'asuransi_swasta' && (
+            {normalizedTab === 'asuransi_swasta' && (
               <span>
-                Asuransi: {(record as PatientAsuransiSwastaRecord).namaAsuransi} |
-                Status Klaim: {(record as PatientAsuransiSwastaRecord).statusKlaim}
+                Asuransi: {(record as PatientAsuransiSwastaRecord)?.namaAsuransi || '-'} |
+                Status Klaim: {(record as PatientAsuransiSwastaRecord)?.statusKlaim || '-'}
               </span>
             )}
-            {tab === 'umum_beresiko' && (
+            {normalizedTab === 'umum_beresiko' && (
               <span>
-                Potensi Masalah: {(record as PatientUmumBeresikoRecord).potensiMasalah?.join(', ') || '-'}
+                Potensi Masalah: {(record as PatientUmumBeresikoRecord)?.potensiMasalah?.join(', ') || '-'}
               </span>
             )}
           </div>

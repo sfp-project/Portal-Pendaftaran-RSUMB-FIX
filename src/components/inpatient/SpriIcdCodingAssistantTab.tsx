@@ -25,7 +25,19 @@ import {
   X,
   Eye
 } from 'lucide-react';
-import { parseSpriText, formatPesananKamarWA, ParsedSpriData } from '../../data/inpatientOrderData';
+import {
+  parseSpriText,
+  formatPesananKamarWA,
+  ParsedSpriData,
+  parseSPRIInput,
+  ICD_10_DATABASE,
+  matchIcdForPart,
+  matchIcdForDiagnosis,
+  extractKelasKamarFromText,
+  IcdEntry
+} from '../../data/inpatientOrderData';
+export { parseSPRIInput, matchIcdForPart, matchIcdForDiagnosis, extractKelasKamarFromText, ICD_10_DATABASE };
+export type { IcdEntry };
 import { PatientQueueItem } from '../../types';
 import { savePatientQueueDoc } from '../../services/firestoreSync';
 import { loadMedicalLetters, saveMedicalLetters } from '../../data/letterData';
@@ -33,187 +45,6 @@ import { MedicalLetterItem } from '../../types/letterTypes';
 
 interface SpriIcdCodingAssistantTabProps {
   showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
-}
-
-interface IcdEntry {
-  code: string;
-  diagnosis: string;
-  specialty: string;
-}
-
-const ICD_10_DATABASE: IcdEntry[] = [
-  // Sp.PD (Penyakit Dalam)
-  { code: 'A91', diagnosis: 'Dengue haemorrhagic fever / DHF / DBD + warning sign', specialty: 'Sp.PD' },
-  { code: 'K92.1', diagnosis: 'Melena / Perdarahan Saluran Cerna Bagian Atas', specialty: 'Sp.PD' },
-  { code: 'K92.0', diagnosis: 'Hematemesis / Muntah Darah', specialty: 'Sp.PD' },
-  { code: 'K92.2', diagnosis: 'Hematemesis Melena / Gastrointestinal Haemorrhage', specialty: 'Sp.PD' },
-  { code: 'R57.1', diagnosis: 'Syok Hipovolemia / Hypovolemic Shock', specialty: 'Sp.PD' },
-  { code: 'K30', diagnosis: 'Dyspepsia / Dispepsia', specialty: 'Sp.PD' },
-  { code: 'K29.7', diagnosis: 'Gastritis, Tidak Spesifik / Maag Akut', specialty: 'Sp.PD' },
-  { code: 'E11.9', diagnosis: 'Diabetes Mellitus Tipe 2 Tanpa Komplikasi (DM)', specialty: 'Sp.PD' },
-  { code: 'E11.5', diagnosis: 'Diabetic Foot / Gangren Diabetikum', specialty: 'Sp.PD' },
-  { code: 'I10', diagnosis: 'Hipertensi Esensial (Primer)', specialty: 'Sp.PD' },
-  { code: 'I50.9', diagnosis: 'Gagal Jantung Kongestif (CHF)', specialty: 'Sp.PD' },
-  { code: 'I21.9', diagnosis: 'Infark Miokard Akut (STEMI / NSTEMI / Sindrom Koroner)', specialty: 'Sp.PD' },
-  { code: 'N18.9', diagnosis: 'Penyakit Ginjal Kronis (CKD / CRF)', specialty: 'Sp.PD' },
-  { code: 'N17.9', diagnosis: 'Gagal Ginjal Akut (AKI / ARF)', specialty: 'Sp.PD' },
-  { code: 'D64.9', diagnosis: 'Anemia, Tidak Spesifik', specialty: 'Sp.PD' },
-  { code: 'A09', diagnosis: 'Gastroenteritis Akut Diduga Infeksi (GEA / Diare Akut)', specialty: 'Sp.PD' },
-  { code: 'R50.9', diagnosis: 'Febris / Demam Tidak Spesifik', specialty: 'Sp.PD' },
-  { code: 'A41.9', diagnosis: 'Sepsis, Organisme Tidak Spesifik', specialty: 'Sp.PD' },
-  { code: 'N39.0', diagnosis: 'Infeksi Saluran Kemih (ISK / UTI)', specialty: 'Sp.PD' },
-
-  // Sp.N (Saraf / Neurologi)
-  { code: 'I63.9', diagnosis: 'Stroke Iskemik / Infark Serebral (CVA Iskemik)', specialty: 'Sp.N' },
-  { code: 'I61.9', diagnosis: 'Stroke Hemoragik / Pendarahan Intraserebral (ICH / CVA Bleeding)', specialty: 'Sp.N' },
-  { code: 'R42', diagnosis: 'Vertigo (Dizziness and Giddiness / BPPV)', specialty: 'Sp.N' },
-  { code: 'G44.2', diagnosis: 'Sakit Kepala Tegang (Tension Headache / Cephalea)', specialty: 'Sp.N' },
-  { code: 'G40.9', diagnosis: 'Epilepsi / Kejang Berulang', specialty: 'Sp.N' },
-  { code: 'G51.0', diagnosis: 'Bell Palsy (Kelumpuhan Saraf Fasial)', specialty: 'Sp.N' },
-  { code: 'M54.5', diagnosis: 'Nyeri Punggung Bawah (Low Back Pain / LBP / HNP)', specialty: 'Sp.N' },
-
-  // Sp.B / Sp.OT / Urologi (Bedah, Tulang & Saluran Kemih)
-  { code: 'S62.6', diagnosis: 'cf phalang 3 manus s / Fraktur Phalang Jari Tangan (Manus)', specialty: 'Sp.OT' },
-  { code: 'R33', diagnosis: 'Retensi Urin / Retensio Urinae', specialty: 'Sp.B' },
-  { code: 'N40', diagnosis: 'Benign Prostatic Hyperplasia (BPH / Pembesaran Prostat)', specialty: 'Sp.B' },
-  { code: 'N20.1', diagnosis: 'Batu Ureter / Ureterolithiasis', specialty: 'Sp.B' },
-  { code: 'N20.0', diagnosis: 'Batu Ginjal / Nefrolitiasis / Batu Saluran Kemih (BSK)', specialty: 'Sp.B' },
-  { code: 'C02.9', diagnosis: 'Ca Lidah / Kanker Lidah (Carcinoma of Tongue)', specialty: 'Sp.B' },
-  { code: 'C50.9', diagnosis: 'Ca Mammae / Kanker Payudara', specialty: 'Sp.B' },
-  { code: 'C18.9', diagnosis: 'Ca Kolon / Kanker Usus Besar', specialty: 'Sp.B' },
-  { code: 'S72.9', diagnosis: 'Fraktur Tulang Paha (Femur)', specialty: 'Sp.OT' },
-  { code: 'S82.9', diagnosis: 'Fraktur Tungkai Bawah / Cruris / Tibia / Fibula', specialty: 'Sp.OT' },
-  { code: 'S52.9', diagnosis: 'Fraktur Lengan Bawah / Antebrachii / Radius / Ulna', specialty: 'Sp.OT' },
-  { code: 'S42.0', diagnosis: 'Fraktur Tulang Selangka / Klavikula', specialty: 'Sp.OT' },
-  { code: 'K35.8', diagnosis: 'Appendisitis Akut (Usus Buntu)', specialty: 'Sp.B' },
-  { code: 'K40.9', diagnosis: 'Hernia Inguinalis Tanpa Obstruksi', specialty: 'Sp.B' },
-  { code: 'S01.9', diagnosis: 'Luka Robek Terbuka (Vulnus Laceratum / VL)', specialty: 'Sp.B' },
-  { code: 'K64.9', diagnosis: 'Hemoroid / Ambeien / Wasir', specialty: 'Sp.B' },
-  { code: 'K80.2', diagnosis: 'Kolelitiasis / Batu Empedu Tanpa Kolesistitis', specialty: 'Sp.B' },
-
-  // Sp.A (Anak)
-  { code: 'J18.0', diagnosis: 'Bronkopneumonia Anak', specialty: 'Sp.A' },
-  { code: 'R56.0', diagnosis: 'Kejang Demam Sederhana / Kompleks (KDS / KDK)', specialty: 'Sp.A' },
-  { code: 'J45.9', diagnosis: 'Asma Bronkial Anak', specialty: 'Sp.A' },
-  { code: 'B05.9', diagnosis: 'Morbilli / Campak Tanpa Komplikasi', specialty: 'Sp.A' },
-  { code: 'J03.9', diagnosis: 'Tonsilitis Akut', specialty: 'Sp.A' },
-  { code: 'P59.9', diagnosis: 'Hiperbilirubin / Neonatal Jaundice / Ikterus Neonatorum (Bayi Kuning)', specialty: 'Sp.A' },
-  { code: 'R17', diagnosis: 'Hiperbilirubin Dewasa / Jaundice / Ikterus Tidak Spesifik', specialty: 'Sp.PD' },
-
-  // Sp.OG (Kebidanan & Kandungan)
-  { code: 'O80', diagnosis: 'Persalinan Tunggal Spontan (Partus Normal)', specialty: 'Sp.OG' },
-  { code: 'O82', diagnosis: 'Persalinan dengan Sectio Caesarea (SC)', specialty: 'Sp.OG' },
-  { code: 'O42.9', diagnosis: 'Ketuban Pecah Dini (KPD / PROM)', specialty: 'Sp.OG' },
-  { code: 'O14.9', diagnosis: 'Preeklampsia Berat (PEB) / Preeklampsia Ringan', specialty: 'Sp.OG' },
-  { code: 'O21.0', diagnosis: 'Hiperemesis Gravidarum (HEG)', specialty: 'Sp.OG' },
-  { code: 'O03.4', diagnosis: 'Abortus Inkomplit', specialty: 'Sp.OG' },
-  { code: 'D25.9', diagnosis: 'Leiomioma Uteri / Mioma Uteri', specialty: 'Sp.OG' },
-  { code: 'N83.2', diagnosis: 'Kista Ovarium', specialty: 'Sp.OG' },
-  { code: 'C53.9', diagnosis: 'Ca Serviks / Kanker Leher Rahim', specialty: 'Sp.OG' },
-
-  // Sp.P (Paru)
-  { code: 'J18.9', diagnosis: 'Pneumonia Komunitas / Infeksi Paru', specialty: 'Sp.P' },
-  { code: 'A15.0', diagnosis: 'Tuberkulosis Paru (TB Paru)', specialty: 'Sp.P' },
-  { code: 'J44.1', diagnosis: 'PPOK dengan Eksaserbasi Akut (COPD)', specialty: 'Sp.P' },
-  { code: 'J90', diagnosis: 'Efusi Pleura', specialty: 'Sp.P' },
-  { code: 'J45.9', diagnosis: 'Asma Bronkial Eksaserbasi Akut', specialty: 'Sp.P' },
-  { code: 'C34.9', diagnosis: 'Ca Paru / Kanker Paru-Paru', specialty: 'Sp.P' },
-
-  // Diagnosa Tambahan: Kardiovaskular, Gastro & Psikosomatis, Hipotensi & Anemia Gravis
-  { code: 'I95.9', diagnosis: 'Hipotensi, Tidak Spesifik / Penurunan Tekanan Darah (Hipotensi Ortostatik)', specialty: 'Sp.PD' },
-  { code: 'R07.9', diagnosis: 'Chest Pain / Nyeri Dada, Tidak Spesifik', specialty: 'Sp.PD' },
-  { code: 'I20.9', diagnosis: 'Angina Pectoris, Tidak Spesifik / Penyakit Jantung Koroner', specialty: 'Sp.PD' },
-  { code: 'K21.9', diagnosis: 'Gastro-Oesophageal Reflux Disease (GERD / Asam Lambung)', specialty: 'Sp.PD' },
-  { code: 'F45.9', diagnosis: 'Gangguan Somatoform / Gangguan Psikosomatis (Psikomatis)', specialty: 'Sp.N' }
-];
-
-export function matchIcdForPart(rawPart: string): string {
-  const clean = rawPart.trim().toLowerCase();
-  if (!clean) return '';
-
-  // 1. Direct code match like K92.1 atau (R33)
-  const directMatch = clean.match(/\b([a-z]\d{2}(?:\.\d+)?)\b/i);
-  if (directMatch && !/th|bln|kls/i.test(directMatch[1])) {
-    return directMatch[1].toUpperCase();
-  }
-
-  // 2. Exact Medis Keyword & Pola Klinis RSUMB
-  // Hiperbilirubin / Neonatal Jaundice -> P59.9
-  if (/hiperbilirubin|bilirubin|ikterus|neonatal\s*jaundice|jaundice|bayi\s*kuning/i.test(clean)) return 'P59.9';
-
-  if (/cf\s*phalang|fraktur\s*phalang|phalang.*manus|fracture.*finger/i.test(clean)) return 'S62.6';
-  if (/retensi\s*urin|retensio\s*urina/i.test(clean)) return 'R33';
-  if (/\bbph\b|benign\s*prostat|prostat/i.test(clean)) return 'N40';
-  if (/melena/i.test(clean)) return 'K92.1';
-  if (/hematemesis.*melena/i.test(clean)) return 'K92.2';
-  if (/hematemesis|muntah\s*darah/i.test(clean)) return 'K92.0';
-  if (/syok\s*hipovolem/i.test(clean)) return 'R57.1';
-  if (/ca\s*lidah|kanker\s*lidah/i.test(clean)) return 'C02.9';
-  if (/ca\s*paru|kanker\s*paru/i.test(clean)) return 'C34.9';
-  if (/ca\s*mammae|kanker\s*payudara/i.test(clean)) return 'C50.9';
-  if (/ca\s*kolon|kanker\s*kolon|kanker\s*usus/i.test(clean)) return 'C18.9';
-  if (/ca\s*serviks|kanker\s*serviks/i.test(clean)) return 'C53.9';
-  if (/batu\s*ureter|ureterolitiasis/i.test(clean)) return 'N20.1';
-  if (/batu\s*(?:saluran\s*kemih|ginjal)|bsk|nefrolitiasis/i.test(clean)) return 'N20.0';
-  if (/dhf|dbd|dengue/i.test(clean)) return 'A91';
-  if (/dyspepsia|dispepsia/i.test(clean)) return 'K30';
-  if (/gastritis|maag/i.test(clean)) return 'K29.7';
-  if (/chf|gagal\s*jantung/i.test(clean)) return 'I50.9';
-  if (/stemi|nstemi|koroner/i.test(clean)) return 'I21.9';
-  if (/\bhipertensi\b|\bht\b/i.test(clean)) return 'I10';
-  if (/hipotensi|hypotension/i.test(clean)) return 'I95.9';
-  if (/anemia/i.test(clean)) return 'D64.9';
-  if (/vertigo/i.test(clean)) return 'R42';
-  if (/fraktur\s*femur/i.test(clean)) return 'S72.9';
-  if (/fraktur\s*tibia|fraktur\s*cruris/i.test(clean)) return 'S82.9';
-  if (/fraktur\s*(?:antebrachii|radius|ulna)/i.test(clean)) return 'S52.9';
-  if (/fraktur\s*(?:clavicle|klavikula)/i.test(clean)) return 'S42.0';
-  if (/appendisitis|apendisitis|usus\s*buntu/i.test(clean)) return 'K35.8';
-  if (/hernia/i.test(clean)) return 'K40.9';
-  if (/vulnus\s*laceratum|luka\s*robek|\bvl\b/i.test(clean)) return 'S01.9';
-  if (/hemoroid|wasir|ambeien/i.test(clean)) return 'K64.9';
-  if (/bronkopneumonia/i.test(clean)) return 'J18.0';
-  if (/pneumonia/i.test(clean)) return 'J18.9';
-  if (/tb\s*paru|tbc/i.test(clean)) return 'A15.0';
-  if (/asma|asthma/i.test(clean)) return 'J45.9';
-  if (/ppok|copd/i.test(clean)) return 'J44.1';
-  if (/efusi\s*pleura/i.test(clean)) return 'J90';
-  if (/\bkpd\b|ketuban\s*pecah/i.test(clean)) return 'O42.9';
-  if (/sectio\s*caesarea|\bsc\b/i.test(clean)) return 'O82';
-  if (/stroke\s*iskemik|infark\s*serebral/i.test(clean)) return 'I63.9';
-  if (/stroke\s*hemoragik|\bich\b/i.test(clean)) return 'I61.9';
-  if (/stroke|cva/i.test(clean)) return 'I63.9';
-  if (/kejang\s*demam|\bkds\b|\bkdk\b/i.test(clean)) return 'R56.0';
-  if (/\bdm\b|diabetes/i.test(clean)) return 'E11.9';
-  if (/\bckd\b|\bcrf\b|gagal\s*ginjal/i.test(clean)) return 'N18.9';
-  if (/febris|demam/i.test(clean)) return 'R50.9';
-  if (/\bgea\b|gastroenteritis/i.test(clean)) return 'A09';
-  if (/sepsis/i.test(clean)) return 'A41.9';
-  if (/\bisk\b|\buti\b|infeksi\s*saluran\s*kemih/i.test(clean)) return 'N39.0';
-  if ((/preeklampsia|\bpeb\b/i.test(clean) || /\bper\b/i.test(clean)) && !/hiper/i.test(clean)) return 'O14.9';
-  if (/hiperemesis|\bheg\b/i.test(clean)) return 'O21.0';
-  if (/abortus/i.test(clean)) return 'O03.4';
-  if (/mioma/i.test(clean)) return 'D25.9';
-  if (/kista/i.test(clean)) return 'N83.2';
-
-  // Chest pain, Angina, GERD, Psikosomatis (Spesifik Permintaan Pasien)
-  if (/chest\s*pain/i.test(clean)) return 'R07.9';
-  if (/angina/i.test(clean)) return 'I20.9';
-  if (/gerd|refluks|gastroesophag/i.test(clean)) return 'K21.9';
-  if (/psiko(?:matis|somatis)|somatoform/i.test(clean)) return 'F45.9';
-
-  // 3. Dynamic lookup across ICD_10_DATABASE (menggunakan token boundary yang ketat)
-  const found = ICD_10_DATABASE.find((item) => {
-    const d = item.diagnosis.toLowerCase();
-    if (d.includes(clean)) return true;
-    const tokens = d.split(/[/(),\s]+/).filter((t) => t.length >= 4);
-    return tokens.some((t) => {
-      const reg = new RegExp(`\\b${t}\\b`, 'i');
-      return reg.test(clean);
-    });
-  });
-
-  return found ? found.code : '';
 }
 
 export type PenjaminType = 'BPJS' | 'UMUM' | 'KLL / JR / LP';
@@ -302,6 +133,735 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
       localStorage.setItem('rsumb_spri_session_logs', JSON.stringify(updated));
       return updated;
     });
+
+    // Perbarui selectedDetailLog secara instan jika modal sedang dibuka
+    setSelectedDetailLog(prev => {
+      if (prev && prev.id === logId) {
+        return {
+          ...prev,
+          checklistState: {
+            ...prev.checklistState,
+            [itemKey]: !prev.checklistState[itemKey]
+          }
+        };
+      }
+      return prev;
+    });
+  };
+
+  // Cetak Struk Thermal 80mm Khusus Sesi Kontrol / Checklist Berkas Pasien
+  const handlePrintThermalReceipt = (log: SessionLog) => {
+    const progress = getChecklistProgress(log);
+    const now = new Date();
+    const formattedPrintTime =
+      now.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }) +
+      ' ' +
+      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+      ' WIB';
+
+    // List item checklist sesuai status checklist saat ini (Tabel rapat, font monospace tegas, kotak ceklis lurus)
+    const checklistItemsHtml = progress.items
+      .map((item, idx) => {
+        const isChecked = !!log.checklistState[item];
+        const checkMark = isChecked ? '[✓]' : '[ ]';
+        const isLast = idx === progress.items.length - 1;
+        return `<tr style="${isLast ? '' : 'border-bottom: 1px dotted #555;'}">
+        <td style="width: 30px; vertical-align: top; font-family: 'Courier New', Courier, monospace; font-size: 13px; font-weight: 900; padding: 4px 0 4px 2px; color: #000; letter-spacing: -0.5px; white-space: nowrap;">
+          ${checkMark}
+        </td>
+        <td style="vertical-align: top; font-family: 'Courier New', Courier, monospace; font-size: 12px; font-weight: bold; padding: 4px 4px; color: #000; line-height: 1.25; letter-spacing: -0.25px;">
+          ${item}
+        </td>
+        <td style="width: 66px; text-align: right; vertical-align: top; padding: 4px 2px 4px 0;">
+          <span style="display: inline-block; font-family: 'Courier New', Courier, monospace; font-size: 9.5px; font-weight: 900; border: 1.5px solid #000; padding: 1px 4px; border-radius: 2px; letter-spacing: 0.2px; background: #fff;">
+            ${isChecked ? 'LENGKAP' : 'BELUM'}
+          </span>
+        </td>
+      </tr>`;
+      })
+      .join('');
+
+    const thermalHtml = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>Struk Kontrol Berkas - ${log.pasien} (${log.rm})</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      width: 78mm;
+      max-width: 80mm;
+      margin: 0 auto;
+      padding: 10px 8px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      font-weight: bold;
+      line-height: 1.28;
+      color: #000;
+      background: #fff;
+      letter-spacing: -0.3px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 8px;
+      border-bottom: 2px dashed #000;
+      padding-bottom: 8px;
+    }
+    .hospital-title {
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      margin-bottom: 3px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .hospital-sub {
+      font-size: 10.5px;
+      line-height: 1.25;
+      color: #000;
+      font-weight: bold;
+    }
+    .receipt-title {
+      font-size: 12.5px;
+      font-weight: 900;
+      text-align: center;
+      margin: 6px 0;
+      padding: 5px 0;
+      border-top: 2px dashed #000;
+      border-bottom: 2px dashed #000;
+      text-transform: uppercase;
+      letter-spacing: 0.2px;
+      line-height: 1.25;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6px 0;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .info-table td {
+      vertical-align: top;
+      padding: 2.5px 0;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+    .info-label {
+      width: 38%;
+      color: #000;
+      font-weight: bold;
+    }
+    .info-sep {
+      width: 4%;
+      text-align: center;
+      font-weight: 900;
+    }
+    .info-val {
+      width: 58%;
+      font-weight: 900;
+    }
+    .divider {
+      border-top: 2px dashed #000;
+      margin: 8px 0;
+    }
+    .section-title {
+      font-size: 11.5px;
+      font-weight: 900;
+      text-transform: uppercase;
+      margin: 6px 0 4px 0;
+      letter-spacing: 0.2px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .checklist-box {
+      background: #fff;
+      border: 1.5px solid #000;
+      border-radius: 4px;
+      padding: 2px 4px;
+      margin-bottom: 6px;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 900;
+      border: 1.5px solid #000;
+      border-radius: 3px;
+      background: #fff;
+      letter-spacing: 0.2px;
+    }
+    .signature-area {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+      margin-bottom: 8px;
+      font-size: 10px;
+      font-weight: bold;
+      text-align: center;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .sign-box {
+      width: 48%;
+    }
+    .sign-space {
+      height: 36px;
+    }
+    .footer {
+      text-align: center;
+      font-size: 10px;
+      font-weight: bold;
+      margin-top: 10px;
+      color: #000;
+      line-height: 1.3;
+      border-top: 2px dashed #000;
+      padding-top: 8px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .no-print-bar {
+      position: sticky;
+      top: 0;
+      background: #005d42;
+      color: #fff;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: -10px -8px 10px -8px;
+      font-family: -apple-system, sans-serif;
+      font-size: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    .btn-action {
+      background: #fff;
+      color: #005d42;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .btn-close {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.4);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 11px;
+      cursor: pointer;
+      margin-left: 6px;
+    }
+    @media print {
+      @page {
+        size: 80mm auto;
+        margin: 2mm 3mm;
+      }
+      body {
+        width: 100%;
+        max-width: 100%;
+        padding: 0;
+        margin: 0;
+      }
+      .no-print, .no-print-bar {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-bar">
+    <span style="font-weight: bold;">🖨️ Cetak Struk Thermal 80mm</span>
+    <div>
+      <button class="btn-action" onclick="window.print()">Cetak (Print)</button>
+      <button class="btn-close" onclick="window.close()">Tutup</button>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="hospital-title">RSU MUHAMMADIYAH BABAT</div>
+    <div class="hospital-sub">
+      Jl. Raya Babat-Surabaya No. 15 Lamongan<br />
+      Telp: (0322) 451122 &bull; IGD 24 Jam
+    </div>
+  </div>
+
+  <div class="receipt-title">
+    STRUK KONTROL / CHECKLIST BERKAS PASIEN
+  </div>
+
+  <table class="info-table">
+    <tr>
+      <td class="info-label">Waktu Sesi/Cetak</td>
+      <td class="info-sep">:</td>
+      <td class="info-val">${formattedPrintTime}</td>
+    </tr>
+    <tr>
+      <td class="info-label">Nama Pasien</td>
+      <td class="info-sep">:</td>
+      <td class="info-val">${log.pasien}</td>
+    </tr>
+    <tr>
+      <td class="info-label">No. Rekam Medis</td>
+      <td class="info-sep">:</td>
+      <td class="info-val">${log.rm || '-'}</td>
+    </tr>
+    <tr>
+      <td class="info-label">Penjamin / Kelas</td>
+      <td class="info-sep">:</td>
+      <td class="info-val">${log.penjamin} (Kelas ${log.kelas})</td>
+    </tr>
+    <tr>
+      <td class="info-label">Diagnosa</td>
+      <td class="info-sep">:</td>
+      <td class="info-val">${log.diagnosa}</td>
+    </tr>
+    <tr>
+      <td class="info-label">Kode ICD-10</td>
+      <td class="info-sep">:</td>
+      <td class="info-val">${log.kodeIcd10 || '-'}</td>
+    </tr>
+    <tr>
+      <td class="info-label">Dokter DPJP</td>
+      <td class="info-sep">:</td>
+      <td class="info-val">${log.dpjp || '-'}</td>
+    </tr>
+  </table>
+
+  <div class="divider"></div>
+
+  <div class="section-title">CHECKLIST BERKAS (${log.penjamin}):</div>
+  <div class="checklist-box">
+    <table style="width: 100%; border-collapse: collapse;">
+      ${checklistItemsHtml}
+    </table>
+  </div>
+
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; margin-bottom:2px;">
+    <span style="font-size:11px; font-weight:bold; font-family:'Courier New', Courier, monospace;">STATUS BERKAS:</span>
+    <span class="status-badge">
+      ${progress.isComplete ? '🟢 LENGKAP 100%' : '⏳ PROSES (' + progress.checked + '/' + progress.total + ')'}
+    </span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="signature-area">
+    <div class="sign-box">
+      <div>Pasien / Keluarga</div>
+      <div class="sign-space"></div>
+      <div>( .................... )</div>
+    </div>
+    <div class="sign-box">
+      <div>Petugas Admisi</div>
+      <div class="sign-space"></div>
+      <div>( .................... )</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>* Harap simpan struk ini bersama berkas rekam medis *</div>
+    <div style="margin-top:4px; font-weight:bold;">*** RSUMB MELAYANI DENGAN IKHLAS ***</div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        try {
+          window.focus();
+          window.print();
+        } catch (e) {
+          console.warn('Auto print error:', e);
+        }
+      }, 350);
+    });
+  </script>
+</body>
+</html>`;
+
+    let opened = false;
+    try {
+      const printWin = window.open('', '_blank', 'width=450,height=700,menubar=no,toolbar=no,status=no,resizable=yes');
+      if (printWin && !printWin.closed) {
+        printWin.document.open();
+        printWin.document.write(thermalHtml);
+        printWin.document.close();
+        printWin.focus();
+        opened = true;
+      }
+    } catch (e) {
+      console.warn('window.open diblokir/gagal:', e);
+    }
+
+    // Fallback via iframe tersembunyi jika window.open diblokir browser
+    if (!opened) {
+      let printIframe = document.getElementById('thermal-spri-receipt-iframe') as HTMLIFrameElement;
+      if (!printIframe) {
+        printIframe = document.createElement('iframe');
+        printIframe.id = 'thermal-spri-receipt-iframe';
+        printIframe.style.position = 'fixed';
+        printIframe.style.right = '0';
+        printIframe.style.bottom = '0';
+        printIframe.style.width = '0';
+        printIframe.style.height = '0';
+        printIframe.style.border = '0';
+        document.body.appendChild(printIframe);
+      }
+      const doc = printIframe.contentWindow?.document || printIframe.contentDocument;
+      if (doc) {
+        doc.open();
+        doc.write(thermalHtml);
+        doc.close();
+        setTimeout(() => {
+          printIframe.contentWindow?.focus();
+          printIframe.contentWindow?.print();
+        }, 350);
+      }
+    }
+
+    if (showToast) {
+      showToast(`Membuka struk thermal untuk ${log.pasien}...`, 'info');
+    }
+  };
+
+  // 4 Poin Wajib Ceklist Kelengkapan Berkas Rekap Harian
+  const REKAP_CHECKLIST_ITEMS = [
+    'Terbit SPRI Dokter Jaga',
+    'SEP Rajal',
+    'SEP Ranap',
+    'Pesan Kamar / Rujuk'
+  ];
+
+  // Cetak Laporan Rekap Harian Pemesanan Kamar & Berkas Format Thermal Roll 80mm
+  const handlePrintBatchThermal = () => {
+    if (filteredSessionLogs.length === 0) {
+      if (showToast) showToast('Tidak ada data rekap pasien untuk dicetak.', 'error');
+      return;
+    }
+
+    const now = new Date();
+    const formattedPrintTime =
+      now.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }) +
+      ' ' +
+      now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) +
+      ' WIB';
+
+    const patientRowsHtml = filteredSessionLogs
+      .map((log, idx) => {
+        const checklistLines = REKAP_CHECKLIST_ITEMS.map((item, i) => {
+          const isChecked = !!log.checklistState[item];
+          const checkMark = isChecked ? '[✓]' : '[ ]';
+          const isLast = i === REKAP_CHECKLIST_ITEMS.length - 1;
+          return `<tr style="${isLast ? '' : 'border-bottom: 1px dotted #666;'}">
+            <td style="width: 28px; vertical-align: top; font-family: 'Courier New', Courier, monospace; font-size: 12px; font-weight: 900; padding: 3px 0 3px 2px; color: #000; letter-spacing: -0.5px; white-space: nowrap;">
+              ${checkMark}
+            </td>
+            <td style="vertical-align: top; font-family: 'Courier New', Courier, monospace; font-size: 11.5px; font-weight: bold; padding: 3px 4px; color: #000; line-height: 1.25; letter-spacing: -0.2px;">
+              ${item}
+            </td>
+            <td style="width: 62px; text-align: right; vertical-align: top; padding: 3px 2px 3px 0;">
+              <span style="display: inline-block; font-family: 'Courier New', Courier, monospace; font-size: 9px; font-weight: 900; border: 1.5px solid #000; padding: 1px 3px; border-radius: 2px; letter-spacing: 0.2px; background: #fff;">
+                ${isChecked ? 'LENGKAP' : 'BELUM'}
+              </span>
+            </td>
+          </tr>`;
+        }).join('');
+
+        return `<div style="margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px dashed #000;">
+          <div style="display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 900; font-family: 'Courier New', Courier, monospace; letter-spacing: -0.2px;">
+            <span>#${idx + 1}. ${log.pasien}</span>
+            <span style="font-size: 11px; color: #000;">${log.timestamp}</span>
+          </div>
+          <div style="font-size: 11.5px; font-weight: bold; color: #000; margin: 3px 0 5px 0; font-family: 'Courier New', Courier, monospace;">
+            RM: <b>${log.rm || '-'}</b> &bull; ${log.penjamin} (Kls ${log.kelas})
+          </div>
+          <div style="background: #fff; padding: 2px 4px; border-radius: 3px; border: 1.5px solid #000;">
+            <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; margin-bottom: 3px; border-bottom: 1px solid #000; padding-bottom: 2px; letter-spacing: 0.2px; font-family: 'Courier New', Courier, monospace;">
+              Ceklist Kelengkapan Berkas:
+            </div>
+            <table style="width: 100%; border-collapse: collapse;">
+              ${checklistLines}
+            </table>
+          </div>
+        </div>`;
+      })
+      .join('');
+
+    const thermalHtml = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>Rekap Harian Pemesanan Kamar & Berkas - RSUMB</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      width: 78mm;
+      max-width: 80mm;
+      margin: 0 auto;
+      padding: 10px 8px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      font-weight: bold;
+      line-height: 1.28;
+      color: #000;
+      background: #fff;
+      letter-spacing: -0.3px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 8px;
+      border-bottom: 2px dashed #000;
+      padding-bottom: 8px;
+    }
+    .hospital-title {
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      margin-bottom: 3px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .hospital-sub {
+      font-size: 10.5px;
+      line-height: 1.25;
+      color: #000;
+      font-weight: bold;
+    }
+    .receipt-title {
+      font-size: 12.5px;
+      font-weight: 900;
+      text-align: center;
+      margin: 6px 0;
+      padding: 5px 0;
+      border-top: 2px dashed #000;
+      border-bottom: 2px dashed #000;
+      text-transform: uppercase;
+      letter-spacing: 0.2px;
+      line-height: 1.25;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .meta-box {
+      font-size: 11px;
+      margin-bottom: 8px;
+      color: #000;
+      font-weight: bold;
+      font-family: 'Courier New', Courier, monospace;
+      line-height: 1.3;
+    }
+    .divider {
+      border-top: 2px dashed #000;
+      margin: 8px 0;
+    }
+    .signature-area {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+      margin-bottom: 8px;
+      font-size: 10px;
+      font-weight: bold;
+      text-align: center;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .sign-box {
+      width: 48%;
+    }
+    .sign-space {
+      height: 36px;
+    }
+    .footer {
+      text-align: center;
+      font-size: 10px;
+      font-weight: bold;
+      margin-top: 10px;
+      color: #000;
+      line-height: 1.3;
+      border-top: 2px dashed #000;
+      padding-top: 8px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .no-print-bar {
+      position: sticky;
+      top: 0;
+      background: #005d42;
+      color: #fff;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: -10px -8px 10px -8px;
+      font-family: -apple-system, sans-serif;
+      font-size: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    .btn-action {
+      background: #fff;
+      color: #005d42;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .btn-close {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.4);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 11px;
+      cursor: pointer;
+      margin-left: 6px;
+    }
+    @media print {
+      @page {
+        size: 80mm auto;
+        margin: 2mm 3mm;
+      }
+      body {
+        width: 100%;
+        max-width: 100%;
+        padding: 0;
+        margin: 0;
+      }
+      .no-print, .no-print-bar {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-bar">
+    <span style="font-weight: bold;">🖨️ Cetak Rekap Thermal 80mm</span>
+    <div>
+      <button class="btn-action" onclick="window.print()">Cetak (Print)</button>
+      <button class="btn-close" onclick="window.close()">Tutup</button>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="hospital-title">RSU MUHAMMADIYAH BABAT</div>
+    <div class="hospital-sub">
+      Jl. Raya Babat-Surabaya No. 15 Lamongan<br />
+      Telp: (0322) 451122 &bull; IGD 24 Jam
+    </div>
+  </div>
+
+  <div class="receipt-title">
+    LAPORAN REKAP HARIAN<br />
+    PEMESANAN KAMAR &amp; KELENGKAPAN BERKAS
+  </div>
+
+  <div class="meta-box">
+    <div>Waktu Cetak: <b>${formattedPrintTime}</b></div>
+    <div>Filter Penjamin: <b>${historyPenjaminFilter}</b></div>
+    <div>Total Pasien: <b>${filteredSessionLogs.length} orang</b></div>
+  </div>
+
+  <div class="divider"></div>
+
+  ${patientRowsHtml}
+
+  <div style="display:flex; justify-content:space-between; font-size:10px; font-weight:bold; margin-top:6px;">
+    <span>Total Tercatat:</span>
+    <span>${filteredSessionLogs.length} Pasien</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="signature-area">
+    <div class="sign-box">
+      <div>Mengetahui,</div>
+      <div>Ka. Unit Admisi / Ranap</div>
+      <div class="sign-space"></div>
+      <div>( .................... )</div>
+    </div>
+    <div class="sign-box">
+      <div>Babat, ${now.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+      <div>Petugas Admisi / Kasir</div>
+      <div class="sign-space"></div>
+      <div>( .................... )</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>* Arsip Laporan Rekap Harian Admisi RSUMB *</div>
+    <div style="margin-top:4px; font-weight:bold;">*** RSUMB MELAYANI DENGAN IKHLAS ***</div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        try {
+          window.focus();
+          window.print();
+        } catch (e) {
+          console.warn('Auto print error:', e);
+        }
+      }, 350);
+    });
+  </script>
+</body>
+</html>`;
+
+    let opened = false;
+    try {
+      const printWin = window.open('', '_blank', 'width=450,height=750,menubar=no,toolbar=no,status=no,resizable=yes');
+      if (printWin && !printWin.closed) {
+        printWin.document.open();
+        printWin.document.write(thermalHtml);
+        printWin.document.close();
+        printWin.focus();
+        opened = true;
+      }
+    } catch (e) {
+      console.warn('window.open diblokir/gagal:', e);
+    }
+
+    if (!opened) {
+      let printIframe = document.getElementById('thermal-rekap-batch-iframe') as HTMLIFrameElement;
+      if (!printIframe) {
+        printIframe = document.createElement('iframe');
+        printIframe.id = 'thermal-rekap-batch-iframe';
+        printIframe.style.position = 'fixed';
+        printIframe.style.right = '0';
+        printIframe.style.bottom = '0';
+        printIframe.style.width = '0';
+        printIframe.style.height = '0';
+        printIframe.style.border = '0';
+        document.body.appendChild(printIframe);
+      }
+      const doc = printIframe.contentWindow?.document || printIframe.contentDocument;
+      if (doc) {
+        doc.open();
+        doc.write(thermalHtml);
+        doc.close();
+        setTimeout(() => {
+          printIframe.contentWindow?.focus();
+          printIframe.contentWindow?.print();
+        }, 350);
+      }
+    }
+
+    if (showToast) {
+      showToast(`Membuka struk rekap thermal (${filteredSessionLogs.length} pasien)...`, 'info');
+    }
   };
 
   const filteredSessionLogs = useMemo(() => {
@@ -396,17 +956,19 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
     const combinedCodes = detectedCodes.join(' / ');
     return {
       nama: p.nama,
+      noRm: p.noRm,
       umur: p.umur,
       diagnosa: cleanDiagBase,
       kodeIcd10: combinedCodes,
-      dpjp: p.dpjp,
+      dpjp: p.dokterDpjp || p.dpjp,
+      dokterDpjp: p.dokterDpjp || p.dpjp,
+      dokterPemeriksa: p.dokterPemeriksa,
       caraBayar: p.caraBayar,
       kelasKamar: p.kelasKamar
     };
   }, [rawText]);
 
   // 2. KELAS KAMAR & CARA BAYAR SINKRONISASI 100% DENGAN DROPDOWN USER
-  // Deteksi apakah teks input diakhiri instruksi cepat pengguna (misal: "BPJS 3", "UMUM 1", "PENGURUSAN JR/LP VIP")
   const autoDetectConfig = (textToParse: string) => {
     const quickOverrideMatch = textToParse.match(
       /(?:^|\n|\s)(UMUM|BPJS|PENGURUSAN\s*JR\/?LP|KAI|BPJS\s*TK|ADMEDIKA|BRI\s*LIFE)\s*(3|2|1|VIP|VVIP)$/i
@@ -419,6 +981,11 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
       
       setCaraBayar(matchedBayar);
       setKelasKamar(quickOverrideMatch[2].toUpperCase());
+    } else {
+      const detectedKelas = extractKelasKamarFromText(textToParse);
+      if (detectedKelas) {
+        setKelasKamar(detectedKelas);
+      }
     }
   };
 
@@ -432,11 +999,10 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
     autoDetectConfig(textToParse);
     const result = parseSpriText(textToParse);
     
-    // ... logic sisanya tetap sama ...
-    
     // 1. ANALISIS SEMUA DIAGNOSA & KODE ICD-10 GABUNGAN
     const rawDiag = result.diagnosa;
-    const diagParts = rawDiag
+    const cleanDiagBase = rawDiag.replace(/\s*\([A-Z]\d{2}(?:\.\d+)?(?:\s*\/\s*[A-Z]\d{2}(?:\.\d+)?)*\)/gi, '').trim();
+    const diagParts = cleanDiagBase
       .split(/[+,/]| dan | ec |\bdd\b|\bdd\.|\bs\b|\bs\//i)
       .map((p) => p.trim())
       .filter(Boolean);
@@ -459,24 +1025,34 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
       }
     });
 
-    const combinedIcdCodes = detectedCodes.join(' / ');
-    const enrichedDiagnosa = combinedIcdCodes ? `${cleanedParts.join(' / ')} (${combinedIcdCodes})` : rawDiag;
-    
-    // ... sisanya ...
+    const combinedIcdCodes = detectedCodes.join(' / ') || result.kodeIcd10;
+    const enrichedDiagnosa = combinedIcdCodes ? `${cleanDiagBase} (${combinedIcdCodes})` : rawDiag;
 
-
-    // 2. KELAS KAMAR & CARA BAYAR SINKRONISASI 100% DENGAN DROPDOWN USER
+    // 2. KELAS KAMAR & CARA BAYAR SINKRONISASI 100%
     let activeCaraBayar = caraBayar;
-    let activeKelas = kelasKamar;
-    
-    // Jika ada override di teks SPRI
+    let activeKelas = result.kelasKamar || kelasKamar;
+
     const quickOverrideMatch = textToParse.match(
       /(?:^|\n|\s)(UMUM|BPJS|PENGURUSAN\s*JR\/?LP|KAI|BPJS\s*TK|ADMEDIKA|BRI\s*LIFE)\s*(3|2|1|VIP|VVIP)$/i
     );
     if (quickOverrideMatch) {
-       // ... deteksi matching sudah dilakukan di autoDetectConfig ...
-       activeCaraBayar = caraBayar; 
-       activeKelas = kelasKamar;
+      let matchedBayar = quickOverrideMatch[1].toUpperCase();
+      if (/PENGURUSAN/i.test(matchedBayar)) matchedBayar = 'PENGURUSAN JR/LP';
+      else if (/BPJS\s*TK/i.test(matchedBayar)) matchedBayar = 'BPJS TK';
+      else if (/BRI/i.test(matchedBayar)) matchedBayar = 'BRI LIFE';
+      activeCaraBayar = matchedBayar;
+      activeKelas = quickOverrideMatch[2].toUpperCase();
+      setCaraBayar(matchedBayar);
+      setKelasKamar(activeKelas);
+    } else {
+      if (result.kelasKamar) {
+        activeKelas = result.kelasKamar;
+        setKelasKamar(result.kelasKamar);
+      }
+      if (result.caraBayar) {
+        activeCaraBayar = result.caraBayar;
+        setCaraBayar(result.caraBayar);
+      }
     }
 
     const effectiveBayar =
@@ -485,10 +1061,13 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
 
     const formattedWA = formatPesananKamarWA({
       nama: result.nama,
+      noRm: result.noRm,
       umur: result.umur,
       diagnosa: enrichedDiagnosa,
       kodeIcd10: combinedIcdCodes,
-      dpjp: result.dpjp,
+      dpjp: result.dokterDpjp || result.dpjp,
+      dokterDpjp: result.dokterDpjp || result.dpjp,
+      dokterPemeriksa: result.dokterPemeriksa,
       caraBayar: effectiveBayar,
       kelasKamar: cleanKelasKamar
     });
@@ -497,6 +1076,9 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
       ...result,
       diagnosa: enrichedDiagnosa,
       kodeIcd10: combinedIcdCodes,
+      dpjp: result.dokterDpjp || result.dpjp,
+      dokterDpjp: result.dokterDpjp || result.dpjp,
+      dokterPemeriksa: result.dokterPemeriksa,
       caraBayar: effectiveBayar,
       kelasKamar: cleanKelasKamar,
       resultFormat: formattedWA
@@ -786,8 +1368,41 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
           </div>
 
           {/* Quick Sample Presets Bar */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-semibold text-slate-500">Contoh Cepat SPRI:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const sample = `Nama Pasien : ANIK SUTARI. NY\nNo. Rekam Medis : 064707\nUmur : 51 Th\nDokter Yang Memeriksa : dr. Tri Puji\nDokter DPJP : dr. Ilham Basjar, Sp.PD.\nDiagnosa Awal : AF\nKamar Diminta : VIP-BED4 JANNATUL FIRDAUS VIP\nPenjamin : BPJS VIP`;
+                setRawText(sample);
+                handleParse(sample);
+              }}
+              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold cursor-pointer transition"
+            >
+              SPRI AF (I48.9) &amp; VIP
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const sample = `Nama Pasien : KARMANI. NY\nNo. Rekam Medis : 064707\nUmur : 65 Th\nDokter Yang Memeriksa : dr. Tri Puji\nDokter DPJP : dr. Ilham Basjar, Sp.PD.\nDiagnosa Awal : DYSPNEU S ADHF\nKamar Diminta : Ma'wa 5A... Kelas 3\nPenjamin : BPJS`;
+                setRawText(sample);
+                handleParse(sample);
+              }}
+              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-[#005d42] border border-emerald-300 rounded-lg text-xs font-bold cursor-pointer transition"
+            >
+              SPRI Ma'wa 5A... Kelas 3
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const sample = `Nama Pasien : MAMIK DIYAN NOFERA. NY\nNo. Rekam Medis : 058912\nUmur : 42 Th\nDokter Yang Memeriksa : dr. Jaga IGD\nDokter DPJP : dr. Bagas Setiawan Ihsan\nDiagnosa Awal : chest pain s angina dd gerd\nKamar Diminta : Kelas 3\nBPJS 3`;
+                setRawText(sample);
+                handleParse(sample);
+              }}
+              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-medium cursor-pointer transition"
+            >
+              SPRI Jantung &amp; GERD
+            </button>
           </div>
 
           {/* Textarea Lebar */}
@@ -801,7 +1416,7 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
                   handleParse(rawText);
                 }
               }}
-              placeholder="Tempel (Paste) teks mentah SPRI dari SIMRS di sini...&#10;Contoh format SIMRS multi-line:&#10;Nama Pasien : MAMIK DIYAN NOFERA. NY&#10;Umur : 42 Th&#10;Diagnosa Awal :&#10;chest pain s angina dd gerd dd psikomatis&#10;Kamar Diminta : Kelas 3&#10;DPJP : dr. Bagas Setiawan Ihsan&#10;BPJS 3&#10;&#10;(💡 Tips Cepat: Tekan Ctrl + Enter untuk langsung mengekstrak dan men-generate pesan WA)"
+              placeholder="Tempel (Paste) teks mentah SPRI dari SIMRS di sini...&#10;Contoh format SIMRS:&#10;Nama Pasien : KARMANI. NY&#10;No. Rekam Medis : 064707&#10;Umur : 65 Th&#10;Dokter Yang Memeriksa : dr. Tri Puji&#10;Dokter DPJP : dr. Ilham Basjar, Sp.PD.&#10;Diagnosa Awal : DYSPNEU S ADHF&#10;Kamar Diminta : Kelas 3&#10;BPJS 3&#10;&#10;(💡 Tips Cepat: Tekan Ctrl + Enter untuk langsung mengekstrak dan men-generate pesan WA)"
               rows={5}
               className={`w-full p-4 rounded-xl text-xs sm:text-sm font-mono text-slate-800 transition-all resize-y border leading-relaxed ${
                 diagnosisValidation.isNotFound
@@ -1007,7 +1622,7 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
                 </div>
 
                 {/* Extracted badges summary */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[10px] uppercase font-bold text-slate-500 block">Kelas Kamar</span>
                     <span className="text-xs font-black text-[#005d42]">Kelas {parsedData.kelasKamar || '-'}</span>
@@ -1016,9 +1631,17 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
                     <span className="text-[10px] uppercase font-bold text-slate-500 block">Kode ICD-10</span>
                     <span className="text-xs font-black font-mono text-blue-700">{parsedData.kodeIcd10 || '-'}</span>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 col-span-2 sm:col-span-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-500 block">DPJP Utama</span>
-                    <span className="text-xs font-black text-slate-800 truncate block">{parsedData.dpjp || '-'}</span>
+                  <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200">
+                    <span className="text-[10px] uppercase font-bold text-emerald-800 block">👨‍⚕️ Dokter DPJP</span>
+                    <span className="text-xs font-black text-emerald-950 truncate block" title={parsedData.dokterDpjp || parsedData.dpjp || '-'}>
+                      {parsedData.dokterDpjp || parsedData.dpjp || '-'}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">🩺 Dokter Pemeriksa</span>
+                    <span className="text-xs font-semibold text-slate-700 truncate block" title={parsedData.dokterPemeriksa || 'Tidak tertera'}>
+                      {parsedData.dokterPemeriksa || '-'}
+                    </span>
                   </div>
                 </div>
 
@@ -1110,7 +1733,7 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
                   <th className="py-2.5 px-3">Diagnosa &amp; ICD-10</th>
                   <th className="py-2.5 px-3">Penjamin / Kelas</th>
                   <th className="py-2.5 px-3">Kelengkapan Berkas</th>
-                  <th className="py-2.5 px-3 w-28 text-center">Aksi</th>
+                  <th className="py-2.5 px-3 w-36 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
@@ -1151,6 +1774,14 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Tombol Cetak Struk Thermal (80mm) */}
+                          <button
+                            onClick={() => handlePrintThermalReceipt(log)}
+                            className="p-1.5 bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white rounded-lg cursor-pointer transition-colors border border-amber-200"
+                            title="Cetak Struk Thermal (80mm)"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
                           {/* Tombol Detail / Checklist (Ikon Mata) */}
                           <button
                             onClick={() => setSelectedDetailLog(log)}
@@ -1265,7 +1896,15 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
                 </div>
               </div>
 
-              <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end">
+              <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                <button
+                  onClick={() => handlePrintThermalReceipt(selectedDetailLog)}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  title="Cetak Struk Thermal 80mm untuk pasien ini"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak Struk Thermal</span>
+                </button>
                 <button
                   onClick={() => setSelectedDetailLog(null)}
                   className="px-5 py-2 bg-[#005d42] hover:bg-[#004834] text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
@@ -1283,14 +1922,43 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <style>{`
             @media print {
-              @page { size: auto; margin: 10mm; }
-              body * { visibility: hidden; }
-              #print-content, #print-content * { visibility: visible; }
-              #print-content { position: absolute; left: 0; top: 0; width: 100%; }
-              .no-print { display: none !important; }
+              @page {
+                size: landscape;
+                margin: 8mm 10mm;
+              }
+              html, body {
+                width: 100%;
+                height: auto;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              body * {
+                visibility: hidden;
+              }
+              #print-content, #print-content * {
+                visibility: visible;
+              }
+              #print-content {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+                background: #fff !important;
+              }
+              .no-print {
+                display: none !important;
+              }
             }
           `}</style>
-          <div id="print-content" className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+          <div id="print-content" className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between no-print">
               <div className="flex items-center gap-2.5">
                 <Printer className="w-5 h-5 text-indigo-300" />
@@ -1312,54 +1980,72 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
                   <p className="text-xs text-slate-600">Jl. Raya Babat-Surabaya No. 15 Lamongan Telp. (0322) 451122</p>
                   <h1 className="text-sm font-extrabold uppercase pt-2">LAPORAN REKAP HARIAN PEMESANAN KAMAR &amp; KELENGKAPAN BERKAS ADMISI</h1>
                   <p className="text-xs text-slate-500 font-medium">
-                    Filter Penjamin Aktif: <b className="text-slate-800">{historyPenjaminFilter}</b> • Tanggal: {new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}
+                    Filter Penjamin Aktif: <b className="text-slate-800">{historyPenjaminFilter}</b> &bull; Tanggal: {new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}
                   </p>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse border border-slate-300 text-xs">
                     <thead>
-                      <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px]">
-                        <th className="border border-slate-300 py-2 px-3 text-center w-12">No</th>
-                        <th className="border border-slate-300 py-2 px-3">Waktu</th>
+                      <tr className="bg-slate-100 text-slate-800 font-bold uppercase text-[10px]">
+                        <th className="border border-slate-300 py-2 px-2 text-center w-10">No</th>
+                        <th className="border border-slate-300 py-2 px-2.5 w-24">Waktu</th>
                         <th className="border border-slate-300 py-2 px-3">No. RM &amp; Nama Pasien</th>
-                        <th className="border border-slate-300 py-2 px-3">Diagnosa &amp; ICD-10</th>
-                        <th className="border border-slate-300 py-2 px-3">Penjamin / Kelas</th>
-                        <th className="border border-slate-300 py-2 px-3 text-center">Status Berkas Admisi</th>
+                        <th className="border border-slate-300 py-2 px-3 w-44">Penjamin / Kelas</th>
+                        <th className="border border-slate-300 py-2 px-3">CEKLIST KELENGKAPAN BERKAS</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredSessionLogs.length > 0 ? (
                         filteredSessionLogs.map((log, idx) => {
-                          const progress = getChecklistProgress(log);
                           return (
                             <tr key={log.id} className="hover:bg-slate-50">
-                              <td className="border border-slate-300 py-2 px-3 text-center font-bold">{idx + 1}</td>
-                              <td className="border border-slate-300 py-2 px-3 font-mono">{log.timestamp}</td>
+                              <td className="border border-slate-300 py-2 px-2 text-center font-bold">{idx + 1}</td>
+                              <td className="border border-slate-300 py-2 px-2.5 font-mono text-[11px]">{log.timestamp}</td>
                               <td className="border border-slate-300 py-2 px-3">
-                                <div className="font-bold">{log.pasien}</div>
+                                <div className="font-bold text-slate-900">{log.pasien}</div>
                                 <div className="font-mono text-[10px] text-slate-500">RM: {log.rm}</div>
                               </td>
                               <td className="border border-slate-300 py-2 px-3">
-                                <div>{log.diagnosa}</div>
-                                <div className="text-[10px] text-slate-500">DPJP: {log.dpjp}</div>
+                                <span className="font-bold text-slate-900">{log.penjamin}</span>
+                                <div className="text-[11px] text-slate-600 font-medium">Kelas {log.kelas}</div>
                               </td>
                               <td className="border border-slate-300 py-2 px-3">
-                                <span className="font-bold">{log.penjamin}</span> (Kelas {log.kelas})
-                              </td>
-                              <td className="border border-slate-300 py-2 px-3 text-center">
-                                <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${
-                                  progress.isComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                                }`}>
-                                  {progress.isComplete ? 'LENGKAP 100%' : `PROSES (${progress.checked}/${progress.total})`}
-                                </span>
+                                <div className="space-y-1 font-mono text-[11.5px] leading-tight">
+                                  {REKAP_CHECKLIST_ITEMS.map((item, itemIdx) => {
+                                    const isChecked = !!log.checklistState[item];
+                                    return (
+                                      <div
+                                        key={item}
+                                        className={`flex items-center gap-2 ${
+                                          itemIdx !== 0 ? 'border-t border-slate-200/60 pt-0.5' : ''
+                                        }`}
+                                      >
+                                        <span
+                                          className={`inline-block w-7 text-center font-black tracking-tight shrink-0 text-xs ${
+                                            isChecked ? 'text-emerald-800' : 'text-slate-400'
+                                          }`}
+                                        >
+                                          {isChecked ? '[✓]' : '[ ]'}
+                                        </span>
+                                        <span
+                                          className={`font-mono text-xs ${
+                                            isChecked ? 'font-bold text-slate-900' : 'text-slate-600'
+                                          }`}
+                                        >
+                                          {item}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </td>
                             </tr>
                           );
                         })
                       ) : (
                         <tr>
-                          <td colSpan={6} className="py-8 text-center text-slate-500">
+                          <td colSpan={5} className="py-8 text-center text-slate-500">
                             Tidak ada data rekap pasien yang sesuai dengan filter {historyPenjaminFilter}.
                           </td>
                         </tr>
@@ -1391,11 +2077,20 @@ export const SpriIcdCodingAssistantTab: React.FC<SpriIcdCodingAssistantTabProps>
                   Tutup
                 </button>
                 <button
-                  onClick={() => window.print()}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  onClick={handlePrintBatchThermal}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Cetak format struk printer thermal 80mm roll"
                 >
                   <Printer size={14} />
-                  <span>Cetak Dokumen (Print)</span>
+                  <span>Cetak Thermal (80mm)</span>
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Cetak format Landscape (A4/F4)"
+                >
+                  <Printer size={14} />
+                  <span>Cetak Landscape (A4/F4)</span>
                 </button>
               </div>
             </div>

@@ -428,122 +428,411 @@ export const INITIAL_KAMAR_KOSONG_LT5: LantaiKamarKosong = {
  */
 export interface ParsedSpriData {
   nama: string;
+  namaPasien?: string;
+  noRm?: string;
   umur: string;
   diagnosa: string;
   kodeIcd10: string;
   dpjp: string;
+  dokterDpjp?: string;
+  dokterPemeriksa?: string;
   caraBayar: string;
+  penjaminKelas?: string;
   kelasKamar: string;
   resultFormat: string;
   rawText: string;
 }
+
+export interface IcdEntry {
+  code: string;
+  diagnosis: string;
+  specialty: string;
+}
+
+export const ICD_10_DATABASE: IcdEntry[] = [
+  // Sp.PD / Kardiovaskular (Penyakit Dalam & Jantung)
+  { code: 'I48.9', diagnosis: 'Atrial Fibrillation (AF) / Atrial Flutter / Fibrilasi Atrium', specialty: 'Sp.PD' },
+  { code: 'I50.9', diagnosis: 'Gagal Jantung Kongestif / Congestive Heart Failure (CHF / ADHF)', specialty: 'Sp.PD' },
+  { code: 'R06.0', diagnosis: 'Dyspnoea / Dyspneu / Sesak Napas', specialty: 'Sp.PD' },
+  { code: 'A91', diagnosis: 'Dengue haemorrhagic fever / DHF / DBD + warning sign', specialty: 'Sp.PD' },
+  { code: 'K92.1', diagnosis: 'Melena / Perdarahan Saluran Cerna Bagian Atas', specialty: 'Sp.PD' },
+  { code: 'K92.0', diagnosis: 'Hematemesis / Muntah Darah', specialty: 'Sp.PD' },
+  { code: 'K92.2', diagnosis: 'Hematemesis Melena / Gastrointestinal Haemorrhage', specialty: 'Sp.PD' },
+  { code: 'R57.1', diagnosis: 'Syok Hipovolemia / Hypovolemic Shock', specialty: 'Sp.PD' },
+  { code: 'K30', diagnosis: 'Dyspepsia / Dispepsia', specialty: 'Sp.PD' },
+  { code: 'K29.7', diagnosis: 'Gastritis, Tidak Spesifik / Maag Akut', specialty: 'Sp.PD' },
+  { code: 'E11.9', diagnosis: 'Diabetes Mellitus Tipe 2 Tanpa Komplikasi (DM)', specialty: 'Sp.PD' },
+  { code: 'E11.5', diagnosis: 'Diabetic Foot / Gangren Diabetikum', specialty: 'Sp.PD' },
+  { code: 'I10', diagnosis: 'Hipertensi Esensial (Primer)', specialty: 'Sp.PD' },
+  { code: 'I21.9', diagnosis: 'Infark Miokard Akut (STEMI / NSTEMI / Sindrom Koroner)', specialty: 'Sp.PD' },
+  { code: 'I20.9', diagnosis: 'Angina Pectoris, Tidak Spesifik / Penyakit Jantung Koroner (CAD / PJK)', specialty: 'Sp.PD' },
+  { code: 'R07.9', diagnosis: 'Chest Pain / Nyeri Dada, Tidak Spesifik', specialty: 'Sp.PD' },
+  { code: 'K21.9', diagnosis: 'Gastro-Oesophageal Reflux Disease (GERD / Asam Lambung)', specialty: 'Sp.PD' },
+  { code: 'N18.9', diagnosis: 'Penyakit Ginjal Kronis (CKD / CRF)', specialty: 'Sp.PD' },
+  { code: 'N17.9', diagnosis: 'Gagal Ginjal Akut (AKI / ARF)', specialty: 'Sp.PD' },
+  { code: 'D64.9', diagnosis: 'Anemia, Tidak Spesifik', specialty: 'Sp.PD' },
+  { code: 'A09', diagnosis: 'Gastroenteritis Akut Diduga Infeksi (GEA / Diare Akut)', specialty: 'Sp.PD' },
+  { code: 'R50.9', diagnosis: 'Febris / Demam Tidak Spesifik', specialty: 'Sp.PD' },
+  { code: 'A41.9', diagnosis: 'Sepsis, Organisme Tidak Spesifik', specialty: 'Sp.PD' },
+  { code: 'N39.0', diagnosis: 'Infeksi Saluran Kemih (ISK / UTI)', specialty: 'Sp.PD' },
+  { code: 'I95.9', diagnosis: 'Hipotensi, Tidak Spesifik / Penurunan Tekanan Darah', specialty: 'Sp.PD' },
+
+  // Sp.N (Saraf / Neurologi)
+  { code: 'I63.9', diagnosis: 'Stroke Iskemik / Infark Serebral (CVA Iskemik)', specialty: 'Sp.N' },
+  { code: 'I61.9', diagnosis: 'Stroke Hemoragik / Pendarahan Intraserebral (ICH / CVA Bleeding)', specialty: 'Sp.N' },
+  { code: 'R42', diagnosis: 'Vertigo (Dizziness and Giddiness / BPPV)', specialty: 'Sp.N' },
+  { code: 'G44.2', diagnosis: 'Sakit Kepala Tegang (Tension Headache / Cephalea)', specialty: 'Sp.N' },
+  { code: 'G40.9', diagnosis: 'Epilepsi / Kejang Berulang', specialty: 'Sp.N' },
+  { code: 'G51.0', diagnosis: 'Bell Palsy (Kelumpuhan Saraf Fasial)', specialty: 'Sp.N' },
+  { code: 'M54.5', diagnosis: 'Nyeri Punggung Bawah (Low Back Pain / LBP / HNP)', specialty: 'Sp.N' },
+  { code: 'F45.9', diagnosis: 'Gangguan Somatoform / Gangguan Psikosomatis (Psikomatis)', specialty: 'Sp.N' },
+
+  // Sp.B / Sp.OT / Urologi (Bedah, Tulang & Saluran Kemih)
+  { code: 'S62.6', diagnosis: 'cf phalang 3 manus s / Fraktur Phalang Jari Tangan (Manus)', specialty: 'Sp.OT' },
+  { code: 'R33', diagnosis: 'Retensi Urin / Retensio Urinae', specialty: 'Sp.B' },
+  { code: 'N40', diagnosis: 'Benign Prostatic Hyperplasia (BPH / Pembesaran Prostat)', specialty: 'Sp.B' },
+  { code: 'N20.1', diagnosis: 'Batu Ureter / Ureterolithiasis', specialty: 'Sp.B' },
+  { code: 'N20.0', diagnosis: 'Batu Ginjal / Nefrolitiasis / Batu Saluran Kemih (BSK)', specialty: 'Sp.B' },
+  { code: 'C02.9', diagnosis: 'Ca Lidah / Kanker Lidah (Carcinoma of Tongue)', specialty: 'Sp.B' },
+  { code: 'C50.9', diagnosis: 'Ca Mammae / Kanker Payudara', specialty: 'Sp.B' },
+  { code: 'C18.9', diagnosis: 'Ca Kolon / Kanker Usus Besar', specialty: 'Sp.B' },
+  { code: 'S72.9', diagnosis: 'Fraktur Tulang Paha (Femur)', specialty: 'Sp.OT' },
+  { code: 'S82.9', diagnosis: 'Fraktur Tungkai Bawah / Cruris / Tibia / Fibula', specialty: 'Sp.OT' },
+  { code: 'S52.9', diagnosis: 'Fraktur Lengan Bawah / Antebrachii / Radius / Ulna', specialty: 'Sp.OT' },
+  { code: 'S42.0', diagnosis: 'Fraktur Tulang Selangka / Klavikula', specialty: 'Sp.OT' },
+  { code: 'K35.8', diagnosis: 'Appendisitis Akut (Usus Buntu)', specialty: 'Sp.B' },
+  { code: 'K40.9', diagnosis: 'Hernia Inguinalis Tanpa Obstruksi', specialty: 'Sp.B' },
+  { code: 'S01.9', diagnosis: 'Luka Robek Terbuka (Vulnus Laceratum / VL)', specialty: 'Sp.B' },
+  { code: 'K64.9', diagnosis: 'Hemoroid / Ambeien / Wasir', specialty: 'Sp.B' },
+  { code: 'K80.2', diagnosis: 'Kolelitiasis / Batu Empedu Tanpa Kolesistitis', specialty: 'Sp.B' },
+
+  // Sp.A (Anak)
+  { code: 'J18.0', diagnosis: 'Bronkopneumonia Anak', specialty: 'Sp.A' },
+  { code: 'R56.0', diagnosis: 'Kejang Demam Sederhana / Kompleks (KDS / KDK)', specialty: 'Sp.A' },
+  { code: 'J45.9', diagnosis: 'Asma Bronkial Anak', specialty: 'Sp.A' },
+  { code: 'B05.9', diagnosis: 'Morbilli / Campak Tanpa Komplikasi', specialty: 'Sp.A' },
+  { code: 'J03.9', diagnosis: 'Tonsilitis Akut', specialty: 'Sp.A' },
+  { code: 'P59.9', diagnosis: 'Hiperbilirubin / Neonatal Jaundice / Ikterus Neonatorum (Bayi Kuning)', specialty: 'Sp.A' },
+  { code: 'R17', diagnosis: 'Hiperbilirubin Dewasa / Jaundice / Ikterus Tidak Spesifik', specialty: 'Sp.PD' },
+
+  // Sp.OG (Kebidanan & Kandungan)
+  { code: 'O80', diagnosis: 'Persalinan Tunggal Spontan (Partus Normal)', specialty: 'Sp.OG' },
+  { code: 'O82', diagnosis: 'Persalinan dengan Sectio Caesarea (SC)', specialty: 'Sp.OG' },
+  { code: 'O42.9', diagnosis: 'Ketuban Pecah Dini (KPD / PROM)', specialty: 'Sp.OG' },
+  { code: 'O14.9', diagnosis: 'Preeklampsia Berat (PEB) / Preeklampsia Ringan', specialty: 'Sp.OG' },
+  { code: 'O21.0', diagnosis: 'Hiperemesis Gravidarum (HEG)', specialty: 'Sp.OG' },
+  { code: 'O03.4', diagnosis: 'Abortus Inkomplit', specialty: 'Sp.OG' },
+  { code: 'D25.9', diagnosis: 'Leiomioma Uteri / Mioma Uteri', specialty: 'Sp.OG' },
+  { code: 'N83.2', diagnosis: 'Kista Ovarium', specialty: 'Sp.OG' },
+  { code: 'C53.9', diagnosis: 'Ca Serviks / Kanker Leher Rahim', specialty: 'Sp.OG' },
+
+  // Sp.P (Paru)
+  { code: 'J18.9', diagnosis: 'Pneumonia Komunitas / Infeksi Paru', specialty: 'Sp.P' },
+  { code: 'A15.0', diagnosis: 'Tuberkulosis Paru (TB Paru)', specialty: 'Sp.P' },
+  { code: 'J44.1', diagnosis: 'PPOK dengan Eksaserbasi Akut (COPD)', specialty: 'Sp.P' },
+  { code: 'J90', diagnosis: 'Efusi Pleura', specialty: 'Sp.P' },
+  { code: 'C34.9', diagnosis: 'Ca Paru / Kanker Paru-Paru', specialty: 'Sp.P' }
+];
+
+/**
+ * Fungsi pencocokan kode ICD-10 presisi untuk segmen diagnosa
+ */
+export function matchIcdForPart(rawPart: string): string {
+  const clean = rawPart.trim().toLowerCase();
+  if (!clean) return '';
+
+  // 1. Direct code match like K92.1, I48.9, S62.6
+  const directMatch = clean.match(/\b([a-z]\d{2}(?:\.\d+)?)\b/i);
+  if (directMatch && !/^(?:th|bln|kls|rm|hari)$/i.test(directMatch[1])) {
+    return directMatch[1].toUpperCase();
+  }
+
+  // 2. Exact Medis Keyword & Pola Klinis RSUMB
+  // Atrial Fibrillation / AF / Atrial Flutter -> I48.9
+  if (/\b(?:atrial\s*fibrillation|atrial\s*fibrilasi|fibrilasi\s*atrium|atrial\s*flutter|\baf\b|af\s*rvr|af\s*svr|af\s*nvr)\b/i.test(clean)) {
+    return 'I48.9';
+  }
+
+  // Gagal Jantung / ADHF / CHF -> I50.9
+  if (/\badhf\b|acute\s*decompensated\s*heart\s*failure|\bchf\b|gagal\s*jantung|decomp\s*cordis/i.test(clean)) {
+    return 'I50.9';
+  }
+
+  // Dyspneu / Dyspnea / Sesak Napas -> R06.0
+  if (/\bdyspneu\b|\bdyspnea\b|sesak\s*na[fp]as|\bsob\b/i.test(clean)) {
+    return 'R06.0';
+  }
+
+  // Hiperbilirubin / Neonatal Jaundice -> P59.9
+  if (/hiperbilirubin|bilirubin|ikterus|neonatal\s*jaundice|jaundice|bayi\s*kuning/i.test(clean)) return 'P59.9';
+
+  if (/cf\s*phalang|fraktur\s*phalang|phalang.*manus|fracture.*finger/i.test(clean)) return 'S62.6';
+  if (/retensi\s*urin|retensio\s*urina/i.test(clean)) return 'R33';
+  if (/\bbph\b|benign\s*prostat|prostat/i.test(clean)) return 'N40';
+  if (/melena/i.test(clean)) return 'K92.1';
+  if (/hematemesis.*melena/i.test(clean)) return 'K92.2';
+  if (/hematemesis|muntah\s*darah/i.test(clean)) return 'K92.0';
+  if (/syok\s*hipovolem/i.test(clean)) return 'R57.1';
+  if (/ca\s*lidah|kanker\s*lidah/i.test(clean)) return 'C02.9';
+  if (/ca\s*paru|kanker\s*paru/i.test(clean)) return 'C34.9';
+  if (/ca\s*mammae|kanker\s*payudara/i.test(clean)) return 'C50.9';
+  if (/ca\s*kolon|kanker\s*kolon|kanker\s*usus/i.test(clean)) return 'C18.9';
+  if (/ca\s*serviks|kanker\s*serviks/i.test(clean)) return 'C53.9';
+  if (/batu\s*ureter|ureterolitiasis/i.test(clean)) return 'N20.1';
+  if (/batu\s*(?:saluran\s*kemih|ginjal)|bsk|nefrolitiasis/i.test(clean)) return 'N20.0';
+  if (/dhf|dbd|dengue/i.test(clean)) return 'A91';
+  if (/dyspepsia|dispepsia/i.test(clean)) return 'K30';
+  if (/gastritis|maag/i.test(clean)) return 'K29.7';
+  if (/stemi|nstemi|koroner/i.test(clean)) return 'I21.9';
+  if (/\bhipertensi\b|\bht\b/i.test(clean)) return 'I10';
+  if (/hipotensi|hypotension/i.test(clean)) return 'I95.9';
+  if (/anemia/i.test(clean)) return 'D64.9';
+  if (/vertigo/i.test(clean)) return 'R42';
+  if (/fraktur\s*femur/i.test(clean)) return 'S72.9';
+  if (/fraktur\s*tibia|fraktur\s*cruris/i.test(clean)) return 'S82.9';
+  if (/fraktur\s*(?:antebrachii|radius|ulna)/i.test(clean)) return 'S52.9';
+  if (/fraktur\s*(?:clavicle|klavikula)/i.test(clean)) return 'S42.0';
+  if (/appendisitis|apendisitis|usus\s*buntu/i.test(clean)) return 'K35.8';
+  if (/hernia/i.test(clean)) return 'K40.9';
+  if (/vulnus\s*laceratum|luka\s*robek|\bvl\b/i.test(clean)) return 'S01.9';
+  if (/hemoroid|wasir|ambeien/i.test(clean)) return 'K64.9';
+  if (/bronkopneumonia/i.test(clean)) return 'J18.0';
+  if (/pneumonia/i.test(clean)) return 'J18.9';
+  if (/tb\s*paru|tbc/i.test(clean)) return 'A15.0';
+  if (/asma|asthma/i.test(clean)) return 'J45.9';
+  if (/ppok|copd/i.test(clean)) return 'J44.1';
+  if (/efusi\s*pleura/i.test(clean)) return 'J90';
+  if (/\bkpd\b|ketuban\s*pecah/i.test(clean)) return 'O42.9';
+  if (/sectio\s*caesarea|\bsc\b/i.test(clean)) return 'O82';
+  if (/stroke\s*iskemik|infark\s*serebral/i.test(clean)) return 'I63.9';
+  if (/stroke\s*hemoragik|\bich\b/i.test(clean)) return 'I61.9';
+  if (/stroke|cva/i.test(clean)) return 'I63.9';
+  if (/kejang\s*demam|\bkds\b|\bkdk\b/i.test(clean)) return 'R56.0';
+  if (/\bdm\b|diabetes/i.test(clean)) return 'E11.9';
+  if (/\bckd\b|\bcrf\b|gagal\s*ginjal/i.test(clean)) return 'N18.9';
+  if (/febris|demam/i.test(clean)) return 'R50.9';
+  if (/\bgea\b|gastroenteritis/i.test(clean)) return 'A09';
+  if (/sepsis/i.test(clean)) return 'A41.9';
+  if (/\bisk\b|\buti\b|infeksi\s*saluran\s*kemih/i.test(clean)) return 'N39.0';
+  if ((/preeklampsia|\bpeb\b/i.test(clean) || /\bper\b/i.test(clean)) && !/hiper/i.test(clean)) return 'O14.9';
+  if (/hiperemesis|\bheg\b/i.test(clean)) return 'O21.0';
+  if (/abortus/i.test(clean)) return 'O03.4';
+  if (/mioma/i.test(clean)) return 'D25.9';
+  if (/kista/i.test(clean)) return 'N83.2';
+  if (/chest\s*pain/i.test(clean)) return 'R07.9';
+  if (/angina/i.test(clean)) return 'I20.9';
+  if (/gerd|refluks|gastroesophag/i.test(clean)) return 'K21.9';
+  if (/psiko(?:matis|somatis)|somatoform/i.test(clean)) return 'F45.9';
+
+  // 3. Dynamic lookup across ICD_10_DATABASE
+  const found = ICD_10_DATABASE.find((item) => {
+    const d = item.diagnosis.toLowerCase();
+    if (d.includes(clean)) return true;
+    const tokens = d.split(/[/(),\s]+/).filter((t) => t.length >= 3);
+    return tokens.some((t) => {
+      const reg = new RegExp(`\\b${t}\\b`, 'i');
+      return reg.test(clean);
+    });
+  });
+
+  return found ? found.code : '';
+}
+
+/**
+ * Fungsi pencocokan gabungan kode ICD-10 untuk seluruh teks diagnosa
+ */
+export function matchIcdForDiagnosis(rawDiag: string): string {
+  if (!rawDiag || !rawDiag.trim()) return '';
+  const cleanDiagBase = rawDiag.replace(/\s*\([A-Z]\d{2}(?:\.\d+)?(?:\s*\/\s*[A-Z]\d{2}(?:\.\d+)?)*\)/gi, '').trim();
+  const diagParts = cleanDiagBase
+    .split(/[+,/]| dan | ec |\bdd\b|\bdd\.|\bs\b|\bs\//i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const detectedCodes: string[] = [];
+  diagParts.forEach((part) => {
+    const directCode = part.match(/\b([A-Z]\d{2}(?:\.\d+)?)\b/i);
+    if (directCode && !/^(?:KLS|TH|BLN|HR|RM)$/i.test(directCode[1])) {
+      const code = directCode[1].toUpperCase();
+      if (!detectedCodes.includes(code)) detectedCodes.push(code);
+    } else {
+      const code = matchIcdForPart(part);
+      if (code && !detectedCodes.includes(code)) {
+        detectedCodes.push(code);
+      }
+    }
+  });
+
+  return detectedCodes.join(' / ');
+}
+
+/**
+ * Ekstraktor Cerdas Kelas Kamar:
+ * Mendeteksi kata kunci kelas secara akurat (VVIP, VIP, Kelas 1, Kelas 2, Kelas 3)
+ * dari string seperti "VIP-BED4 JANNATUL FIRDAUS VIP" atau "Ma'wa 5A... Kelas 3"
+ */
+export function extractKelasKamarFromText(rawText: string, lines?: string[]): string {
+  if (!rawText) return '3';
+  const allLines = lines || rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  // 1. Cek instruksi cepat penjamin & kelas di akhir teks (contoh: "BPJS 3", "UMUM VIP", "BPJS 1")
+  const quickEndMatch = rawText.match(
+    /(?:^|\n|\s)(?:UMUM|BPJS|PENGURUSAN\s*JR\/?LP|KAI|BPJS\s*TK|ADMEDIKA|BRI\s*LIFE)\s*(3|2|1|VIP|VVIP)$/i
+  );
+  if (quickEndMatch) {
+    return quickEndMatch[1].toUpperCase();
+  }
+
+  // Helper untuk mendeteksi kelas dari string target kandidat
+  const detectClassFromCandidate = (candidate: string): string | null => {
+    if (!candidate) return null;
+
+    // Prioritas 1: VVIP (sebelum VIP)
+    if (/\bVVIP\b/i.test(candidate)) {
+      return 'VVIP';
+    }
+    // Prioritas 2: VIP (pastikan bukan VVIP)
+    if (/\bVIP\b/i.test(candidate) && !/\bVVIP\b/i.test(candidate)) {
+      return 'VIP';
+    }
+    // Prioritas 3: Frasa eksplisit "Kelas 3" / "Kls 3" / "Kelas III"
+    if (/(?:Kelas|Kls)\s*(?:3|III)\b/i.test(candidate)) {
+      return '3';
+    }
+    // Prioritas 4: Frasa eksplisit "Kelas 2" / "Kls 2" / "Kelas II"
+    if (/(?:Kelas|Kls)\s*(?:2|II)\b/i.test(candidate)) {
+      return '2';
+    }
+    // Prioritas 5: Frasa eksplisit "Kelas 1" / "Kls 1" / "Kelas I"
+    if (/(?:Kelas|Kls)\s*(?:1|I)\b/i.test(candidate)) {
+      return '1';
+    }
+    // Prioritas 6: Pola "Kelas [angka]"
+    const numMatch = candidate.match(/(?:Kelas|Kls)\s*([1-3])\b/i);
+    if (numMatch) {
+      return numMatch[1];
+    }
+    return null;
+  };
+
+  // 2. Ambil baris Kamar Diminta / Kamar / Ruang
+  let kamarDimintaText = '';
+  const kamarLineIdx = allLines.findIndex((l) =>
+    /^(?:Kamar\s*Diminta|Ruang(?:\s*Rawat)?|Kamar|Kelas\s*Kamar)\b/i.test(l)
+  );
+  if (kamarLineIdx !== -1) {
+    const kamarLine = allLines[kamarLineIdx];
+    const colonIdx = kamarLine.indexOf(':');
+    if (colonIdx !== -1) {
+      kamarDimintaText = kamarLine.substring(colonIdx + 1).trim();
+    } else {
+      kamarDimintaText = kamarLine
+        .replace(/^(?:Kamar\s*Diminta|Ruang(?:\s*Rawat)?|Kamar|Kelas\s*Kamar)\s*[:=\t-]?\s*/i, '')
+        .trim();
+    }
+
+    // Jika kosong di baris yang sama, coba ambil baris berikutnya
+    if (!kamarDimintaText && allLines[kamarLineIdx + 1]) {
+      const nextL = allLines[kamarLineIdx + 1];
+      if (!/^(?:DPJP|Dokter|Asal|Poli|Unit|Cara|Penjamin|Diagnosa|Tgl|Tanggal)/i.test(nextL)) {
+        kamarDimintaText = nextL;
+      }
+    }
+  }
+
+  // Jika teks Kamar Diminta ditemukan, ekstrak kelas dari baris tersebut
+  if (kamarDimintaText) {
+    const detected = detectClassFromCandidate(kamarDimintaText);
+    if (detected) return detected;
+  }
+
+  // 3. Jika belum ditemukan, periksa baris-baris lain yang bukan nama, diagnosa, atau dokter
+  for (const line of allLines) {
+    if (/^(?:Nama|No\.?\s*RM|Diagnosa|Dokter|DPJP)/i.test(line)) continue;
+    const detected = detectClassFromCandidate(line);
+    if (detected) return detected;
+  }
+
+  // 4. Fallback pencarian di seluruh rawText
+  const globalDetected = detectClassFromCandidate(rawText);
+  if (globalDetected) return globalDetected;
+
+  return '3';
+}
+
+/**
+ * Fungsi Ekstrak Teks SPRI yang Membedakan secara tegas Dokter DPJP vs Dokter Pemeriksa
+ */
+export const parseSPRIInput = (rawText: string) => {
+  const lines = rawText.split('\n').map((line) => line.trim());
+
+  let namaPasien = '';
+  let noRm = '';
+  let umur = '';
+  let diagnosa = '';
+  let dokterDpjp = '';
+  let dokterPemeriksa = '';
+  let penjaminKelas = '';
+
+  lines.forEach((line) => {
+    const lowerLine = line.toLowerCase();
+
+    // 1. Ekstrak Nama Pasien secara spesifik
+    if (lowerLine.startsWith('nama pasien') || lowerLine.startsWith('nama px') || lowerLine.startsWith('nama:')) {
+      namaPasien = line.split(/[:=]/)[1]?.trim() || '';
+    }
+    // 2. Ekstrak No. Rekam Medis
+    else if (lowerLine.includes('rekam medis') || lowerLine.includes('no.rm') || lowerLine.includes('no rm') || lowerLine.startsWith('norm')) {
+      noRm = line.split(/[:=]/)[1]?.trim() || '';
+    }
+    // 3. Ekstrak Umur
+    else if (lowerLine.startsWith('umur') || lowerLine.startsWith('usia')) {
+      umur = line.split(/[:=]/)[1]?.trim() || '';
+    }
+    // 4. Ekstrak Diagnosa Awal
+    else if (lowerLine.startsWith('diagnosa awal') || lowerLine.startsWith('diagnosa masuk') || lowerLine.startsWith('diagnosa') || lowerLine.startsWith('diagnosis')) {
+      diagnosa = line.split(/[:=]/)[1]?.trim() || '';
+    }
+    // 5. EKSTRAK DOKTER DPJP (Pastikan menggunakan 'dpjp', bukan sekadar 'dokter')
+    else if (lowerLine.includes('dokter dpjp') || lowerLine.startsWith('dpjp') || lowerLine.includes('dpjp utama')) {
+      dokterDpjp = line.split(/[:=]/)[1]?.trim() || '';
+    }
+    // 6. Ekstrak Dokter Pemeriksa (Simpan terpisah agar tidak tertukar dengan DPJP)
+    else if (lowerLine.includes('dokter yang memeriksa') || lowerLine.includes('dokter pemeriksa') || lowerLine.includes('pemeriksa')) {
+      dokterPemeriksa = line.split(/[:=]/)[1]?.trim() || '';
+    }
+    // 7. Ekstrak Penjamin / Kelas
+    else if (lowerLine.includes('penjamin') || lowerLine.includes('cara bayar') || lowerLine.includes('kamar diminta') || lowerLine.includes('kelas')) {
+      const val = line.split(/[:=]/)[1]?.trim() || '';
+      if (val) penjaminKelas = val;
+    }
+  });
+
+  // Ekstrak Kelas Kamar secara cerdas & presisi
+  const kelasKamar = extractKelasKamarFromText(rawText, lines);
+  const kodeIcd10 = matchIcdForDiagnosis(diagnosa);
+
+  // Jika kolom DPJP kosong di teks tapi ada dokter pemeriksa, gunakan fallback
+  return {
+    namaPasien,
+    noRm,
+    umur,
+    diagnosa,
+    kodeIcd10,
+    dokterDpjp: dokterDpjp || dokterPemeriksa,
+    dokterPemeriksa,
+    penjaminKelas: penjaminKelas || `BPJS ${kelasKamar}`,
+    kelasKamar
+  };
+};
 
 /**
  * LOGIKA PARSING FORMULIR PEMINTAAN RAWAT INAP (SPRI)
  * 100% presisi sesuai format contoh yang diminta
  */
 export const parseSPRI = (rawText: string): string => {
-  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-
-  // 1. KELAS KAMAR
-  let kelasKamar = 'VIP';
-  const kelasMatch = rawText.match(/Kelas\s*([0-9]|VIP|VVIP)/i) || 
-                     rawText.match(/(VVIP|VIP|Kelas\s*\d+)/i);
-  if (kelasMatch) {
-    kelasKamar = kelasMatch[1].toUpperCase();
-  }
-
-  // 2. NAMA PASIEN & UMUR
-  let namaPasien = '';
-  let umurPasien = '';
-
-  const rmIdx = lines.findIndex(l => /^\d{6}$/.test(l));
-  if (rmIdx !== -1 && lines[rmIdx + 1]) {
-    namaPasien = lines[rmIdx + 1];
-  } else {
-    const genderIdx = lines.findIndex(l => /^(PEREMPUAN|LAKI-LAKI|L|P)$/i.test(l));
-    if (genderIdx > 0) namaPasien = lines[genderIdx - 1];
-  }
-
-  const umurMatch = rawText.match(/(\d+\s*Th)/i);
-  if (umurMatch) {
-    umurMatch[1];
-    umurPasien = umurMatch[1];
-  }
-
-  // 3. DIAGNOSA AWAL & PENCARIAN KODE ICD-10
-  let diagnosa = '';
-  const kamarDimintaIdx = lines.findIndex(l => /Kamar\s*Diminta/i.test(l));
-  
-  if (kamarDimintaIdx > 0) {
-    diagnosa = lines[kamarDimintaIdx - 1];
-  } else {
-    const diagAwalIdx = lines.findIndex(l => /Diagnosa\s*Awal/i.test(l));
-    if (diagAwalIdx > 1) {
-      diagnosa = lines[diagAwalIdx - 2];
-    }
-  }
-
-  if (!diagnosa) {
-    const fallbackDiag = lines.find(l => 
-      /Obs|DM|Gastro|Anemia|Pneumonia|Hematom|Abrasio|VVIP|BED|FIRDAUS|ICD|cf/i.test(l) &&
-      !/FORMULIR|PEMINTAAN|Bab|Email|JATIM|PEREMPUAN|LAKI|Kamar|Diagnosa|Dokter|Cara|Yang/i.test(l)
-    );
-    if (fallbackDiag) diagnosa = fallbackDiag;
-  }
-
-  // Cek apakah ada pola kode ICD-10 di seluruh teks mentah (misal S62.6, J18.0, S00.11, dll)
-  // Atau jika sudah ada kurung kode di diagnosa
-  const icdRegex = /\b([A-Z]\d{2}(?:\.\d{1,2})?)\b/g;
-  const matches = rawText.match(icdRegex);
-  
-  let kodeIcdFound = '';
-  if (matches && matches.length > 0) {
-    // Ambil kode ICD yang bukan bagian dari kata umum (filter nomor RM atau tanggal jika terdeteksi)
-    const validIcds = matches.filter(m => !/^\d+$/.test(m) && m.length >= 3);
-    if (validIcds.length > 0) {
-      // Ambil kode terakhir atau kode yang relevan di dekat baris diagnosa
-      kodeIcdFound = validIcds[validIcds.length - 1];
-    }
-  }
-
-  // Gabungkan diagnosa dengan kode ICD-10
-  if (diagnosa) {
-    const hasBracket = /\([A-Z0-9.\s+]+\)/.test(diagnosa);
-    if (!hasBracket) {
-      if (kodeIcdFound) {
-        diagnosa = `${diagnosa} (${kodeIcdFound})`;
-      } else {
-        diagnosa = `${diagnosa} (KODE ICD 10)`;
-      }
-    }
-  }
-
-  // 4. DOKTER DPJP
-  let dokterDPJP = '';
-  const dpjpMatch = rawText.match(/Dokter\s+DPJP\s*:\s*([^\n]+)/i) || 
-                    rawText.match(/DPJP\s*:\s*([^\n]+)/i);
-  if (dpjpMatch) {
-    dokterDPJP = dpjpMatch[1].trim();
-  } else {
-    // Fallback ambil baris dokter jika tertulis di bawah
-    const docLine = lines.find(l => /^dr\./i.test(l));
-    if (docLine) dokterDPJP = docLine;
-  }
-
-  // 5. CARA BAYAR
-  let caraBayar = 'BPJS';
-  if (/UMUM/i.test(rawText)) {
-    caraBayar = 'UMUM';
-  }
-
-  // FORMAT HASIL EKSTRAKSI SESUAI PERMINTAAN
-  return `Pesan kamar kls : ${kelasKamar}
-
-${namaPasien} (${umurPasien})
-- ${diagnosa}
-- DPJP : ${dokterDPJP}
-- ${caraBayar} ${kelasKamar}`;
+  const parsed = parseSpriText(rawText);
+  return parsed.resultFormat;
 };
 
 /**
@@ -610,33 +899,31 @@ export const parseSpriText = (raw: string): ParsedSpriData => {
   // Label pemutus umum (boundary labels)
   const BOUNDARY_STOP = /(?:Kamar\s*Diminta|Kamar|Ruang(?:\s*Rawat)?|Asal\s*(?:Poli|Unit)|Unit\s*Pengirim|Poli\s*Pengirim|DPJP|Dokter\s*DPJP|Dokter|Cara\s*Bayar|Penjamin|Jenis\s*Pembayaran|Asuransi|Tgl(?:\s*Masuk|\s*SPRI)?|Tanggal|Catatan)/i;
 
-  // 1. KELAS KAMAR
-  // Deteksi jika user menambahkan instruksi cepat di akhir input (misal: "BPJS 3", "UMUM VIP")
-  let kelasKamar = '';
-  const quickEndMatch = rawText.match(/(?:^|\n|\s)(UMUM|BPJS|PENGURUSAN\s*JR\/?LP|KAI|BPJS\s*TK|ADMEDIKA|BRI\s*LIFE)\s*(3|2|1|VIP|VVIP)$/i);
-  if (quickEndMatch) {
-    kelasKamar = quickEndMatch[2].toUpperCase();
-  } else {
-    // Cari label Kamar Diminta / Kamar / Kelas
-    const rawKelasVal = extractMultiLineField(/(?:Kamar\s*Diminta|Kamar|Ruang|Kelas\s*Kamar)/i, /(?:DPJP|Dokter|Asal\s*(?:Poli|Unit)|Cara\s*Bayar|Penjamin)/i);
-    const kelasMatch = (rawKelasVal || rawText).match(/(?:Kelas|Kls)?\s*([0-9]|VIP|VVIP|III|II|I)\b/i);
-    if (kelasMatch) {
-      let k = kelasMatch[1].toUpperCase();
-      if (k === 'III') k = '3';
-      else if (k === 'II') k = '2';
-      else if (k === 'I') k = '1';
-      kelasKamar = k;
+  // 1. KELAS KAMAR (Mendeteksi akurat dari "Kamar Diminta" seperti VIP, Kelas 1, Kelas 2, Kelas 3)
+  const kelasKamar = extractKelasKamarFromText(rawText, lines);
+  const quickEndMatch = rawText.match(
+    /(?:^|\n|\s)(UMUM|BPJS|PENGURUSAN\s*JR\/?LP|KAI|BPJS\s*TK|ADMEDIKA|BRI\s*LIFE)\s*(3|2|1|VIP|VVIP)$/i
+  );
+
+  // 2. NAMA PASIEN, NO RM & UMUR
+  let namaPasien = '';
+  let noRm = '';
+  let umurPasien = '';
+
+  // Ekstraksi No. Rekam Medis
+  const rmLine = lines.find((l) => /rekam\s*medis|no\.?\s*rm/i.test(l));
+  if (rmLine) {
+    const parts = rmLine.split(':');
+    if (parts.length > 1) {
+      noRm = parts.slice(1).join(':').trim();
     }
   }
-  if (!kelasKamar) {
-    if (/VIP/i.test(rawText)) kelasKamar = 'VIP';
-    else if (/VVIP/i.test(rawText)) kelasKamar = 'VVIP';
-    else kelasKamar = '3';
+  if (!noRm) {
+    const rmMatch = rawText.match(/(?:No\.?\s*(?:RM|Rekam\s*Medis)\s*[:=\t-]?\s*)(\d{5,8})/i) || rawText.match(/\b(\d{6})\b/);
+    if (rmMatch) {
+      noRm = rmMatch[1];
+    }
   }
-
-  // 2. NAMA PASIEN & UMUR
-  let namaPasien = '';
-  let umurPasien = '';
 
   // Ekstraksi nama pasien dengan multi-line helper
   const rawNamaVal = extractMultiLineField(
@@ -765,59 +1052,112 @@ export const parseSpriText = (raw: string): ParsedSpriData => {
       .replace(/^[:=\t\-]+/, '')
       .trim();
 
-    // Deteksi kode ICD-10 di dalam kurung jika sudah ada
+    // Deteksi kode ICD-10 di dalam kurung jika sudah ada atau lakukan pencocokan cerdas
     const icdInside = diagnosa.match(/[\[\(]([A-Z]\d{2}(?:\.\d+)?)[\]\)]/i);
     if (icdInside) {
       kodeIcd10 = icdInside[1].toUpperCase();
+    } else {
+      kodeIcd10 = matchIcdForDiagnosis(diagnosa);
     }
   }
 
-  // 4. DOKTER DPJP (Presisi ekstraksi: Dokter Yang Memeriksa, Dokter DPJP, atau DPJP)
-  let dokterDPJP = '';
-  dokterDPJP = extractMultiLineField(
-    /(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Dokter\s*DPJP|DPJP\s*Utama|DPJP|Dokter\s*Pengirim|Dokter\s*Utama|Pemeriksa)/i,
-    /(?:Asal\s*(?:Poli|Unit)|Unit\s*Pengirim|Poli\s*Pengirim|Cara\s*Bayar|Penjamin|Jenis\s*Pembayaran|Asuransi|Kamar\s*Diminta|Kamar|Tgl|Tanggal|Catatan|Diagnosa)/i
-  );
+  // 4. EKSTRAKSI TEGAS: DOKTER DPJP vs DOKTER YANG MEMERIKSA
+  let dokterDpjp = '';
+  let dokterPemeriksa = '';
 
-  if (!dokterDPJP) {
-    const dpjpMatch = rawText.match(/(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Dokter\s*DPJP|DPJP\s*Utama|DPJP|Pemeriksa)\s*[:=\t\-\n\r]+([^\n\r]+)/i);
-    if (dpjpMatch) {
-      dokterDPJP = dpjpMatch[1].trim();
-    } else {
-      const drLine = lines.find(l => (l.includes('dr.') || l.includes('dr ') || l.includes('Sp.')) && !/^(FORMULIR|PEMINTAAN|RSU|RAWAT)/i.test(l));
-      if (drLine) {
-        dokterDPJP = drLine.replace(/^(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Dokter\s*DPJP|DPJP|Dokter|Dokter\s*Pengirim)\s*[:=\t-]\s*/i, '').trim();
+  // Langkah A: Ekstraksi baris-per-baris terstruktur
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    // Prioritaskan label DPJP secara spesifik
+    if (lower.includes('dokter dpjp') || lower.startsWith('dpjp') || /^dpjp\s*[:=\t-]/i.test(line)) {
+      const val = line.split(/[:=]/)[1]?.trim() || line.replace(/^(?:Dokter\s*DPJP|DPJP\s*Utama|DPJP)\s*[:=\t-]?\s*/i, '').trim();
+      if (val && !/^(?:Asal|Cara|Kamar|Poli|Unit|Penjamin)/i.test(val)) {
+        dokterDpjp = val;
+      }
+    }
+    // Ekstrak Dokter Pemeriksa (disimpan terpisah agar tidak tertukar dengan DPJP)
+    else if (lower.includes('dokter yang memeriksa') || lower.includes('dokter pemeriksa') || lower.startsWith('pemeriksa')) {
+      const val = line.split(/[:=]/)[1]?.trim() || line.replace(/^(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Pemeriksa)\s*[:=\t-]?\s*/i, '').trim();
+      if (val) {
+        dokterPemeriksa = val;
       }
     }
   }
 
-  if (dokterDPJP) {
-    dokterDPJP = dokterDPJP
-      .replace(/^(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Dokter\s*DPJP|DPJP|Dokter)\s*[:=\t-]?\s*/i, '')
-      .replace(/(?:Asal\s*Poli|Unit|Cara\s*Bayar|Penjamin)[\s:=-].*$/gis, '')
+  // Langkah B: Multi-line helper jika DPJP berada di baris berikutnya
+  if (!dokterDpjp) {
+    dokterDpjp = extractMultiLineField(
+      /(?:Dokter\s*DPJP|DPJP\s*Utama|DPJP)\b/i,
+      /(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Asal\s*(?:Poli|Unit)|Unit\s*Pengirim|Poli\s*Pengirim|Cara\s*Bayar|Penjamin|Jenis\s*Pembayaran|Asuransi|Kamar\s*Diminta|Kamar|Tgl|Tanggal|Catatan|Diagnosa)/i
+    );
+  }
+
+  if (!dokterPemeriksa) {
+    dokterPemeriksa = extractMultiLineField(
+      /(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Pemeriksa)\b/i,
+      /(?:Dokter\s*DPJP|DPJP|Asal\s*(?:Poli|Unit)|Unit\s*Pengirim|Poli\s*Pengirim|Cara\s*Bayar|Penjamin|Kamar\s*Diminta|Kamar|Tgl|Tanggal|Catatan|Diagnosa)/i
+    );
+  }
+
+  // Langkah C: Regex fallback pencarian langsung pada teks mentah
+  if (!dokterDpjp) {
+    const dpjpMatch =
+      rawText.match(/(?:Dokter\s*DPJP|DPJP\s*Utama|DPJP)\s*[:=\t\-\n\r]+([^\n\r]+)/i);
+    if (dpjpMatch && dpjpMatch[1].trim()) {
+      dokterDpjp = dpjpMatch[1].trim();
+    }
+  }
+
+  if (!dokterPemeriksa) {
+    const pemeriksaMatch =
+      rawText.match(/(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Pemeriksa)\s*[:=\t\-\n\r]+([^\n\r]+)/i);
+    if (pemeriksaMatch && pemeriksaMatch[1].trim()) {
+      dokterPemeriksa = pemeriksaMatch[1].trim();
+    }
+  }
+
+  // Bersihkan teks dokter dari label SIMRS
+  if (dokterDpjp) {
+    dokterDpjp = dokterDpjp
+      .replace(/^(?:Dokter\s*DPJP|DPJP\s*Utama|DPJP)\s*[:=\t-]?\s*/i, '')
+      .replace(/(?:Dokter\s*(?:Yang\s*)?Memeriksa|Asal\s*Poli|Unit|Cara\s*Bayar|Penjamin)[\s:=-].*$/gis, '')
       .replace(/[:=\t\-]+$/, '')
       .trim();
   }
 
+  if (dokterPemeriksa) {
+    dokterPemeriksa = dokterPemeriksa
+      .replace(/^(?:Dokter\s*(?:Yang\s*)?Memeriksa|Dokter\s*Pemeriksa|Pemeriksa)\s*[:=\t-]?\s*/i, '')
+      .replace(/(?:Dokter\s*DPJP|DPJP|Asal\s*Poli|Unit|Cara\s*Bayar|Penjamin)[\s:=-].*$/gis, '')
+      .replace(/[:=\t\-]+$/, '')
+      .trim();
+  }
+
+  // Gunakan dokterDpjp secara mutlak untuk baris DPJP pada output template.
+  // Jika kolom DPJP kosong di teks tapi ada dokter pemeriksa, gunakan dokterPemeriksa sebagai fallback.
+  let effectiveDpjp = dokterDpjp || dokterPemeriksa;
+
   // Fallback pencarian dokter spesialis RSUMB dari list dokter jika belum terdeteksi agar tidak pernah kosong / 'dr. DPJP'
-  if (!dokterDPJP || dokterDPJP === 'dr. DPJP') {
-    const knownDoctor = LIST_DPJP_RSUMB.find(doc => rawText.toLowerCase().includes(doc.toLowerCase().replace('dr. ', '')));
+  if (!effectiveDpjp || effectiveDpjp === 'dr. DPJP') {
+    const knownDoctor = LIST_DPJP_RSUMB.find((doc) =>
+      rawText.toLowerCase().includes(doc.toLowerCase().replace('dr. ', ''))
+    );
     if (knownDoctor) {
-      dokterDPJP = knownDoctor;
+      effectiveDpjp = knownDoctor;
     } else {
       // Deteksi spesialisasi berdasarkan kata kunci klinis
       if (/neonat|bayi|hiperbilirubin|bilirubin|ikterus|pediatrik|anak|bronkopneumonia/i.test(rawText)) {
-        dokterDPJP = 'dr. Taufiqur Rahman, Sp. A';
+        effectiveDpjp = 'dr. Taufiqur Rahman, Sp. A';
       } else if (/gravida|sc|obgyn|partus|kandungan|caesarea/i.test(rawText)) {
-        dokterDPJP = 'dr. Erliana, Sp. OG';
+        effectiveDpjp = 'dr. Erliana, Sp. OG';
       } else if (/cf\s*phalang|fraktur|orthopedi|femur|tibia/i.test(rawText)) {
-        dokterDPJP = 'dr. Hary Wahyu Agustono, Sp.OT.';
+        effectiveDpjp = 'dr. Hary Wahyu Agustono, Sp.OT.';
       } else if (/apendisitis|hernia|bph|retensi|bedah/i.test(rawText)) {
-        dokterDPJP = 'dr. Rieski Widhanar, Sp. B';
+        effectiveDpjp = 'dr. Rieski Widhanar, Sp. B';
       } else if (/jantung|chest\s*pain|angina|chf/i.test(rawText)) {
-        dokterDPJP = 'dr. Bagas Setiawan Ihsan';
+        effectiveDpjp = 'dr. Bagas Setiawan Ihsan';
       } else {
-        dokterDPJP = 'dr. Atika Amalia Fajarini, Sp. PD';
+        effectiveDpjp = 'dr. Atika Amalia Fajarini, Sp. PD';
       }
     }
   }
@@ -846,9 +1186,23 @@ export const parseSpriText = (raw: string): ParsedSpriData => {
     caraBayar = 'BPJS';
   }
 
-  // SUSUN FORMAT AKHIR
-  const cleanDiagFormatted = diagnosa.replace(/^[:\-\s]+/, '').trim();
-  let cleanDpjpOutput = dokterDPJP ? dokterDPJP.replace(/^(?:DPJP\s*:\s*|Dokter\s*(?:Yang\s*)?Memeriksa\s*:\s*|Dokter\s*Pemeriksa\s*:\s*|Dokter\s*DPJP\s*:\s*|Dokter\s*:\s*)/i, '').trim() : 'dr. Atika Amalia Fajarini, Sp. PD';
+  // SUSUN FORMAT AKHIR (Membedakan secara tegas Dokter DPJP & Menyertakan Kode ICD-10)
+  let cleanDiagFormatted = diagnosa.replace(/^[:\-\s]+/, '').trim();
+  let effectiveIcd = (kodeIcd10 || '').trim();
+  if (!effectiveIcd) {
+    effectiveIcd = matchIcdForDiagnosis(cleanDiagFormatted);
+  }
+
+  // Format diagnosis dengan ICD-10 jika ada kode terdeteksi
+  if (effectiveIcd) {
+    const baseDx = cleanDiagFormatted.replace(/\s*\([A-Z]\d{2}(?:\.\d+)?(?:\s*\/\s*[A-Z]\d{2}(?:\.\d+)?)*\)/gi, '').trim();
+    cleanDiagFormatted = `${baseDx} (${effectiveIcd})`;
+  }
+
+  let cleanDpjpOutput = effectiveDpjp
+    ? effectiveDpjp.replace(/^(?:DPJP\s*:\s*|Dokter\s*(?:Yang\s*)?Memeriksa\s*:\s*|Dokter\s*Pemeriksa\s*:\s*|Dokter\s*DPJP\s*:\s*|Dokter\s*:\s*)/i, '').trim()
+    : 'dr. Atika Amalia Fajarini, Sp. PD';
+
   if (!cleanDpjpOutput || cleanDpjpOutput === 'dr. DPJP') {
     cleanDpjpOutput = 'dr. Atika Amalia Fajarini, Sp. PD';
   } else if (!cleanDpjpOutput.startsWith('dr.') && !cleanDpjpOutput.startsWith('Dr.')) {
@@ -858,41 +1212,52 @@ export const parseSpriText = (raw: string): ParsedSpriData => {
   const cleanKlsFormatted = (kelasKamar || '3').trim().replace(/^(?:Kelas|Kls)\s*/i, '');
   let cleanBayarFormatted = caraBayar.trim().toUpperCase().replace(/\s*(?:KLS|KELAS)?\s*(?:3|2|1|VIP|VVIP)$/i, '').trim();
 
+  // FORMAT OUTPUT TEMPLATE KLINIK SIAP KIRIM (Dengan format baku baku RSUMB)
   const resultFormat = `Pesan kamar kls : ${cleanKlsFormatted}
 
 ${namaPasien || 'NAMA PASIEN'} (${umurPasien || '0 Th'})
 - ${cleanDiagFormatted}
-- ${cleanDpjpOutput}
+- DPJP : ${cleanDpjpOutput}
 - ${cleanBayarFormatted} ${cleanKlsFormatted}`;
 
   return {
     nama: namaPasien || '',
+    namaPasien: namaPasien || '',
+    noRm: noRm || '',
     umur: umurPasien || '',
     diagnosa: cleanDiagFormatted || '',
-    kodeIcd10: kodeIcd10 || '',
+    kodeIcd10: effectiveIcd || '',
     dpjp: cleanDpjpOutput,
+    dokterDpjp: dokterDpjp || cleanDpjpOutput,
+    dokterPemeriksa: dokterPemeriksa || '',
     caraBayar: cleanBayarFormatted,
+    penjaminKelas: `${cleanBayarFormatted} ${cleanKlsFormatted}`,
     kelasKamar: cleanKlsFormatted,
     resultFormat: resultFormat,
     rawText: raw
   };
 };
 
+
+
 /**
  * Output format WhatsApp standar pesanan kamar:
  * Pesan kamar kls : [KELAS]
  *
  * [NAMA PASIEN] ([UMUR])
- * - [DIAGNOSA AWAL]
- * - [DOKTER DPJP]
+ * - [DIAGNOSA AWAL] ([KODE ICD-10])
+ * - DPJP : [DOKTER DPJP]
  * - [CARA BAYAR] [KELAS]
  */
 export const formatPesananKamarWA = (data: {
   nama: string;
+  noRm?: string;
   umur: string;
   diagnosa: string;
   kodeIcd10?: string;
   dpjp: string;
+  dokterDpjp?: string;
+  dokterPemeriksa?: string;
   caraBayar: string;
   kelasKamar?: string;
   resultFormat?: string;
@@ -908,13 +1273,24 @@ export const formatPesananKamarWA = (data: {
   }
 
   let cleanDx = (data.diagnosa || 'DIAGNOSA AWAL').replace(/^[:\-\s]+/, '').trim();
-  if (data.kodeIcd10 && !cleanDx.includes(data.kodeIcd10)) {
-    cleanDx = `${cleanDx} (${data.kodeIcd10})`;
+  let effectiveIcd = (data.kodeIcd10 || '').trim();
+  if (!effectiveIcd) {
+    const icdInside = cleanDx.match(/\(([A-Z]\d{2}(?:\.\d+)?(?:\s*\/\s*[A-Z]\d{2}(?:\.\d+)?)*)\)/i);
+    if (icdInside) {
+      effectiveIcd = icdInside[1];
+    } else {
+      effectiveIcd = matchIcdForDiagnosis(cleanDx);
+    }
   }
-  cleanDx = cleanDx.replace(/^[:\-\s]+/, '').trim();
 
-  let cleanDpjp = (data.dpjp || '').trim();
-  cleanDpjp = cleanDpjp.replace(/^(?:DPJP\s*:\s*|Dokter\s*(?:Yang\s*)?Memeriksa\s*:\s*|Dokter\s*Pemeriksa\s*:\s*|Dokter\s*DPJP\s*:\s*|Dokter\s*:\s*)/i, '').trim();
+  if (effectiveIcd) {
+    const baseDx = cleanDx.replace(/\s*\([A-Z]\d{2}(?:\.\d+)?(?:\s*\/\s*[A-Z]\d{2}(?:\.\d+)?)*\)/gi, '').trim();
+    cleanDx = `${baseDx} (${effectiveIcd})`;
+  }
+
+  // Utamakan dokterDpjp secara mutlak agar tidak tertukar dengan dokter pemeriksa
+  const targetDpjp = data.dokterDpjp || data.dpjp || '';
+  let cleanDpjp = targetDpjp.replace(/^(?:DPJP\s*:\s*|Dokter\s*DPJP\s*:\s*|Dokter\s*(?:Yang\s*)?Memeriksa\s*:\s*|Dokter\s*Pemeriksa\s*:\s*|Dokter\s*:\s*)/i, '').trim();
   if (!cleanDpjp || cleanDpjp === 'dr. DPJP') {
     cleanDpjp = 'dr. Atika Amalia Fajarini, Sp. PD';
   } else if (!cleanDpjp.startsWith('dr.') && !cleanDpjp.startsWith('Dr.')) {
@@ -923,14 +1299,14 @@ export const formatPesananKamarWA = (data: {
 
   const kls = (data.kelasKamar || '3').trim().replace(/^(?:Kelas|Kls)\s*/i, '');
   let rawBayar = (data.caraBayar || 'BPJS').trim().toUpperCase();
-  // Hapus akhiran kelas jika sudah tertulis di rawBayar agar tidak menghasilkan "- BPJS 3 3"
   rawBayar = rawBayar.replace(/\s*(?:KLS|KELAS)?\s*(?:3|2|1|VIP|VVIP)$/i, '').trim();
 
+  // Format Output Template Klinik Siap Kirim (Selalu menyertakan DPJP yang akurat)
   return `Pesan kamar kls : ${kls}
 
 ${cleanNama} (${cleanUmur})
 - ${cleanDx}
-- ${cleanDpjp}
+- DPJP : ${cleanDpjp}
 - ${rawBayar} ${kls}`;
 };
 
